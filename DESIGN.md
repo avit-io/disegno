@@ -242,7 +242,7 @@ Condizioni di consistenza, tutte implementate e coperte da un test di rifiuto:
 | Copertura | divisione dei casi tipata; i casi con indici inconciliabili sono impossibili | `pred` senza `zero` |
 | Universi | stratificati, verificati dal kernel; un campo di livello maggiore non sta nel data | `(def t : Type Type)`, `(data U : Type [u : (→ Type U)])` |
 | Positività | stretta, sul dominio normalizzato | `(data Cattivo [mk (→ Cattivo ⊥)])` |
-| Niente scappatoie | niente postulati: una `def` deve avere un corpo; `extern` solo nella libreria standard | `(def postulato : ⊥)` |
+| Niente scappatoie | niente postulati: una `def` deve avere un corpo, o un pattern assurdo verificato; `extern` solo nella libreria standard | `(def postulato : ⊥)`, `(def f : (¬ (≡ 0 0)) [()])` |
 | Snodi che non mentono | i costruttori non possono mentire per costruzione; gli extern restituiscono solo tipi opachi | `(extern mente : (→ Dir ⊥) …)` |
 
 **`auto`**: le proposizioni decidibili si scrivono `(So (test? …))`, che calcolando diventa `⊤` o `⊥`. `auto` è `tt` quando il tipo atteso si riduce a `⊤`, `refl` quando è un'uguaglianza; il kernel ricontrolla. Con dati concreti la prova si calcola:
@@ -278,7 +278,16 @@ Una pubblicazione scoperta, protetta da un'osservazione che non è un test (`exi
   [src] auto)
 ```
 
-**I controlli come teoremi.** `checks.disegno` raccoglie le leggi della libreria standard e le garanzie sui piani: associatività di `+` e `++`, transitività di `⊑`, la legge affine tramite l'istanza, la lettura dei letterali, `pinned`, `Before`, i montaggi. Le leggi generali sono dimostrate per induzione, i casi concreti calcolati da `auto`. Il file si verifica a ogni esecuzione dei test (o da solo: `scheme --script disegno.ss checks.disegno`). È la protezione dalle rotture: una prova di mutazione che rompe `++`, `⊖`, `⊑-step` o la raccolta dei montaggi fa fallire il controllo, con l'errore di tipo che indica la legge violata. I casi che devono essere rifiutati, che un teorema non può enunciare senza negazione, restano in `test.ss`.
+**I controlli come teoremi.** `checks.disegno` raccoglie le leggi della libreria standard e le garanzie sui piani: associatività di `+` e `++`, transitività di `⊑`, la legge affine tramite l'istanza, la lettura dei letterali, `pinned`, `Before`, i montaggi. Le leggi generali sono dimostrate per induzione, i casi concreti calcolati da `auto`. Il file si verifica a ogni esecuzione dei test (o da solo: `scheme --script disegno.ss checks.disegno`). È la protezione dalle rotture: una prova di mutazione che rompe `++`, `⊖`, `⊑-step` o la raccolta dei montaggi fa fallire il controllo, con l'errore di tipo che indica la legge violata. Anche ciò che **non** deve valere è un teorema, grazie alla negazione.
+
+**Negazione e pattern assurdi.** `(¬ A)` è `(→ A ⊥)`. Un pattern assurdo `()` dichiara che a quella posizione non c'è alcun valore, e la clausola non ha corpo:
+
+```
+(def fuori-a-mano : (¬ (⊑ /out /src))
+  [(⊑-step ())])                       ; servirebbe una prova di (⊑ root /src): impossibile
+```
+
+Il checker verifica `()` dopo aver unificato tutti i pattern della clausola: ogni costruttore deve essere in conflitto con gli indici, altrimenti `() non è assurdo`. Su proposizioni chiuse `auto` trova da solo l'albero degli assurdi e lo fa verificare come definizione ausiliaria: `(def annidati-non-disgiunti : (¬ (⋔ /src /src/cache)) auto)`. Così `checks.disegno` contiene anche le garanzie negative (immagine non pinnata, montaggi sovrapposti), e una mutazione che rende `⋔` troppo permissiva viene presa da un teorema. In `test.ss` restano i rifiuti del checker stesso: nomi riservati, errori di tipo, e il fatto che `()` non sia una scappatoia (`(¬ (≡ 0 0))` con `[()]` è rifiutato).
 
 **Cosa resta empirico**
 : che i test passino o che il binario funzioni sono osservazioni, non proposizioni. Gli unit test del codice dentro i container restano e li esegue Dagger.
@@ -340,7 +349,7 @@ In cambio della purezza e della semplicità:
 - [x] Tipi raffinati per immagini (tag e digest) e percorsi; struttura `Affine` con la legge dimostrata per i percorsi.
 - [x] Regioni dei percorsi: contenimento, disgiunzione, montaggi disgiunti come teorema sul piano.
 - [ ] Le altre istanze: tempo, indirizzi IP (modulo 2³², overflow escluso con un raffinamento), porte; subnet disgiunte, porte non allocate due volte.
-- [ ] Negazione nei teoremi (pattern assurdi), per portare anche i casi rifiutati in checks.disegno.
+- [x] Negazione nei teoremi: `¬`, pattern assurdi `()`, refutazione con `auto`.
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
