@@ -22,6 +22,9 @@
   [true]
   [false])
 
+(def ¬ : (→ Type Type)              ; negazione: (¬ A) è A → ⊥
+  [A] (→ A ⊥))
+
 (def So : (→ Bool Type)
   [true]  ⊤
   [false] ⊥)

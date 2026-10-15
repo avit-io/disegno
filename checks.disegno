@@ -66,3 +66,25 @@
 (def montaggi-visti : (≡ (mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /cache (cache-volume "c"))))
                          [/cache /src])
   auto)
+
+; --- negazioni: ciò che non deve valere, come teorema ---
+; Un pattern assurdo () dichiara che a quella posizione non c'è alcun valore; la clausola non ha
+; corpo. Per avere (⊑ /out /src) servirebbe ⊑-step su una prova di (⊑ root /src): impossibile.
+
+(def fuori-a-mano : (¬ (⊑ /out /src))
+  [(⊑-step ())])
+
+(def fuori : (¬ (⊑ /out /src))
+  auto)
+
+(def non-pinnata : (¬ (All pinned? (images (from (container) "alpine"))))
+  auto)
+
+(def annidati-non-disgiunti : (¬ (⋔ /src /src/cache))
+  auto)
+
+(def montaggi-sovrapposti : (¬ (Disjoint-mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /src/cache (cache-volume "c")))))
+  auto)
+
+(def zero-non-è-uno : (¬ (≡ 0 1))
+  [()])

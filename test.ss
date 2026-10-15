@@ -169,7 +169,14 @@
 (rifiuta "(def sovrapposti : (→ [src Dir] (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /src/cache (cache-volume \"c\"))))) [src] auto)"
          "auto: nessuna prova")
 
+;; Pattern assurdi: solo dove nessun costruttore è possibile; non sono una scappatoia.
+(rifiuta "(def finto-assurdo : (¬ (≡ 0 0)) [()])" "() non è assurdo: refl è possibile")
+(rifiuta "(def finto-assurdo2 : (¬ (⊑ /out/x /out)) [(⊑-step ())])" "() non è assurdo")
+(rifiuta "(def falso-diretto : ⊥ [()])" "troppi pattern")
+(rifiuta "(def vero-negato : (¬ (⊑ /out/x /out)) auto)" "auto: nessuna refutazione di (⊑ /out/x /out)")
+
 ;; --- dal vivo ---
+
 
 
 

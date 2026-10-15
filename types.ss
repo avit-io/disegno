@@ -346,8 +346,52 @@
     (cond [(and (eq? (car v) 'vglob) (eq? (cadr v) '⊤)) '(glob tt)]
           [(and (eq? (car v) 'vglob) (eq? (cadr v) '≡)) (check c 'refl ty)]
           [(and (eq? (car v) 'vglob) (eq? (cadr v) '⊥)) (oops "auto: la proposizione si riduce a ⊥, non a vero")]
+          [(neg-dom v) => (lambda (a) (refutation c v a))]
           [(search c v 32)]
           [else (oops "auto: nessuna prova di ~s" (show c ty))])))
+
+;; Negazioni: (¬ A) è (→ A ⊥). auto cerca l'albero dei pattern assurdi che copre A e lo fa
+;; verificare come definizione ausiliaria: copertura e assurdi li controlla il checker.
+(define (neg-dom v)
+  (and (eq? (car v) 'vpi) (eq? (caddr v) 'e)
+       (let ([cod (force (pi-cod v (vvar 0)))]) (and (eq? (car cod) 'vglob) (eq? (cadr cod) '⊥) (pi-dom v)))))
+
+(define auto-count 0)
+(define (refutation c v a)
+  (unless (= (ctx-l c) 0) (oops "auto: refutazione solo su proposizioni chiuse"))
+  (let ([pats (refute a 8)])
+    (unless pats (oops "auto: nessuna refutazione di ~s" (show c a)))
+    (set! auto-count (+ 1 auto-count))
+    (let ([name (string->symbol (format "%auto~a" auto-count))])
+      (check-def-core name (reify 0 v) (map (lambda (p) (cons (list p) #f)) pats))
+      `(glob ,name))))
+
+;; → pattern che coprono ty con assurdi, o #f. Un costruttore escluso dagli indici non serve;
+;; uno possibile va escluso da un suo campo refutabile.
+(define (refute ty depth)
+  (let ([v (force ty)])
+    (and (> depth 0) (eq? (car v) 'vglob) (eq? (g-kind (gget (cadr v))) 'data)
+         (not (has-meta? (reify 0 v)))
+         (let loop ([ks (g-info (gget (cadr v)))] [acc '()])
+           (if (null? ks)
+               (if (null? acc) (list '()) acc)
+               (let ([r (refute-con (car ks) v depth)])
+                 (and r (loop (cdr ks) (if (eq? r 'impossible) acc (append acc r))))))))))
+
+(define (refute-con k goal depth)
+  (let loop ([kt (force (g-type (gget k)))] [fields '()])
+    (if (eq? (car kt) 'vpi)
+        (let ([m (meta-val (new-meta #f #f))])
+          (loop (force (pi-cod kt m)) (if (eq? (caddr kt) 'e) (append fields (list (pi-dom kt))) fields)))
+        (let ([r (guard (x [(unify-failure? x) (unify-failure-kind x)]) (unify 0 kt goal) 'ok)])
+          (cond [(eq? r 'conflict) 'impossible]
+                [(not (eq? r 'ok)) #f]
+                [else (let try ([i 0] [fs fields])
+                        (and (pair? fs)
+                             (let ([ps (refute (car fs) (- depth 1))])
+                               (if ps
+                                   (map (lambda (p) (cons k (map (lambda (j) (if (= j i) p '_)) (iota (length fields))))) ps)
+                                   (try (+ i 1) (cdr fs))))))])))))
 
 (define (has-meta? z) (and (pair? z) (or (memq (car z) '(meta imeta)) (exists has-meta? z))))
 
@@ -665,26 +709,39 @@
         (and (equal? h `(glob ,d)) (not (exists (lambda (a) (mentions? d a)) args))))))
 
 ;; (def f : T [p ...] corpo ...)  oppure  (def f : T corpo)
+;; Una clausola con un pattern assurdo () non ha corpo: [(⊑-step ())].
 (define (check-def d)
   (unless (and (>= (length d) 4) (eq? (caddr d) ':)) (oops "def malformata: ~s" d))
-  (let* ([name (cadr d)] [rest (list-tail d 4)]
-         [clauses (cond [(null? rest) (oops "~a: manca la definizione" name)]
-                        [(null? (cdr rest)) (list (cons '() (car rest)))]
-                        [(odd? (length rest)) (oops "~a: clausola senza corpo" name)]
-                        [else (let pairs ([r rest]) (if (null? r) '() (cons (cons (unbracket (car r)) (cadr r)) (pairs (cddr r)))))])])
+  (let ([name (cadr d)])
     (fresh-name! name)
-    (let* ([t (elab-sig (cadddr d))] [ty (begin (k-type t) (ev '() t))])
-      (hashtable-set! globals name (make-g 'def ty #f))
-      (hashtable-set! sigs name t)
-      (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
-             [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
-             [cs (map (lambda (ps c) (check-clause name ty ps (cdr c))) pats clauses)])
-        (cover name ty pats)
-        (terminates! name cs)
-        (g-info-set! (gget name) (cons (length (car (car cs))) cs))))))
+    (check-def-core name (elab-sig (cadddr d)) (parse-clauses name (list-tail d 4)))))
+
+(define (absurd? p) (or (null? p) (and (pair? p) (exists absurd? (cdr p)))))
+(define (absurd-clause? x) (and (pair? x) (eq? (car x) '%br) (exists absurd? (cdr x))))
+
+(define (parse-clauses name rest)                       ; → lista di (pattern . corpo); corpo #f se assurda
+  (cond [(null? rest) (oops "~a: manca la definizione" name)]
+        [(and (null? (cdr rest)) (not (absurd-clause? (car rest)))) (list (cons '() (car rest)))]
+        [else (let loop ([r rest])
+                (cond [(null? r) '()]
+                      [(absurd-clause? (car r)) (cons (cons (cdr (car r)) #f) (loop (cdr r)))]
+                      [(null? (cdr r)) (oops "~a: clausola senza corpo" name)]
+                      [else (cons (cons (unbracket (car r)) (cadr r)) (loop (cddr r)))]))]))
+
+(define (check-def-core name t clauses)
+  (let ([ty (begin (k-type t) (ev '() t))])
+    (hashtable-set! globals name (make-g 'def ty #f))
+    (hashtable-set! sigs name t)
+    (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
+           [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
+           [cs (filter values (map (lambda (ps c) (check-clause name ty ps (cdr c))) pats clauses))])
+      (cover name ty pats)
+      (terminates! name cs)
+      (g-info-set! (gget name) (if (null? cs) '(0) (cons (length (car (car cs))) cs))))))
 
 (define (norm-pat p)
-  (cond [(nat? p) (if (zero? p) '(zero) `(add1 ,(norm-pat (- p 1))))]
+  (cond [(null? p) '()]                                  ; pattern assurdo
+        [(nat? p) (if (zero? p) '(zero) `(add1 ,(norm-pat (- p 1))))]
         [(con? p) (list p)]
         [(symbol? p) p]
         [(and (pair? p) (con? (car p))) (cons (car p) (map norm-pat (cdr p)))]
@@ -703,7 +760,31 @@
               (let-values ([(tree v) (check-pat (car pats) (pi-dom ty))])
                 (loop (pi-cod ty v) (cdr pats) (cons tree trees))))))))
 
+;; Pattern assurdo: la posizione non ha valori. Si verifica dopo l'unificazione di tutti i pattern
+;; della clausola (absurd-check!), quando il tipo è determinato: ogni costruttore deve essere in
+;; conflitto con gli indici.
+(define absurds '())
+
+(define (absurd-check! ty)
+  (let ([v (force ty)])
+    (unless (and (eq? (car v) 'vglob) (eq? (g-kind (gget (cadr v))) 'data))
+      (oops "() richiede un tipo induttivo, non ~s" (sexp '() (reify 0 v))))
+    (for-each (lambda (k)
+                (let* ([saved-pm pmetas] [saved (map (lambda (m) (cons m (meta-sol m))) pmetas)]
+                       [r (guard (x [(unify-failure? x) (unify-failure-kind x)])
+                            (call-with-values (lambda () (check-pat (cons k (map (lambda (_) '_) (explicit-args k))) v))
+                                              (lambda _ 'ok)))])
+                  (for-each (lambda (s) (solve! (car s) (cdr s))) saved)  ; il tentativo non lascia tracce
+                  (set! pmetas saved-pm)
+                  (unless (eq? r 'conflict) (oops "() non è assurdo: ~a è possibile in ~s" k (sexp '() (reify 0 v))))))
+              (g-info (gget (cadr v))))))
+
 (define (check-pat p ty)                                ; → (values albero valore)
+  (cond
+    [(null? p) (set! absurds (cons ty absurds)) (let ([m (new-pmeta '_ ty)]) (values `(pmeta ,m) (meta-val m)))]
+    [else (check-pat1 p ty)]))
+
+(define (check-pat1 p ty)
   (if (symbol? p)
       (let ([m (new-pmeta p ty)]) (values `(pmeta ,m) (meta-val m)))
       (let loop ([kty (g-type (gget (car p)))] [ps (cdr p)] [trees '()] [sp '()])
@@ -723,8 +804,16 @@
 ;; quelle risolte diventano nomi definiti. Poi corpo: elaborato, zonkato, ricontrollato dal kernel.
 (define (check-clause f ty pats body)
   (set! pmetas '())
+  (set! absurds '())
   (let-values ([(trees rest) (guard (x [(unify-failure? x) (oops "~a: clausola ~s impossibile o mal tipata" f pats)])
                                (check-pats ty pats))])
+    (for-each absurd-check! absurds)
+    (if (not body)
+        (begin (when (null? absurds) (oops "~a: clausola ~s senza corpo e senza ()" f pats)) #f)
+        (check-clause-body f pats body trees rest))))
+
+(define (check-clause-body f pats body trees rest)
+  (begin
     (let* ([named (filter (lambda (x) (not (eq? x '_))) (map meta-name pmetas))]
            [_ (unless (= (length named) (length (remove-dups named))) (oops "~a: variabile ripetuta in ~s" f pats))]
            [free (topo (filter (lambda (m) (not (meta-sol m))) (reverse pmetas)))]
@@ -776,7 +865,7 @@
             (loop todo))))))                            ; caso impossibile: gli indici non si unificano
 
 (define (match-syn q c)                                 ; → yes | no | variabile del candidato da dividere
-  (cond [(symbol? q) 'yes]
+  (cond [(or (symbol? q) (null? q)) 'yes]                ; () copre: la posizione è vuota (verificato)
         [(symbol? c) c]
         [(not (eq? (car q) (car c))) 'no]
         [else (match-syn* (cdr q) (cdr c))]))
