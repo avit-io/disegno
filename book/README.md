@@ -34,12 +34,12 @@ Se il capitolo passa, tutto ciò che vi è scritto è vero: tipi e teoremi compr
 | [3. Funzioni](03-functions.disegno) | `λ` e applicazione, `the`, argomenti impliciti, polimorfismo |
 | [4. Ricorsione e totalità](04-recursion.disegno) | ricorsione strutturale, `ind-Nat` come regola di eliminazione, `rec-Nat`, perché niente ricorsione generale, positività |
 | [5. Tipi che dipendono da valori](05-dependent-types.disegno) | famiglie indicizzate (`Vec`), `testa` totale, Π dipendente, il calcolo dentro i tipi |
-| 6. L'uguaglianza | `≡` e `refl`, `transport` come eliminazione, `cong`, `sym`, `trans`; prove per calcolo e per induzione |
+| [6. L'uguaglianza](06-equality.disegno) | `≡` e `refl`, uguaglianza per calcolo e per prova, `transport` come eliminazione, `+-comm`, `accoda` con `(+ m n)`, assioma K |
 | 7. Esiste | Σ: la coppia dipendente, `fst` e `snd`; `×` come caso particolare |
 | 8. Oppure, e il nulla | `Either`, `⊥` senza introduzioni, il pattern assurdo, `¬` |
 | 9. Le prove come programmi | relazioni induttive, decidibilità, `auto` come calcolo, e uno sguardo al piano |
 
-I capitoli 6–9 sono in preparazione.
+I capitoli 7–9 sono in preparazione.
 
 ## Letture
 
