@@ -279,6 +279,12 @@
 
 
 
+(define (esegui-rotto)                                   ; → (messaggio . output) di run 'rotto
+  (let* ([msg #f]
+         [out (with-output-to-string
+                (lambda () (set! msg (guard (e [(message-condition? e) (condition-message e)]) (run 'rotto) #f))))])
+    (cons msg out)))
+
 (when (getenv "DAGGER_SESSION_PORT")
   (system (format "rm -rf ~a && mkdir -p ~a/in && echo dati > ~a/in/dati.txt" dir dir dir))
   (submit-leaf (plan (lambda (ch) (submit-leaf (append ch '((id)))))))
@@ -289,18 +295,20 @@
   (run 'verifica)
   (assert (string=? (call-with-input-file (string-append dir "/out3/esito") get-string-all) "passa\n"))
   (assert (string=? (call-with-input-file (string-append dir "/out3/manca/esito") get-string-all) "fallisce\n"))
-  ;; I log per passo (DISEGNO_LOGS, come in CI): un gruppo per with-exec; un passo fallito dice quale.
-  (putenv "DISEGNO_LOGS" "1")
+  ;; Un passo fallito dice dove sta nel sorgente, con e senza i log per passo (DISEGNO_LOGS, come
+  ;; in CI: un gruppo per with-exec). Prima senza: Chez non sa togliere una variabile d'ambiente.
   (check-string "(def rotto : (→ (Export Dir))
     (overlay \"rotto\" (pipe (container) (from \"alpine\")
                              (with-exec [\"sh\" \"-c\" \"echo prima\"])
                              (with-exec [\"sh\" \"-c\" \"echo male >&2; exit 3\"]) (dir-of /tmp))))")
-  (let* ([msg #f]
-         [out (with-output-to-string
-                (lambda () (set! msg (guard (e [(message-condition? e) (condition-message e)]) (run 'rotto) #f))))])
+  (let ([r (esegui-rotto)])
+    (assert (and (car r) (contiene? (car r) "<stringa>:4:30: passo fallito (exit 3)")))
+    (assert (string=? (cdr r) "")))
+  (putenv "DISEGNO_LOGS" "1")
+  (let* ([r (esegui-rotto)] [msg (car r)] [out (cdr r)])
     (assert (contiene? out "── sh -c \"echo prima\"\nprima\n"))
     (assert (contiene? out "── sh -c \"echo male >&2; exit 3\"\nmale\n"))
-    (assert (and msg (contiene? msg "passo fallito (exit 3)"))))
+    (assert (and msg (contiene? msg "<stringa>:4:30: passo fallito (exit 3)"))))
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

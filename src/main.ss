@@ -42,9 +42,11 @@
 ;; su stderr e con codice 1: è quello che leggono :make e la quickfix di Neovim.
 (define (report e)
   (let ([err (current-error-port)])
-    (if (and (who-condition? e) (eq? (condition-who e) 'disegno) (message-condition? e))
-        (display (condition-message e) err)
-        (display-condition e err))
+    (cond [(and (who-condition? e) (eq? (condition-who e) 'disegno) (message-condition? e))
+           (display (condition-message e) err)]
+          [(and (who-condition? e) (eq? (condition-who e) 'motore) (message-condition? e))   ; senza le extensions
+           (display (string-append "motore: " (condition-message e)) err)]
+          [else (display-condition e err)])
     (newline err)
     (exit 1)))
 

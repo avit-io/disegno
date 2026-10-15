@@ -187,6 +187,8 @@
 (define (submit-leaf chain)
   (let* ([r (json-read (submit chain))] [errs (assoc "errors" r)])
     (when (and errs (pair? (cdr errs)))
-      (error 'motore (cdr (or (assoc "message" (cadr errs)) (cons #f "errore")))))
+      (error 'motore (cdr (or (assoc "message" (cadr errs)) (cons #f "errore")))   ; le extensions (EXEC_ERROR:
+             (cond [(assoc "extensions" (cadr errs)) => cdr] [else '()])))         ; cmd, exitCode, stderr) restano
+
     (let loop ([v (cdr (assoc "data" r))])
       (if (and (pair? v) (pair? (car v)) (string? (caar v))) (loop (cdar v)) v))))

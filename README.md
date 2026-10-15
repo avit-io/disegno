@@ -38,7 +38,7 @@ nix run github:avit-io/disegno -- plan  prog.disegno   # disegno esterno: il pia
 nix run github:avit-io/disegno -- run   prog.disegno   # opera: l'esecuzione su Dagger
 ```
 
-In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza terminale la TUI tace e `disegno` stampa l'output di ogni `with-exec`, un gruppo per passo: richiudibile su GitHub Actions (`::group::`) e GitLab (`section_start`), con un'intestazione `──` altrove. Un passo fallito chiude con `passo fallito (exit N): comando`, e su GitHub anche con un'annotazione `::error::`.
+In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza terminale la TUI tace e `disegno` stampa l'output di ogni `with-exec`, un gruppo per passo: richiudibile su GitHub Actions (`::group::`) e GitLab (`section_start`), con un'intestazione `──` altrove. Un passo fallito chiude con `file:riga:colonna: passo fallito (exit N): comando`, la posizione del suo `with-exec` nel sorgente (anche nel terminale, con la TUI); su GitHub c'è anche un'annotazione `::error` su quel file e quella riga.
 
 Per imparare il linguaggio c'è [Pointless Disegno](book/README.md), un libricino sui tipi dipendenti. Per vederlo in azione c'è il [cookbook](cookbook/README.md): sette ricette brevi, dalle basi alla rete come dato. Dal repository, `nix run . -- run cookbook/02-go-build.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger run scheme --script tests/test.ss`).
 

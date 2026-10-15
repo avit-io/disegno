@@ -54,6 +54,8 @@
     [(str) `(vstr ,(cadr t))]
     [(num) `(vnum ,(cadr t))]
     [(ann) (ev env (cadr t))]                            ; (ann t T): l'annotazione non calcola
+    [(at) (let ([v (ev env (caddr t))])                 ; un passo ricorda dove sta nel sorgente
+            (if (and (pair? v) (eq? (car v) 'vglob)) (list 'vglob (cadr v) (caddr v) (cadr t)) v))]
     [(meta) (meta-val (cadr t))]
     [(imeta) (fold-left (lambda (f v) (vapp f v 'e)) (meta-val (cadr t)) (reverse env))]))
 
@@ -324,6 +326,7 @@
     [(str) (string-type)]
     [(num) '(vglob Nat ())]
     [(ann) (let ([ty (ev env (caddr t))]) (k-type-in env tys l (caddr t)) (k-check env tys l (cadr t) ty) ty)]
+    [(at) (k-infer env tys l (caddr t))]
     [(pi) (let ([la (k-level (k-infer env tys l (cadddr t)))])
             `(vtype ,(max la (k-level (k-infer (cons (vvar l) env) (cons (ev env (cadddr t)) tys) (+ l 1) (list-ref t 4))))))]
     [(app) (let ([tf (force (k-infer env tys l (cadr t)))])
@@ -363,7 +366,8 @@
 (define (binder? e) (and (pair? e) (memq (car e) '(%br %imp)) (= (length e) 3) (symbol? (cadr e))))  ; %imp: implicito, solo interno
 (define (unbracket e) (if (and (pair? e) (eq? (car e) '%br)) (cdr e) e))
 
-(define (infer c e) (with-pos e (lambda () (infer* c e))))   ; → (values termine tipo)
+(define (infer c e)                                     ; → (values termine tipo)
+  (with-pos e (lambda () (let-values ([(t ty) (infer* c e)]) (values (at-step e t) ty)))))
 (define (infer* c e)
   (cond
     [(eq? e 'Type) (values '(type 0) '(vtype 1))]
@@ -388,7 +392,11 @@
     [(and (pair? e) (eq? (car e) 'Type) (nat? (cadr e))) (values `(type ,(cadr e)) `(vtype ,(+ 1 (cadr e))))]
     [(and (pair? e) (eq? (car e) 'pipe) (pair? (cdr e))) ; (pipe x (f a) g) = (g (f x a))
      (infer c (fold-left (lambda (acc s)
-                           (if (and (pair? s) (not (eq? (car s) '%br))) `(,(car s) ,acc ,@(cdr s)) (list s acc)))
+                           (if (and (pair? s) (not (eq? (car s) '%br)))
+                               (let ([n `(,(car s) ,acc ,@(cdr s))])   ; il passo tiene la sua posizione
+                                 (cond [(hashtable-ref pos-of s #f) => (lambda (p) (hashtable-set! pos-of n p))])
+                                 n)
+                               (list s acc)))
                          (cadr e) (cddr e)))]
     [(and (pair? e) (eq? (car e) '%br))                ; ["a" "b"] = (:: "a" (:: "b" vuota))
      (infer c (fold-right (lambda (x acc) (list ':: x acc)) 'vuota (cdr e)))]
@@ -538,7 +546,16 @@
                         (reverse holes))
                t)))))
 
-(define (check c e ty) (with-pos e (lambda () (check* c e ty))))
+(define (check c e ty) (with-pos e (lambda () (at-step e (check* c e ty)))))
+
+;; Un with-exec ricorda dove sta nel sorgente: se il passo fallisce, il runner lo dice.
+(define (at-step e t)
+  (let ([p (and (pair? e) (hashtable-ref pos-of e #f))])
+    (if (and p (memq (term-head t) '(Container.with-exec try-exec))) `(at ,(pos->vector p) ,t) t)))
+
+(define (term-head t)
+  (case (car t) [(app) (term-head (cadr t))] [(glob) (cadr t)] [else #f]))
+
 (define (check* c e ty)
   (let ([want (force ty)])
     (cond [(eq? e 'auto) (auto c ty)]
@@ -718,6 +735,7 @@
     [(lam) `(lam ,(cadr t) ,(caddr t) ,(zonk (+ l 1) (cons (vvar l) env) (cadddr t)))]
     [(pi) `(pi ,(cadr t) ,(caddr t) ,(zonk l env (cadddr t)) ,(zonk (+ l 1) (cons (vvar l) env) (list-ref t 4)))]
     [(ann) `(ann ,(zonk l env (cadr t)) ,(zonk l env (caddr t)))]
+    [(at) `(at ,(cadr t) ,(zonk l env (caddr t)))]
     [else t]))
 (define (zonked l env t)
   (let ([z (zonk l env t)])
@@ -820,10 +838,13 @@
   (let ([p (and (pair? e) (hashtable-ref pos-of e #f))]) (if p (parameterize ([here p]) (thunk)) (thunk))))
 
 (define (pos->string p)                                  ; → "file:riga:colonna"
+  (let ([v (pos->vector p)]) (format "~a:~a:~a" (vector-ref v 0) (vector-ref v 1) (vector-ref v 2))))
+
+(define (pos->vector p)                                  ; → #(file riga colonna)
   (let ([text (hashtable-ref file-texts (car p) "")])
     (let loop ([i 0] [line 1] [col 1])
       (if (or (>= i (cdr p)) (>= i (string-length text)))
-          (format "~a:~a:~a" (car p) line col)
+          (vector (car p) line col)
           (if (char=? (string-ref text i) #\newline) (loop (+ i 1) (+ line 1) 1) (loop (+ i 1) line (+ col 1)))))))
 
 ;; Da annotazione a s-espressione: le liste aperte da [ diventano (%br …), e ogni lista ricorda
@@ -1185,6 +1206,7 @@
                 [(lam) (calls (cadddr h) (+ d 1))]
                 [(pi) (append (calls (cadddr h) d) (calls (list-ref h 4) (+ d 1)))]
                 [(ann) (append (calls (cadr h) d) (calls (caddr h) d))]   ; anche dentro un the
+                [(at) (calls (caddr h) d)]
                 [else '()])
               (apply append (map (lambda (a) (calls a d)) args)))))
   (define (inside? l p) (or (equal? p `(pvar ,l)) (and (eq? (car p) 'pcon) (exists (lambda (q) (inside? l q)) (caddr p)))))
@@ -1263,6 +1285,7 @@
     [(str) (cadr t)]
     [(num) (cadr t)]
     [(ann) `(the ,(sexp names (caddr t)) ,(sexp names (cadr t)))]
+    [(at) (sexp names (caddr t))]
     [(type) (if (zero? (cadr t)) 'Type `(Type ,(cadr t)))]
     [(meta imeta) (string->symbol (format "?~a" (cadr t)))]
     [(lam) `(λ ,(cadr t) ,(sexp (cons (cadr t) names) (cadddr t)))]

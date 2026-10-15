@@ -46,6 +46,12 @@
           (pick (if ((observe) (chain (car xs) resolve)) (cadr xs) (caddr xs)) resolve))
         v)))
 
+;; Dove sta nel sorgente ogni passo della catena (un with-exec che il checker ha marcato con at).
+(define step-pos (make-eq-hashtable))
+(define (located v ch)
+  (when (= (length v) 4) (hashtable-set! step-pos (list-ref ch (- (length ch) 1)) (cadddr v)))
+  ch)
+
 (define (chain v resolve)
   (let* ([v (pick v resolve)] [c (node v)])
     (unless c (oops "piano non statico: ~s" (sexp '() (reify 0 v))))
@@ -55,16 +61,17 @@
       (define (method f . fixed)                        ; let*: le richieste partono da sinistra a destra
         (let* ([recv (chain (car args) resolve)])
           (append recv (list (apply field f (cdr names) (cdr args) fixed)))))
-      (case c
-        [(%host-dir) (list '(host) (field 'directory names args))]
-        [(try-exec) (method 'withExec '(expect ANY))]
-        [(cache-volume) (list (field 'cacheVolume names args))]
-        [(passes?) (method 'exitCode)]
-        [(overlay replace publish) (oops "un'uscita (Export) può stare solo in cima al piano")]
-        [else (let ([segs (split-dots (symbol->string c))])
-                (if (string=? (car segs) "Query")
-                    (list (field (string->symbol (camel (cadr segs))) names args))
-                    (method (string->symbol (camel (cadr segs))))))]))))
+      (located v
+        (case c
+          [(%host-dir) (list '(host) (field 'directory names args))]
+          [(try-exec) (method 'withExec '(expect ANY))]
+          [(cache-volume) (list (field 'cacheVolume names args))]
+          [(passes?) (method 'exitCode)]
+          [(overlay replace publish) (oops "un'uscita (Export) può stare solo in cima al piano")]
+          [else (let ([segs (split-dots (symbol->string c))])
+                  (if (string=? (car segs) "Query")
+                      (list (field (string->symbol (camel (cadr segs))) names args))
+                      (method (string->symbol (camel (cadr segs))))))])))))
 
 (define (gql-arg v resolve)                              ; stringa, naturale, booleano, lista o oggetto (per ID)
   (let ([v (pick v resolve)])
@@ -145,11 +152,18 @@
     (cond
       [(and ext (equal? (field "_type") "EXEC_ERROR"))
        (log-group title (lines (field "stdout") (field "stderr")) #t)
-       (when (getenv "GITHUB_ACTIONS") (printf "::error::passo fallito (exit ~a): ~a\n" (field "exitCode") title))
-       (oops "passo fallito (exit ~a): ~a" (field "exitCode") title)]
+       (step-failed (hashtable-ref step-pos (list-ref pre (- (length pre) 1)) #f) (field "exitCode") title)]
       [ext (oops "~a" (cdr (assoc "message" (cadr errs))))]
       [else (log-group title (lines (submit-leaf (append pre '((stdout))))
                                     (submit-leaf (append pre '((stderr))))))])))
+
+;; Un passo fallito: dove sta nel sorgente, con che exit code, quale comando. Su GitHub anche
+;; un'annotazione, che compare sul file e sulla riga.
+(define (step-failed pos code title)
+  (let ([what (format "passo fallito (exit ~a): ~a" code title)] [at (and pos (vector->list pos))])
+    (when (getenv "GITHUB_ACTIONS")
+      (printf "::error~@[ ~{file=~a,line=~a,col=~a~}~]::~a\n" at what))
+    (error 'disegno (format "~@[~{~a:~a:~a~}: ~]~a" at what))))
 
 (define (log-group title body . failed)                 ; un passo fallito resta aperto, dove si può
   (cond [(getenv "GITHUB_ACTIONS") (printf "::group::~a\n~a::endgroup::\n" title body)]
@@ -171,7 +185,23 @@
 
 (define (run entry)
   (parameterize ([observe observe-live])
-    (let ([p (plan resolve-live entry)]) (log-steps p) (submit-leaf p))))
+    (guard (e [(exec-error e) => (lambda (x)                ; anche senza log: quale passo, e dove
+                                   (let ([cmd (cdr (assoc "cmd" x))])
+                                     (step-failed (cmd-pos cmd) (cdr (assoc "exitCode" x)) (show-args cmd))))])
+      (let ([p (plan resolve-live entry)]) (log-steps p) (submit-leaf p)))))
+
+(define (exec-error e)                                   ; → le extensions di un EXEC_ERROR, o #f
+  (and (irritants-condition? e) (pair? (condition-irritants e))
+       (let ([x (car (condition-irritants e))])
+         (and (list? x) (equal? (cond [(assoc "_type" x) => cdr] [else #f]) "EXEC_ERROR") x))))
+
+;; ponytail: il passo si ritrova dal comando; due with-exec identici danno la posizione di uno dei due.
+(define (cmd-pos cmd)
+  (let-values ([(steps poss) (hashtable-entries step-pos)])
+    (let loop ([i 0])
+      (cond [(= i (vector-length steps)) #f]
+            [(equal? (cond [(assq 'args (cdr (vector-ref steps i))) => cadr] [else #f]) cmd) (vector-ref poss i)]
+            [else (loop (+ i 1))]))))
 
 ;; A secco: un piano per ogni combinazione di esiti dei branch, in profondità.
 ;; → lista di ((catena-condizione . esito) ...) . catena
