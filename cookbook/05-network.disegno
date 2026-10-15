@@ -1,0 +1,58 @@
+; 05 — Una rete come dato: subnet, porte, finestre
+;
+; La configurazione dell'infrastruttura è un valore tipato, e le regole che oggi stanno in
+; review e convenzioni sono teoremi: subnet disgiunte e dentro la VPC, nessuna porta allocata
+; due volte, finestre di manutenzione che non si sovrappongono. Il file di configurazione si
+; genera dagli stessi valori, quindi non può divergere da ciò che è stato provato.
+;
+;   disegno plan cookbook/05-network.disegno
+;   disegno run  cookbook/05-network.disegno      scrive cookbook/net/network.txt
+
+(def vpc : Cidr "10.0.0.0/16")
+
+(record Subnet
+  [name  : String]
+  [block : Cidr])
+
+(def subnets : (List Subnet)
+  [(subnet "app"  "10.0.1.0/24")
+   (subnet "db"   "10.0.2.0/24")
+   (subnet "mgmt" "10.0.255.0/24")])
+
+(def inside? : (→ Cidr Cidr Bool)               ; c sta dentro outer
+  [outer c] (within? (cidr-range c) (cidr-range outer)))
+
+(def subnet-disgiunte : (Disjoint-subnets (map Subnet.block subnets))
+  auto)
+
+(def subnet-nella-vpc : (All (inside? vpc) (map Subnet.block subnets))
+  auto)
+
+; --- un servizio con le sue porte ---
+
+(def servizio : Container
+  (pipe (container)
+        (from "nginx:1.27")
+        (with-exposed-port 80)
+        (with-exposed-port 443)
+        (with-exposed-port 9113)))
+
+(def porte-distinte : (Distinct-ports servizio)
+  auto)
+
+; --- finestre di manutenzione ---
+
+(def finestra-db  : Interval (window "2026-10-18T02:00:00Z" "2h"))
+(def finestra-app : Interval (window "2026-10-18T04:00:00Z" "1h"))
+
+(def finestre-separate : (Apart finestra-db finestra-app)
+  auto)
+
+; --- la configurazione, resa dagli stessi valori ---
+
+(def render : (→ (List Subnet) String)
+  [vuota]     ""
+  [(:: s ss)] (concat (Subnet.name s) (concat " = " (concat (render-cidr (Subnet.block s)) (concat "\n" (render ss))))))
+
+(def main : (→ [src (Host ".")] (Export Dir))
+  [_] (overlay "net" (with-file empty /network.txt (render subnets))))

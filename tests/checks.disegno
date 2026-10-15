@@ -134,3 +134,11 @@
 
 (def porte-doppie : (¬ (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 8080))))
   auto)
+
+; --- stringhe: il letterale si compone, il calcolo avviene sui letterali ---
+
+(def resa : (≡ (concat "porta = " (show 8080)) "porta = 8080")
+  auto)
+
+(def resa-cidr : (≡ (render-cidr "10.0.1.0/24") "10.0.1.0/24")
+  auto)

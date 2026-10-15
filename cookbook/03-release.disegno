@@ -1,0 +1,42 @@
+; 03 — Una release: si pubblica solo se i test passano
+;
+; Due tempi, due condizionali. if decide mentre si costruisce il piano; branch decide durante
+; l'esecuzione, su un'osservazione del motore (qui l'esito dei test). Entrambi i rami stanno nel
+; piano: disegno plan li stampa tutti e due, con la condizione che li sceglie.
+;
+;   disegno plan cookbook/03-release.disegno
+;
+; (run pubblicherebbe davvero l'immagine: cambia l'indirizzo del registry prima di provarlo.)
+
+(def golang : (→ Dir Container)
+  [src] (pipe (container) (from "golang:1.25-alpine") (with-dir /src src) (with-workdir /src)))
+
+(def test : (→ Dir Container)                  ; try-exec: un fallimento è un esito, non un errore
+  [src] (pipe (golang src) (try-exec ["go" "vet" "./..."])))
+
+(def build : (→ Dir Dir)
+  [src] (pipe (golang src)
+              (with-env "CGO_ENABLED" "0")
+              (with-exec ["go" "build" "-o" /out/hello "."])
+              (dir-of /out)))
+
+(def app-image : (→ Dir Container)
+  [src] (pipe (container)
+              (from "alpine:3.20")
+              (with-dir /app (build src))
+              (with-entrypoint ["/app/hello"])))
+
+(def report : (→ Dir Dir)
+  [src] (with-file empty /report.txt "go vet non passa\n"))
+
+(def release : (→ Dir (Export Dir))
+  [src] (branch (passes? (test src))
+          (publish (app-image src) "registry.example.com/hello:1")
+          (overlay "reports" (report src))))
+
+(def main : (→ [src (Host "hello")] (Export Dir))
+  [src] (release src))
+
+; Il teorema, per ogni sorgente: si pubblica solo dopo che i test sono passati.
+(def test-prima-di-publish : (→ [src Dir] (Before test? publish? (release src)))
+  [src] auto)

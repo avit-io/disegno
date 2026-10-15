@@ -38,7 +38,7 @@
       (iota 7)))
   fast)
 
-(check-file (at-root "cookbook/examples.disegno"))
+(check-file (at-root "cookbook/00-basics.disegno"))
 (check-file (at-root "tests/checks.disegno"))                          ; le leggi e le garanzie, come teoremi
 
 (define (rifiuta src atteso)
@@ -203,7 +203,19 @@
 (check-string "(def ultimo : Ip \"255.255.255.255\")")
 (rifiuta "(def oltre : Ip (⊕ ultimo 1 auto))" "si riduce a ⊥")      ; l'overflow è escluso
 
+;; Il cookbook: ogni ricetta è un programma a sé, verificato in un processo separato con
+;; check (tipi e teoremi) e, se ha un main, plan (il piano a secco). Mai run: la 03 pubblica.
+(for-each
+  (lambda (r)
+    (let* ([path (at-root (string-append "cookbook/" r))]
+           [mode (if (contiene? (call-with-input-file path get-string-all) "(def main ") "plan" "check")])
+      (unless (zero? (system (format "scheme --script ~a ~a ~a >/dev/null" (at-root "src/main.ss") mode path)))
+        (error 'prova (format "la ricetta ~a non passa (~a)" r mode)))))
+  (sort string<? (filter (lambda (f) (let ([n (string-length f)]) (and (> n 8) (string=? (substring f (- n 8) n) ".disegno"))))
+                         (directory-list (at-root "cookbook")))))
+
 ;; --- dal vivo ---
+
 
 
 

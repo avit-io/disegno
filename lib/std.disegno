@@ -149,6 +149,9 @@
 
 (extern String    : Type String)
 (extern contains? : (→ String String Bool) %contains?)
+(extern concat    : (→ String String String) %concat)
+(extern show      : (→ Nat String) %show)
+(extern show-ip   : (→ Nat String) %show-ip)
 
 (extern image-ref? : (→ String Bool)        %image-ref?)
 (extern segment?   : (→ String Bool)        %segment?)
@@ -300,6 +303,12 @@
 (def cidr-range : (→ Cidr Interval)
   [c] (let [size (pow2 (∸ 32 (Cidr.len c))), lo (* (Cidr.prefix c) size)]
         (interval lo (+ lo size))))
+
+(def render-ip : (→ Ip String)
+  [a] (show-ip (Ip.n a)))
+
+(def render-cidr : (→ Cidr String)
+  [c] (concat (show-ip (Interval.lo (cidr-range c))) (concat "/" (show (Cidr.len c)))))
 
 (def in? : (→ Ip Cidr Bool)
   [a c] (within? (interval (Ip.n a) (add1 (Ip.n a))) (cidr-range c)))

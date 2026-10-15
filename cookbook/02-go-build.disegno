@@ -1,0 +1,32 @@
+; 02 — Una build Go
+;
+; Il sorgente dall'host, la compilazione in un container, il binario sull'host. I campi del
+; motore si scrivono senza prefisso: (from c "…") è Container.from perché c è un Container.
+; I percorsi sono punti: bin è derivato da out, quindi che il binario stia dentro la directory
+; esportata vale per costruzione. La cache dei moduli è l'unico stato che persiste tra le
+; esecuzioni: per questo cache-volume è uno snodo dichiarato del nucleo.
+;
+;   disegno plan cookbook/02-go-build.disegno
+;   disegno run  cookbook/02-go-build.disegno     scrive cookbook/bin/hello
+
+(def go-build : (→ Dir Dir)
+  [src] (let [root /src, out /out, bin (/ out "hello")]
+          (pipe (container)
+                (from "golang:1.25-alpine")                       ; un Image, verificato
+                (with-mounted-cache /go/pkg/mod (cache-volume "go-mod"))
+                (with-env "CGO_ENABLED" "0")
+                (with-dir root src)
+                (with-workdir root)
+                (with-exec ["go" "build" "-o" bin "."])           ; bin si interpola come punto
+                (dir-of out))))
+
+(def main : (→ [src (Host "hello")] (Export Dir))
+  [src] (overlay "bin" (go-build src)))
+
+; Teoremi, non linter: valgono per ogni sorgente.
+
+(def binario-dentro-out : (⊑ (/ /out "hello") /out)
+  auto)
+
+(def montaggi-disgiunti : (→ [src Dir] (Disjoint-mounts (go-build src)))
+  [src] auto)

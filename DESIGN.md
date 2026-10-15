@@ -336,7 +336,7 @@ src/       core.ss  types.ss  plan.ss  main.ss      il nucleo e il driver
 lib/       std.disegno  engine.disegno              la libreria standard (engine è generato)
 tools/     gen.ss                                    il generatore dallo schema
 tests/     test.ss  checks.disegno                   i test e i teoremi di controllo
-cookbook/  *.disegno  hello/                         i programmi d'esempio
+cookbook/  00-basics … 06-theorems  hello/            le ricette
 ```
 
 | File | Ruolo |
@@ -350,7 +350,7 @@ cookbook/  *.disegno  hello/                         i programmi d'esempio
 | `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger run`) |
 | `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger run`, dal vivo |
 | `tests/checks.disegno` | le leggi e le garanzie come teoremi, verificate a ogni test |
-| `cookbook/` | gli esempi del documento (`examples`, `io`, `release`) e il go build con `hello/` |
+| `cookbook/` | sette ricette numerate e commentate, verificate dai test (`check`, e `plan` se hanno un main); `hello/` è il sorgente Go degli esempi |
 | `flake.nix` | il pacchetto `disegno` (`nix run`), la shell, il motore dedicato con le CA dell'host |
 
 **Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`. `run` apre da sé la sessione con `dagger run`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, e `include` rispetto al file che lo contiene, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.

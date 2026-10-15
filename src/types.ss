@@ -88,8 +88,10 @@
           [(and (eq? (g-kind g) 'extern) (assq (car (car (g-info g))) prims))
            => (lambda (p)                                ; primitiva pura: si calcola sui letterali
                 (let ([args (map (lambda (a) (force (car a))) sp)])
-                  (and (= (length args) (cadr p)) (for-all (lambda (a) (eq? (car a) 'vstr)) args)
-                       `(vglob ,(if (apply (caddr p) (map cadr args)) 'true 'false) ()))))]
+                  (and (= (length args) (cadr p)) (for-all (lambda (a) (memq (car a) '(vstr vnum))) args)
+                       (let ([r (apply (caddr p) (map cadr args))])
+                         (cond [(string? r) `(vstr ,r)] [(number? r) `(vnum ,r)]
+                               [r '(vglob true ())] [else '(vglob false ())])))))]
           [else #f])))
 
 ;; Accelerazione (fidata, come in Lean): queste def della libreria standard, su argomenti numerici,
@@ -105,7 +107,8 @@
               (let ([r (apply (caddr f) (map cadr args))])
                 (cond [(number? r) `(vnum ,r)] [r '(vglob true ())] [else '(vglob false ())]))))))
 
-;; Primitive pure sulle stringhe (elenco chiuso del nucleo): nome → (arità procedura-booleana).
+;; Primitive pure (elenco chiuso del nucleo): nome → (arità procedura). Calcolano solo su letterali,
+;; stringhe e numeri, e restituiscono una stringa, un numero o un booleano.
 (define (string-contains? s sub)
   (let ([n (string-length s)] [k (string-length sub)])
     (let loop ([i 0]) (and (<= (+ i k) n) (or (string=? (substring s i (+ i k)) sub) (loop (+ i 1)))))))
@@ -193,7 +196,11 @@
 ;; Un passo di percorso: non vuoto, senza /, né . né ..
 (define (segment? s) (and (> (string-length s) 0) (not (memv #\/ (string->list s))) (not (member s '("." "..")))))
 
-(define prims `((%contains? 2 ,string-contains?) (%distinct? 2 ,(lambda (a b) (not (string=? a b))))
+(define (nat->ip n)                                      ; 167772165 → "10.0.0.5"
+  (format "~a.~a.~a.~a" (quotient n 16777216) (remainder (quotient n 65536) 256) (remainder (quotient n 256) 256) (remainder n 256)))
+
+(define prims `((%concat 2 ,string-append) (%show 1 ,number->string) (%show-ip 1 ,nat->ip)
+                (%contains? 2 ,string-contains?) (%distinct? 2 ,(lambda (a b) (not (string=? a b))))
                 (%image-ref? 1 ,image-ref?) (%segment? 1 ,segment?)))
 
 ;; Clausola a runtime: (pattern n corpo); pattern: (pvar livello) (pdot) (pcon c pattern...).

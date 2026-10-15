@@ -1,0 +1,54 @@
+; 00 — Le basi: tipi, definizioni, prove
+;
+; Disegno è un linguaggio totale con tipi dipendenti. Una sola forma di definizione,
+; `def nome : tipo` seguita da clausole `[pattern] corpo`; `data` per i tipi induttivi,
+; `record` per un costruttore con campi nominati. Programmi e prove si scrivono allo stesso
+; modo: cambia solo il tipo. Questa ricetta non ha main: si verifica e basta.
+;
+;   disegno check cookbook/00-basics.disegno
+
+; --- un programma: la somma è nella libreria standard; qui una prova su di essa ---
+; Le variabili libere nelle firme sono implicite; 0, 1, 2… sono zucchero per zero, add1.
+
+(def +-zero : (→ [n Nat] (≡ (+ n 0) n))
+  [zero]     refl
+  [(add1 k)] (cong add1 (+-zero k)))          ; induzione: la chiamata su k è strutturale
+
+; --- famiglie induttive: la lunghezza nel tipo ---
+
+(data Vec : (→ Type Nat Type)
+  [nil  : (Vec A 0)]
+  [cons : (→ A (Vec A n) (Vec A (add1 n)))])
+
+(def head : (→ (Vec A (add1 n)) A)            ; il caso nil è impossibile: il checker lo sa
+  [(cons x _)] x)
+
+; --- invarianti di dominio nel tipo, verificati calcolando al momento del check ---
+
+(data Env
+  [dev]
+  [prod])
+
+(def min-replicas : (→ Env Nat)
+  [dev]  1
+  [prod] 3)
+
+(record Service
+  [name     : String]
+  [env      : Env]
+  [replicas : Nat]
+  [ok       : (≥ replicas (min-replicas env))])
+
+(def api : Service
+  (service "api" prod 3 auto))                 ; con 2 repliche: «auto: la proposizione si riduce a ⊥»
+
+; --- prove per calcolo: auto ---
+
+(def uno-più-uno : (≡ (+ 1 1) 2)
+  auto)
+
+(def testa : (≡ (head (cons 1 nil)) 1)
+  auto)
+
+(def api-in-regola : (≥ (Service.replicas api) (min-replicas (Service.env api)))
+  auto)

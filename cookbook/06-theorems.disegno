@@ -1,0 +1,47 @@
+; 06 — Scrivere le proprie garanzie
+;
+; Il piano è un dato: le proprietà si scrivono come funzioni sul piano e si provano come
+; teoremi. Qui una politica nuova, «nessuna immagine :latest», scritta da zero; poi la stessa
+; politica in negativo, per documentare che un piano sbagliato viene davvero rifiutato.
+;
+;   disegno check cookbook/06-theorems.disegno
+
+; --- la politica: un predicato sulle immagini, esteso a tutto il piano con images e All ---
+
+(def not-latest? : (→ Image Bool)
+  [i] (not (contains? (Image.raw i) ":latest")))
+
+(def No-latest : (→ (Obj k) Type)
+  [p] (All not-latest? (images p)))
+
+; --- un piano che la rispetta, anche dentro i rami di un branch ---
+
+(def ci : (→ Dir (Export Dir))
+  [src] (let [lint  (pipe (container) (from "golangci/golangci-lint:v2.1") (with-dir /src src)
+                          (try-exec ["golangci-lint" "run"]))
+              build (pipe (container) (from "golang:1.25-alpine") (with-dir /src src)
+                          (with-exec ["go" "build" "./..."]) (dir-of /src))]
+          (branch (passes? lint) (overlay "dist" build) (overlay "lint" src))))
+
+; Per una sorgente qualsiasi la proprietà non vale: src stesso potrebbe essere un piano costruito
+; con un'immagine :latest, e images lo attraversa. Si prova quindi sulle immagini che ci introduce,
+; con la sorgente vuota. (montaggi-disgiunti nella ricetta 02 vale invece per ogni sorgente,
+; perché i montaggi si raccolgono lungo la catena del container senza scendere negli argomenti.)
+(def ci-senza-latest : (No-latest (ci empty))
+  auto)
+
+; --- in negativo: il teorema che un piano sbagliato non rispetta la politica ---
+
+(def sbagliato : Container
+  (pipe (container) (from "golang:latest") (with-exec ["go" "version"])))
+
+(def sbagliato-rifiutato : (¬ (No-latest sbagliato))
+  auto)
+
+; --- una legge generale, per induzione: map distribuisce sulla concatenazione ---
+; (le leggi della libreria standard stanno in tests/checks.disegno, verificate a ogni test)
+
+(def map-++ : (→ [f (→ A B)] [xs (List A)] [ys (List A)]
+                (≡ (map f (++ xs ys)) (++ (map f xs) (map f ys))))
+  [f vuota     ys] refl
+  [f (:: x xs) ys] (cong (:: (f x)) (map-++ f xs ys)))

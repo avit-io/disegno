@@ -1,0 +1,23 @@
+; 01 — File: leggere dall'host, costruire, scrivere
+;
+; Il programma non tocca il disco: dichiara cosa riceve, (Host "percorso") nella firma di main,
+; e cosa restituisce, un Export. Le directory sono valori immutabili: scrivere è costruirne una
+; nuova. I percorsi relativi si intendono rispetto alla cartella di questo file.
+;
+;   disegno plan cookbook/01-files.disegno     il piano: un documento GraphQL
+;   disegno run  cookbook/01-files.disegno     lo scrive in cookbook/out/
+
+(def web : Port 8080)
+
+; Una configurazione resa come testo: concat e show calcolano sui letterali.
+(def config : String
+  (concat "[server]\nporta = " (concat (show (Port.n web)) "\n")))
+
+(def con-config : (→ Dir Dir)
+  [src] (pipe src
+              (with-file /config/app.toml config)
+              (with-file /LEGGIMI "generato da Disegno\n")))
+
+; overlay aggiunge al contenuto della destinazione; replace la sostituisce (export con wipe).
+(def main : (→ [src (Host "hello")] (Export Dir))
+  [src] (overlay "out" (con-config src)))
