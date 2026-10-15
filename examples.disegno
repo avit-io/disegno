@@ -1,12 +1,4 @@
-; Gli esempi del documento di progetto.
-
-(data Nat
-  [zero]
-  [add1 Nat])
-
-(def + : (→ Nat Nat Nat)
-  [zero     m] m
-  [(add1 k) m] (add1 (+ k m)))
+; Gli esempi del documento di progetto. Nat e + stanno nella libreria standard.
 
 (def +-zero : (→ [n Nat] (≡ (+ n 0) n))
   [zero]     refl
@@ -19,9 +11,32 @@
 (def head : (→ (Vec A (add1 n)) A)
   [(cons x _)] x)
 
+; Invarianti di dominio nel tipo, verificati calcolando al momento del check.
+
+(data Env
+  [dev]
+  [prod])
+
+(def min-replicas : (→ Env Nat)
+  [dev]  1
+  [prod] 3)
+
+(record Service
+  [name     : String]
+  [env      : Env]
+  [replicas : Nat]
+  [ok       : (≥ replicas (min-replicas env))])
+
+(def api : Service
+  (service "api" prod 3 auto))
+
 ; Prove per calcolo.
+
 (def uno-più-uno : (≡ (+ 1 1) 2)
-  refl)
+  auto)
 
 (def testa : (≡ (head (cons 1 nil)) 1)
-  refl)
+  auto)
+
+(def api-in-regola : (≥ (Service.replicas api) (min-replicas (Service.env api)))
+  auto)

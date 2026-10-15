@@ -19,7 +19,7 @@
 (define (gget n) (and (symbol? n) (hashtable-ref globals n #f)))
 (define (con? n) (let ([g (gget n)]) (and g (eq? (g-kind g) 'con))))
 (define (fresh-name! n)
-  (when (memq n '(→ Type _ pipe)) (oops "~a è una parola riservata" n))
+  (when (memq n '(→ Type _ pipe auto)) (oops "~a è una parola riservata" n))
   (when (gget n) (oops "~a è già definito" n)))
 
 (define metas (make-eqv-hashtable))                     ; m → #(soluzione nome tipo)
@@ -251,7 +251,18 @@
           (insert c `(app ,t ,m i) (pi-cod ty (ev (ctx-env c) m))))
         (values t ty))))
 
+;; auto: prova per calcolo. Le proposizioni decidibili si scrivono (So (test? ...)), che si riduce
+;; a ⊤ o a ⊥; auto è tt quando il tipo atteso, calcolato, è ⊤, e refl quando è un'uguaglianza.
+(define (auto c ty)
+  (let ([v (force ty)])
+    (cond [(and (eq? (car v) 'vglob) (eq? (cadr v) '⊤)) '(glob tt)]
+          [(and (eq? (car v) 'vglob) (eq? (cadr v) '≡)) (check c 'refl ty)]
+          [else (oops "auto: la proposizione si riduce a ~s, non a vero" (show c ty))])))
+
 (define (check c e ty)
+  (if (eq? e 'auto) (auto c ty) (check-inferred c e ty)))
+
+(define (check-inferred c e ty)
   (let*-values ([(t ty2) (infer c e)] [(t ty2) (insert c t ty2)])
     (guard (x [(unify-failure? x) (oops "~s: atteso ~s, trovato ~s" e (show c ty) (show c ty2))])
       (unify (ctx-l c) ty2 ty))
@@ -327,7 +338,31 @@
     [(data) (check-data d)]
     [(def) (check-def d)]
     [(extern) (check-extern d)]
+    [(record) (for-each check-decl (record->decls d))]
     [else (oops "dichiarazione sconosciuta: ~s" d)]))
+
+;; (record Service [name : String] [replicas : Nat] [ok : (≥ replicas 1)]) è zucchero per
+;; un data con il solo costruttore service e le proiezioni Service.name, Service.replicas, ...
+;; Nei tipi dei campi successivi un campo precedente f diventa (Service.f r).
+(define (record->decls d)
+  (let* ([name (cadr d)]
+         [fields (map (lambda (f) (let ([f (unbracket f)])
+                                    (unless (and (= (length f) 3) (eq? (cadr f) ':)) (oops "campo malformato: ~s" f))
+                                    (cons (car f) (caddr f))))
+                      (cddr d))]
+         [s (symbol->string name)]
+         [k (string->symbol (string-append (string (char-downcase (string-ref s 0))) (substring s 1 (string-length s))))]
+         [proj (lambda (f) (string->symbol (format "~a.~a" name f)))])
+    (cons `(data ,name : Type (%br ,k : (→ ,@(map (lambda (f) `(%br ,(car f) ,(cdr f))) fields) ,name)))
+          (let loop ([fs fields] [before '()] [i 0])
+            (if (null? fs) '()
+                (let ([ty (let subst ([e (cdar fs)])
+                            (cond [(memq e before) `(,(proj e) %r)]
+                                  [(pair? e) (map subst e)]
+                                  [else e]))])
+                  (cons `(def ,(proj (caar fs)) : (→ (%br %r ,name) ,ty)
+                           (%br (,k ,@(map (lambda (j) (if (= j i) '%v '_)) (iota (length fields))))) %v)
+                        (loop (cdr fs) (cons (caar fs) before) (+ i 1)))))))))
 
 ;; (extern with-file : (→ [dir Dir] [path String] [contents String] Dir) Directory.withNewFile)
 ;; Il campo è Tipo.campo (metodo sul primo argomento) o a.b (catena dalla radice); i nomi dei

@@ -27,11 +27,10 @@
     (unless (and msg (contiene? msg atteso))
       (error 'prova (format "~a: atteso un errore con «~a», ottenuto ~s" src atteso msg)))))
 
-(check-string "(data ⊥ : Type)")
 (rifiuta "(def assurdo : ⊥ assurdo)" "ricorsione non strutturale")
 (rifiuta "(def postulato : ⊥)" "manca la definizione")
 (rifiuta "(data Cattivo [mk (→ Cattivo ⊥)])" "strettamente positiva")
-(rifiuta "(def tt : Type Type)" "atteso")
+(rifiuta "(def tipo-in-tipo : Type Type)" "atteso")
 (rifiuta "(data U : Type [u : (→ Type U)])" "livello")
 (rifiuta "(def pred : (→ Nat Nat) [(add1 k)] k)" "manca il caso")
 (rifiuta "(def giro : (→ Nat Nat) [n] (giro n))" "ricorsione non strutturale")
@@ -77,6 +76,9 @@
 (assert (contiene? secco2 "withExec(args: [\"sh\", \"-c\", \"cat dati.txt dati.txt > doppio.txt\"]) { directory(path: \"/w\")"))
 (rifiuta "(def mista : (List String) [\"a\" 1])" "atteso")
 (rifiuta "(def pipe : Dir empty)" "parola riservata")
+(rifiuta "(def sotto : Service (service \"api\" prod 2 auto))" "auto: la proposizione si riduce a ⊥")
+(rifiuta "(def falso-auto : (≡ (+ 1 1) 3) auto)" "atteso")
+(check-string "(def nome-api : (≡ (Service.name api) \"api\") auto)")
 (check-string "(def raddoppia : (→ Nat Nat) [n] (+ n n))
                (def otto : (≡ (pipe 2 raddoppia raddoppia) 8) refl)")
 
