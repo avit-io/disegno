@@ -122,9 +122,11 @@
 ;; --- esecuzione ---
 
 ;; --- i log: con DISEGNO_LOGS, l'output di ogni with-exec, un gruppo per passo ---
-;; Dagger è pigro e ha la cache: chiedere stdout del prefisso che termina con un withExec esegue
+;; Dagger è pigro e ha la cache: chiedere l'output del prefisso che termina con un withExec esegue
 ;; la catena fino a lì, e la richiesta finale non rifà niente. I log escono nell'ordine dei passi.
-;; ponytail: stdout e stderr si mostrano uno dopo l'altro, non intrecciati riga per riga.
+;; combinedOutput intreccia stdout e stderr nell'ordine in cui il motore li riceve.
+;; ponytail: un passo fallito li ha separati (stdout, poi stderr): intrecciarli vorrebbe dire
+;; rieseguire il comando con expect: ANY, che il motore non ha in cache.
 
 (define logged '())                                      ; prefissi già mostrati
 
@@ -144,18 +146,13 @@
   (apply string-append (map (lambda (s) (if (or (string=? s "") (char=? (string-ref s (- (string-length s) 1)) #\newline)) s (string-append s "\n"))) ss)))
 
 (define (show-step pre)
-  (let* ([title (show-args (cadr (assq 'args (cdr (list-ref pre (- (length pre) 1))))))]
-         [r (json-read (submit (append pre '((stdout)))))]
-         [errs (assoc "errors" r)]
-         [ext (and errs (pair? (cdr errs)) (assoc "extensions" (cadr errs)))]
-         [field (lambda (k) (cond [(assoc k (cdr ext)) => cdr] [else ""]))])
-    (cond
-      [(and ext (equal? (field "_type") "EXEC_ERROR"))
-       (log-group title (lines (field "stdout") (field "stderr")) #t)
-       (step-failed (hashtable-ref step-pos (list-ref pre (- (length pre) 1)) #f) (field "exitCode") title)]
-      [ext (oops "~a" (cdr (assoc "message" (cadr errs))))]
-      [else (log-group title (lines (submit-leaf (append pre '((stdout))))
-                                    (submit-leaf (append pre '((stderr))))))])))
+  (let* ([step (list-ref pre (- (length pre) 1))] [title (show-args (cadr (assq 'args (cdr step))))])
+    (guard (e [(exec-error e)
+               => (lambda (x)                            ; il motore dà stdout e stderr separati
+                    (define (ext k) (cond [(assoc k x) => cdr] [else ""]))
+                    (log-group title (lines (ext "stdout") (ext "stderr")) #t)
+                    (step-failed (hashtable-ref step-pos step #f) (ext "exitCode") title))])
+      (log-group title (lines (submit-leaf (append pre '((combinedOutput)))))))))
 
 ;; Un passo fallito: dove sta nel sorgente, con che exit code, quale comando. Su GitHub anche
 ;; un'annotazione, che compare sul file e sulla riga.

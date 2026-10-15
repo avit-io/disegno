@@ -299,14 +299,14 @@
   ;; in CI: un gruppo per with-exec). Prima senza: Chez non sa togliere una variabile d'ambiente.
   (check-string "(def rotto : (→ (Export Dir))
     (overlay \"rotto\" (pipe (container) (from \"alpine\")
-                             (with-exec [\"sh\" \"-c\" \"echo prima\"])
+                             (with-exec [\"sh\" \"-c\" \"echo A; sleep 0.3; echo B >&2; sleep 0.3; echo C\"])
                              (with-exec [\"sh\" \"-c\" \"echo male >&2; exit 3\"]) (dir-of /tmp))))")
   (let ([r (esegui-rotto)])
     (assert (and (car r) (contiene? (car r) "<stringa>:4:30: passo fallito (exit 3)")))
     (assert (string=? (cdr r) "")))
   (putenv "DISEGNO_LOGS" "1")
   (let* ([r (esegui-rotto)] [msg (car r)] [out (cdr r)])
-    (assert (contiene? out "── sh -c \"echo prima\"\nprima\n"))
+    (assert (contiene? out "── sh -c \"echo A; sleep 0.3; echo B >&2; sleep 0.3; echo C\"\nA\nB\nC\n"))   ; intrecciati
     (assert (contiene? out "── sh -c \"echo male >&2; exit 3\"\nmale\n"))
     (assert (and msg (contiene? msg "<stringa>:4:30: passo fallito (exit 3)"))))
   (system (format "rm -rf ~a" dir))
