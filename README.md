@@ -1,3 +1,5 @@
+<p align="center"><img src="logo.svg" width="160" alt="Disegno: il triangolo equilatero di Euclide I.1"></p>
+
 # Disegno
 
 Un linguaggio totale, con tipi dipendenti, per CI/CD e infrastruttura. Progetta, non esegue: un programma Disegno dichiara un piano, il type checker ne prova le proprietà, [Dagger](https://dagger.io) lo realizza.
@@ -57,3 +59,5 @@ xdg.dataFile."nvim/site/pack/disegno/start/disegno".source = inputs.disegno.pack
 Con `programs.neovim` basta aggiungere `nvim-disegno` a `programs.neovim.plugins`. La grammatica sta in `editors/tree-sitter-disegno` (pacchetto `grammar`), per altri editor.
 
 Il progetto, le scelte e le questioni aperte sono in [DESIGN.md](DESIGN.md). È un esperimento: l'ospite è Chez Scheme, il motore Dagger 0.21.
+
+Il logo è la prima proposizione degli *Elementi*: il triangolo equilatero costruito con due cerchi, una costruzione che è anche una prova. È tracciato in sanguigna, il colore del disegno rinascimentale.
