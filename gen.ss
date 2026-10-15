@@ -82,7 +82,8 @@
     (passes? ((self ,(obj "container"))) ,(obj "bool"))
     (branch ((cond ,(obj "bool")) (then (Obj k)) (else (Obj k))) (Obj k))
     (overlay ((path String) (dir ,(obj "directory"))) ,(obj "export"))
-    (replace ((path String) (dir ,(obj "directory"))) ,(obj "export"))))
+    (replace ((path String) (dir ,(obj "directory"))) ,(obj "export"))
+    (publish ((self ,(obj "container")) (address String)) ,(obj "export"))))
 
 (define all (append nucleo (apply append (map constructors (cons "Query" allowed)))))
 

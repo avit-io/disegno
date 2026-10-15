@@ -29,10 +29,10 @@ Antenati dell'idea: l'IO a richieste e risposte di Haskell 1.0, le derivazioni d
 Funziona, dal vivo su Dagger, l'intera catena: sorgente `.disegno` → type checker → valutazione di `main` a un piano → GraphQL → sessione Dagger → export sull'host. In particolare:
 
 - type checker con tipi dipendenti, famiglie induttive, pattern matching dipendente, controllo di copertura, terminazione strutturale, positività stretta e universi stratificati, ricontrollato da un kernel;
-- piano come dato induttivo generato dallo schema di Dagger (92 costruttori);
+- piano come dato induttivo generato dallo schema di Dagger (93 costruttori);
 - `branch` su osservazioni del motore, con un piano a secco per ogni esito;
 - `record` con invarianti nel tipo e `auto` per le prove calcolate;
-- il teorema `prod-pinnate` del documento originale, provato con `auto`.
+- i teoremi `prod-pinnate` e `test-prima-di-publish` del documento originale, provati con `auto`; il secondo per ogni sorgente.
 
 ## Superficie del linguaggio
 
@@ -139,7 +139,7 @@ Il runner realizza `branch` chiedendo la condizione e sottomettendo il ramo scel
 La parte sporca è piccola, chiusa e scritta da chi progetta il linguaggio.
 
 - **Kernel** (fidato): ricontrolla ogni termine prodotto dall'elaboratore, con `Type n : Type n+1`, mai `Type : Type`. L'elaboratore (nomi, impliciti, metavariabili, pattern) può sbagliare; il kernel no.
-- **Snodi**: elenco chiuso di costruttori del nucleo che il runner realizza in modo speciale: `%host-dir`, `try-exec`, `passes?`, `branch`, `overlay`, `replace`.
+- **Snodi**: elenco chiuso di costruttori del nucleo che il runner realizza in modo speciale: `%host-dir`, `try-exec`, `passes?`, `branch`, `overlay`, `replace`, `publish`.
 - **`extern`** è rimasto solo per i tipi opachi e le primitive pure: `String` e `contains?`, che calcola sui letterali. Un extern non mente: restituisce un tipo opaco o calcola; mai una proposizione, mai un dato del mondo.
 - **Runner**: l'unico posto dove si ammette il non determinismo. Realizza `branch`, `Host` ed `Export`.
 - **Base fidata** complessiva: kernel, unificazione dei pattern (il kernel non ricontrolla come sono tipati), runner, generatore. Si verifica con i test; tutto il resto lo verifica il type checker.
@@ -172,6 +172,20 @@ Condizioni di consistenza, tutte implementate e coperte da un test di rifiuto:
 (def prod-pinnate : (All pinned? (images prod-plan))
   auto)
 ```
+
+**Proprietà d'ordine.** Le uscite del piano sono `overlay`, `replace` e `publish`, scelte dai `branch`. `effects` elenca ogni uscita con le osservazioni che devono essere vere perché avvenga; `(Before test? publish? p)` dice che ogni pubblicazione è protetta da un test. `effects` non scende nelle directory, quindi la prova per calcolo vale anche con un input astratto, cioè per ogni sorgente:
+
+```
+(def release : (→ Dir (Export Dir))
+  [src] (branch (passes? (test src))
+          (publish (image src) "registry.example.com/app:1")
+          (overlay "reports" (report src))))
+
+(def test-prima-di-publish : (→ [src Dir] (Before test? publish? (release src)))
+  [src] auto)
+```
+
+Una pubblicazione scoperta, protetta da un'osservazione che non è un test (`exists?`) o messa nel ramo "falso" viene rifiutata.
 
 **Cosa resta empirico**: che i test passino o che il binario funzioni sono osservazioni, non proposizioni. Gli unit test del codice dentro i container restano e li esegue Dagger.
 
@@ -229,7 +243,7 @@ In cambio della purezza e della semplicità:
 - [x] Quali osservazioni ammettere e come tiparle: elenco chiuso, `(Obj Kind.bool)`. Resta da tipare osservazioni non booleane, con un `Kind` indicizzato.
 - [ ] Tipi raffinati per CIDR, porte, tag e digest delle immagini.
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
-- [ ] Proprietà d'ordine, come `test-prima-di-publish`: modellare la pubblicazione come costruttore del piano.
+- [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [ ] Messaggi di `auto` che mostrino la proposizione originale, non solo la sua riduzione.
 - [ ] Passaggio a Dagger 1.0 quando il flake lo rende disponibile.

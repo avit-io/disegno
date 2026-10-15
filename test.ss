@@ -116,7 +116,23 @@
 (assert (contiene? secco3 "git(url: \"https://example.com/r.git\") { branch(name: \"main\") { tree {"))
 (assert (contiene? secco3 "withExposedPort(port: 8080)"))
 
+;; Proprietà d'ordine: valgono per ogni input, perché effects non scende nelle directory.
+(check-string "
+  (def img : (→ Dir Container) [src] (pipe (container) (from \"alpine\") (with-dir \"/app\" src)))
+  (def protetto : (→ Dir (Export Dir))
+    [src] (branch (passes? (try-exec (from container \"alpine\") [\"true\"]))
+            (branch (exists? src \"VERSION\") (publish (img src) \"r/app:1\") (overlay \"o\" src))
+            (overlay \"o\" src)))
+  (def ordine-ok : (→ [src Dir] (Before test? publish? (protetto src))) [src] auto)")
+(rifiuta "(def scoperto : (→ [src Dir] (Before test? publish? (publish (img src) \"r/app:1\"))) [src] auto)"
+         "si riduce a ⊥")
+(rifiuta "(def finto-test : (→ [src Dir] (Before test? publish? (branch (exists? src \"x\") (publish (img src) \"r\") (overlay \"o\" src)))) [src] auto)"
+         "si riduce a ⊥")
+(rifiuta "(def nel-ramo-sbagliato : (→ [src Dir] (Before test? publish? (branch (passes? (img src)) (overlay \"o\" src) (publish (img src) \"r\")))) [src] auto)"
+         "si riduce a ⊥")
+
 ;; --- dal vivo ---
+
 
 
 

@@ -56,7 +56,7 @@
         [(%host-dir) (list '(host) (field 'directory names args))]
         [(try-exec) (method 'withExec '(expect ANY))]
         [(passes?) (method 'exitCode)]
-        [(overlay replace) (oops "un Export può stare solo in cima al piano")]
+        [(overlay replace publish) (oops "un'uscita (Export) può stare solo in cima al piano")]
         [else (let ([segs (split-dots (symbol->string c))])
                 (if (string=? (car segs) "Query")
                     (list (field (string->symbol (camel (cadr segs))) names args))
@@ -86,11 +86,15 @@
                         (cons `(vglob %host-dir ((,(ev '() (caddr dom)) . e))) (loop (list-ref t 4))))
                       '()))]
          [v (pick (vapp-sp (ev '() `(glob ,main)) (map (lambda (h) (cons h 'e)) hosts)) resolve)])
-    (unless (memq (node v) '(overlay replace)) (oops "~a deve restituire un Export" main))
-    (let* ([path (pick (car (explicit (caddr v))) resolve)]
-           [_ (unless (eq? (car path) 'vstr) (oops "il percorso di export deve essere noto"))]
-           [dir (chain (cadr (explicit (caddr v))) resolve)])
-      (append dir (list `(export (path ,(cadr path)) (wipe ,(eq? (node v) 'replace))))))))
+    (case (node v)
+      [(overlay replace)                                 ; export sull'host; replace è con wipe
+       (let* ([path (gql-arg (car (explicit (caddr v))) resolve)]
+              [dir (chain (cadr (explicit (caddr v))) resolve)])
+         (append dir (list `(export (path ,path) (wipe ,(eq? (node v) 'replace))))))]
+      [(publish)                                         ; pubblicazione dell'immagine su un registry
+       (let* ([ctr (chain (car (explicit (caddr v))) resolve)])
+         (append ctr (list `(publish (address ,(gql-arg (cadr (explicit (caddr v))) resolve))))))]
+      [else (oops "~a deve restituire un Export" main)])))
 
 ;; --- esecuzione ---
 

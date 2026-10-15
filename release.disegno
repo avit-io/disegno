@@ -9,10 +9,20 @@
               (with-exec ["sh" "-c" "mkdir -p /dist && cp -r /src/. /dist"])
               (dir-of "/dist")))
 
+(def image : (→ Dir Container)
+  [src] (pipe (container) (from "alpine") (with-dir "/app" (build src))))
+
 (def report : (→ Dir Dir)
   [src] (with-file empty "report.txt" "i test non passano\n"))
 
-(def main : (→ [src (Host ".")] (Export Dir))
+(def release : (→ Dir (Export Dir))
   [src] (branch (passes? (test src))
-          (overlay "dist" (build src))
+          (publish (image src) "registry.example.com/app:1")
           (overlay "reports" (report src))))
+
+(def main : (→ [src (Host ".")] (Export Dir))
+  [src] (release src))
+
+; Il teorema del documento, per ogni sorgente: si pubblica solo dopo che i test sono passati.
+(def test-prima-di-publish : (→ [src Dir] (Before test? publish? (release src)))
+  [src] auto)
