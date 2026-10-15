@@ -17,3 +17,7 @@
 
 (def binario-dentro-out : (⊑ (/ /out "hello") /out)
   auto)
+
+; I montaggi non si sovrappongono, per ogni sorgente: /src e /go/pkg/mod sono regioni disgiunte.
+(def montaggi-disgiunti : (→ [src Dir] (Disjoint-mounts (go-build src)))
+  [src] auto)

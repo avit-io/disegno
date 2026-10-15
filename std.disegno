@@ -73,6 +73,19 @@
 (def All : (→ (→ A Bool) (List A) Type)
   [p xs] (So (all p xs)))
 
+; Proposizioni su liste: Every p xs (ogni elemento soddisfa p), Pairwise r xs (ogni coppia è in r).
+
+(data × : (→ Type Type Type)
+  [pair : (→ A B (× A B))])
+
+(def Every : (→ (→ A Type) (List A) Type)
+  [p vuota]     ⊤
+  [p (:: x xs)] (× (p x) (Every p xs)))
+
+(def Pairwise : (→ (→ A A Type) (List A) Type)
+  [r vuota]     ⊤
+  [r (:: x xs)] (× (Every (r x) xs) (Pairwise r xs)))
+
 ; --- stringhe: opache, ma con primitive pure calcolate sui letterali ---
 
 (extern String    : Type String)
@@ -80,6 +93,7 @@
 
 (extern image-ref? : (→ String Bool)        %image-ref?)
 (extern segment?   : (→ String Bool)        %segment?)
+(extern distinct?  : (→ String String Bool) %distinct?)
 
 ; --- valori raffinati: il letterale resta, il tipo cambia ---
 ; Un record (valore, prova) accoglie un letterale: "golang:1.25-alpine" atteso come Image diventa
@@ -137,6 +151,17 @@
 
 (def percorsi : (Affine Abs Rel ⊑)
   (affine ⊕ ⊖ ⊕-⊖))
+
+; Regioni: il sottoalbero di un punto. (⋔ p q): i sottoalberi di p e q sono disgiunti, perché i
+; due percorsi si separano a un passo. Induttivo come ⊑; auto trova il punto di separazione.
+
+(def ≠ : (→ Segment Segment Type)
+  [s t] (So (distinct? (Segment.name s) (Segment.name t))))
+
+(data ⋔ : (→ Abs Abs Type)
+  [⋔-here  : (→ (≠ s t) (⋔ (/ p s) (/ p t)))]
+  [⋔-left  : (→ (⋔ p q) (⋔ (/ p s) q))]
+  [⋔-right : (→ (⋔ p q) (⋔ p (/ q s)))])
 
 ; La riga di comando resta lo scalpello: si tipano i valori che vi si interpolano, non la sintassi.
 
@@ -238,3 +263,21 @@
 (def publish? : (→ (Export Dir) Bool)
   [(publish _ _)] true
   [_]             false)
+
+; Montaggi lungo la catena di un container: dove vengono collocati directory, file e cache.
+; Due container diversi non si contendono il file system, quindi si guarda solo la catena (chain),
+; che non scende negli argomenti: la proprietà vale per ogni sorgente.
+
+(def mount-of : (→ Any (List Abs))
+  [(any (Container.with-directory _ path _))]         [path]
+  [(any (Container.with-file _ path _))]              [path]
+  [(any (Container.with-mounted-directory _ path _))] [path]
+  [(any (Container.with-mounted-file _ path _))]      [path]
+  [(any (Container.with-mounted-cache _ path _))]     [path]
+  [_]                                                 [])
+
+(def mounts : (→ (Obj k) (List Abs))
+  [p] (concat-map mount-of (chain p)))
+
+(def Disjoint-mounts : (→ (Obj k) Type)
+  [p] (Pairwise ⋔ (mounts p)))

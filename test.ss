@@ -21,6 +21,7 @@
 
 (parameterize ([privileged #t]) (check-file "std.disegno"))
 (check-file "examples.disegno")
+(check-file "checks.disegno")                           ; le leggi e le garanzie, come teoremi
 
 (define (rifiuta src atteso)
   (let ([msg (guard (e [(message-condition? e) (condition-message e)]) (check-string src) #f)])
@@ -160,7 +161,16 @@
 (rifiuta "(def storto : Rel (⊖ /out /src auto))" "auto: nessuna prova di (⊑ /out /src)")
 (rifiuta "(def punti : Abs (⊕ /out /bin))" "atteso Rel, trovato Abs")
 
+;; Regioni: montaggi sovrapposti nella stessa catena sono rifiutati; in catene diverse no.
+(check-string "
+  (def disgiunti : (⋔ /src /go/pkg/mod) auto)
+  (def due-catene : (Disjoint-mounts (pipe (container) (with-dir /w (dir-of (pipe (container) (with-dir /w empty)) /w)))) auto)")
+(rifiuta "(def annidati : (⋔ /src /src/cache) auto)" "auto: nessuna prova di (⋔ /src /src/cache)")
+(rifiuta "(def sovrapposti : (→ [src Dir] (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /src/cache (cache-volume \"c\"))))) [src] auto)"
+         "auto: nessuna prova")
+
 ;; --- dal vivo ---
+
 
 
 

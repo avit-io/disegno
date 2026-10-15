@@ -1,0 +1,64 @@
+; Controlli: proprietà della libreria standard e dei piani, scritte come teoremi.
+; Il type checker le verifica a ogni esecuzione dei test (test.ss): se una modifica rompe una
+; legge, un letterale o una garanzia sui piani, questo file smette di compilare.
+; Le leggi generali si dimostrano per induzione; i casi concreti li calcola auto.
+
+; --- aritmetica e liste ---
+
+(def +-assoc : (→ [a Nat] [b Nat] [c Nat] (≡ (+ (+ a b) c) (+ a (+ b c))))
+  [zero     b c] refl
+  [(add1 a) b c] (cong add1 (+-assoc a b c)))
+
+(def ++-vuota : (→ [xs (List A)] (≡ (++ xs vuota) xs))
+  [vuota]     refl
+  [(:: x xs)] (cong (:: x) (++-vuota xs)))
+
+(def ++-assoc : (→ [xs (List A)] [ys (List A)] [zs (List A)] (≡ (++ (++ xs ys) zs) (++ xs (++ ys zs))))
+  [vuota     ys zs] refl
+  [(:: x xs) ys zs] (cong (:: x) (++-assoc xs ys zs)))
+
+; --- percorsi: lo spazio affine ---
+
+(def ⊑-trans : (→ (⊑ p q) (⊑ q r) (⊑ p r))
+  [⊑-refl     h] h
+  [(⊑-step g) h] (⊑-step (⊑-trans g h)))
+
+(def ⊕-here : (→ [p Abs] (≡ (⊕ p here) p))
+  [p] refl)
+
+(def legge : (→ [p Abs] [q Abs] [h (⊑ p q)] (≡ (⊕ q (⊖ p q h)) p))
+  [p q h] (Affine.law percorsi p q h))
+
+(def ⊖-ritorno : (≡ (⊖ /out/bin/hello /out auto) "bin/hello")
+  auto)
+
+(def separati : (⋔ /src /go/pkg/mod)
+  auto)
+
+; --- letterali: il letterale resta, il tipo cambia ---
+
+(def letterale-immagine : (≡ (Image.raw "golang:1.25-alpine") "golang:1.25-alpine")
+  auto)
+
+(def letterale-punto : (≡ /go/pkg/mod (/ (/ (/ root "go") "pkg") "mod"))
+  auto)
+
+(def letterale-vettore : (≡ (⊕ /out "bin/hello") /out/bin/hello)
+  auto)
+
+; --- piani: le garanzie che oggi stanno in linter e policy ---
+
+(def piano-pinnato : (All pinned? (images (pipe (container) (from "alpine@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1"))))
+  auto)
+
+(def immagini-in-ordine : (≡ (images (pipe (container) (from "a") (with-dir /w (dir-of (from (container) "b") root)))) ["a" "b"])
+  auto)
+
+(def publish-protetto : (→ [src Dir] (Before test? publish?
+                                       (branch (passes? (try-exec (with-dir (from (container) "alpine") /src src) ["make" "test"]))
+                                         (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
+                                         (overlay "report" src))))
+  [src] auto)
+
+(def montaggi : (→ [src Dir] (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /cache (cache-volume "c")))))
+  [src] auto)

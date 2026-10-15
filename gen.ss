@@ -114,6 +114,16 @@
     (format "  [~a] (:: (any ~a) ~a)"
             self self (fold-right (lambda (x acc) (format "(++ (nodes ~a) ~a)" x acc)) "vuota" subs))))
 
+;; chain: i nodi lungo la catena di self (un container e i suoi passi), senza scendere negli
+;; argomenti; branch prosegue in entrambi i rami.
+(define (chain-clause c)
+  (let* ([xs (map (lambda (i) (string->symbol (format "x~a" i))) (iota (length (cadr c))))]
+         [self (if (null? xs) (car c) (cons (car c) xs))]
+         [rest (cond [(eq? (car c) 'branch) "(++ (chain x1) (chain x2))"]
+                     [(and (pair? (cadr c)) (eq? (car (car (cadr c))) 'self)) "(chain x0)"]
+                     [else "vuota"])])
+    (format "  [~a] (:: (any ~a) ~a)" self self rest)))
+
 (call-with-output-file "engine.disegno"
   (lambda (p)
     (format p "; Generato da gen.ss dallo schema di Dagger: non modificare a mano.~%~%")
@@ -123,6 +133,7 @@
             (apply append (map (lambda (c) (list (car c) (signature c))) all)))
     (for-each (lambda (k) (format p "(def ~a : Type~%  ~a)~%~%" k (obj k))) allowed)
     (format p "; Un sotto-piano qualsiasi, di qualunque tipo.~%(data Any~%  [any (Obj k)])~%~%")
-    (format p "(def nodes : (→ (Obj k) (List Any))~%~{~a~^~%~})~%" (map nodes-clause all)))
+    (format p "(def nodes : (→ (Obj k) (List Any))~%~{~a~^~%~})~%~%" (map nodes-clause all))
+    (format p "(def chain : (→ (Obj k) (List Any))~%~{~a~^~%~})~%" (map chain-clause all)))
   'replace)
 (format #t "engine.disegno scritto: ~a costruttori~%" (length all))

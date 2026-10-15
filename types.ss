@@ -121,7 +121,7 @@
 ;; Un passo di percorso: non vuoto, senza /, né . né ..
 (define (segment? s) (and (> (string-length s) 0) (not (memv #\/ (string->list s))) (not (member s '("." "..")))))
 
-(define prims `((%contains? 2 ,string-contains?)
+(define prims `((%contains? 2 ,string-contains?) (%distinct? 2 ,(lambda (a b) (not (string=? a b))))
                 (%image-ref? 1 ,image-ref?) (%segment? 1 ,segment?)))
 
 ;; Clausola a runtime: (pattern n corpo); pattern: (pvar livello) (pdot) (pcon c pattern...).
