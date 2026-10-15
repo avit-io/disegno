@@ -1,0 +1,10 @@
+; Libreria di base: uguaglianza.
+
+(data ≡ : (→ A A Type)
+  [refl : (≡ x x)])
+
+(def cong : (→ [f (→ A B)] (≡ x y) (≡ (f x) (f y)))
+  [f refl] refl)
+
+(def sym : (→ (≡ x y) (≡ y x))
+  [refl] refl)

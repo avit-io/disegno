@@ -1,0 +1,27 @@
+; Gli esempi del documento di progetto.
+
+(data Nat
+  [zero]
+  [add1 Nat])
+
+(def + : (→ Nat Nat Nat)
+  [zero     m] m
+  [(add1 k) m] (add1 (+ k m)))
+
+(def +-zero : (→ [n Nat] (≡ (+ n 0) n))
+  [zero]     refl
+  [(add1 k)] (cong add1 (+-zero k)))
+
+(data Vec : (→ Type Nat Type)
+  [nil  : (Vec A 0)]
+  [cons : (→ A (Vec A n) (Vec A (add1 n)))])
+
+(def head : (→ (Vec A (add1 n)) A)
+  [(cons x _)] x)
+
+; Prove per calcolo.
+(def uno-più-uno : (≡ (+ 1 1) 2)
+  refl)
+
+(def testa : (≡ (head (cons 1 nil)) 1)
+  refl)
