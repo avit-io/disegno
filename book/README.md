@@ -36,10 +36,10 @@ Se il capitolo passa, tutto ciò che vi è scritto è vero: tipi e teoremi compr
 | [5. Tipi che dipendono da valori](05-dependent-types.disegno) | famiglie indicizzate (`Vec`), `testa` totale, Π dipendente, il calcolo dentro i tipi |
 | [6. L'uguaglianza](06-equality.disegno) | `≡` e `refl`, uguaglianza per calcolo e per prova, `transport` come eliminazione, `+-comm`, `accoda` con `(+ m n)`, assioma K |
 | [7. Esiste](07-exists.disegno) | Σ: il testimone e la prova, `fst` e `snd`, per ogni ed esiste, `differenza` come algoritmo, `×` come caso particolare |
-| 8. Oppure, e il nulla | `Either`, `⊥` senza introduzioni, il pattern assurdo, `¬` |
+| [8. Oppure, e il nulla](08-or-and-nothing.disegno) | `Either` e il ragionamento per casi, pari o dispari, `⊥` e `¬`, il pattern assurdo, De Morgan, il terzo escluso e la sua doppia negazione |
 | 9. Le prove come programmi | relazioni induttive, decidibilità, `auto` come calcolo, e uno sguardo al piano |
 
-I capitoli 8–9 sono in preparazione.
+Il capitolo 9 è in preparazione.
 
 ## Letture
 

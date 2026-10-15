@@ -1,0 +1,144 @@
+; Capitolo 8 — Oppure, e il nulla
+;
+; Restano due connettivi: «oppure» e «non». Il primo ha due introduzioni, il secondo non ne ha di
+; sue: è una funzione verso il tipo che non ne ha nessuna. Alla fine del capitolo si vedrà perché
+; Dummett, partendo dalle introduzioni, rinunciava al terzo escluso, e che cosa ne resta.
+;
+;   disegno check book/08-or-and-nothing.disegno
+
+; --- Either: due introduzioni ---
+; La libreria standard:
+;
+;   (data Either : (→ Type Type Type)
+;     [left  : (→ A (Either A B))]
+;     [right : (→ B (Either A B))])
+;
+; Una prova di «A oppure B» è una prova di A marcata left, o una prova di B marcata right. Come per
+; l'esistenza, chi ha una prova sa quale dei due casi vale. Eliminarla vuol dire trattarli
+; entrambi: è il ragionamento per casi.
+
+(def scegli : (→ (Either A B) (→ A C) (→ B C) C)
+  [(left a)  f _] (f a)
+  [(right b) _ g] (g b))
+
+; Il tipo di scegli è la regola di eliminazione di Gentzen per la disgiunzione: da A ∨ B, da A ⇒ C
+; e da B ⇒ C, si conclude C.
+
+; --- ogni numero è pari o dispari ---
+; Pari e Dispari sono proposizioni con un parametro: tipi Σ che dicono qual è la metà.
+
+(def Pari : (→ Nat Type)
+  [n] (Σ Nat (λ [k] (≡ n (+ k k)))))
+
+(def Dispari : (→ Nat Type)
+  [n] (Σ Nat (λ [k] (≡ n (add1 (+ k k))))))
+
+(def +-add1 : (→ [n Nat] [m Nat] (≡ (+ n (add1 m)) (add1 (+ n m))))
+  [zero     m] refl
+  [(add1 k) m] (cong add1 (+-add1 k m)))
+
+; Il passo dell'induzione: se n è pari, n + 1 è dispari con la stessa metà; se n è dispari,
+; n + 1 è pari, con metà k + 1. Quest'ultima richiede un conto: (add1 (add1 (+ k k))) e
+; (+ (add1 k) (add1 k)) sono uguali, ma ci vuole +-add1 per vederlo.
+
+(def un-passo : (→ {n Nat} (Either (Pari n) (Dispari n))
+                           (Either (Pari (add1 n)) (Dispari (add1 n))))
+  [(left (pair k p))]  (right (pair k (cong add1 p)))
+  [(right (pair k p))] (left (pair (add1 k) (cong add1 (trans p (sym (+-add1 k k)))))))
+
+(def pari-o-dispari : (→ [n Nat] (Either (Pari n) (Dispari n)))
+  [zero]     (left (pair 0 refl))
+  [(add1 k)] (un-passo (pari-o-dispari k)))
+
+; Il teorema è un programma. Chiesto di 7, non risponde solo «dispari»: risponde dispari, con metà
+; 3, e la prova.
+
+(def sette : (≡ (pari-o-dispari 7) (right (pair 3 refl)))
+  auto)
+
+; --- ⊥ e la negazione ---
+; ⊥ non ha introduzioni (capitolo 1), e la sua eliminazione è vuota (capitolo 2). «Non A» è
+; definito come una funzione da A a ⊥:
+;
+;   (def ¬ : (→ Type Type)
+;     [A] (→ A ⊥))
+;
+; Dimostrare (¬ A) vuol dire mostrare che da una prova di A si otterrebbe un elemento di ⊥, che
+; non c'è. La negazione non è un'introduzione nuova: è un'ipotesi che porta all'assurdo.
+
+; --- l'assurdo che il checker vede ---
+; Una prova di (≡ zero (add1 n)) dovrebbe essere refl, ma refl richiede che i due lati
+; coincidano, e zero e add1 sono introduzioni diverse. Il checker lo vede confrontandole: non c'è
+; nessun caso, e il pattern assurdo () lo dichiara.
+
+(def zero-non-è-add1 : (→ (≡ zero (add1 n)) ⊥)
+  [()])
+
+(def uno-non-è-due : (¬ (≡ 1 2))
+  [()])
+
+; Il pattern assurdo non è una scorciatoia: va giustificato. Su (¬ (≡ 2 2)) il checker risponde
+; «() non è assurdo: refl è possibile in (≡ 2 2)».
+
+; --- la logica delle negazioni ---
+; Con ¬ come funzione, le leggi della negazione sono programmi brevi. Se A vale, non può essere
+; che A porti all'assurdo:
+
+(def doppia-negazione : (→ A (¬ (¬ A)))
+  [a f] (f a))
+
+; Se A implica B, ciò che esclude B esclude anche A:
+
+(def contrapposizione : (→ (→ A B) (¬ B) (¬ A))
+  [f nb a] (nb (f a)))
+
+; Se né A né B possono valere, «A oppure B» non può valere; e viceversa. È una delle leggi di De
+; Morgan, e qui funziona in entrambe le direzioni.
+
+(def de-morgan : (→ (¬ (Either A B)) (× (¬ A) (¬ B)))
+  [f] (pair (λ [a] (f (left a)))
+            (λ [b] (f (right b)))))
+
+; --- il terzo escluso ---
+; Classicamente, per ogni A vale «A oppure non A». Qui una prova di (Either A (¬ A)) sarebbe una
+; funzione che, per qualunque A, sceglie left con una prova di A o right con una refutazione. Per
+; un A qualunque nessun programma totale sa fare questa scelta, e nessuna definizione di
+;
+;   (def terzo-escluso : (→ {A Type} (Either A (¬ A))) ___)
+;
+; passa il checker. È il punto di Dummett: se il significato sta nelle introduzioni, asserire
+; «A oppure B» vuol dire saper produrre l'una o l'altra. Non sempre lo sappiamo fare, e allora il
+; terzo escluso non è una legge del significato.
+;
+; Ne resta però l'ombra: non si può refutare. Supporre che il terzo escluso porti all'assurdo
+; porta all'assurdo.
+
+(def non-non-terzo-escluso : (→ {A Type} (¬ (¬ (Either A (¬ A)))))
+  [f] (f (right (λ [a] (f (left a))))))
+
+; Si legga il programma come un dialogo. f afferma di refutare (Either A (¬ A)). Gli si offre
+; right, una refutazione di A: «dammi un a e ti do l'assurdo». Se f la mette alla prova con un a,
+; si cambia risposta, e gli si offre left a. f si contraddice da sola.
+;
+; Per alcuni A la scelta si può fare: quando c'è un programma che decide. Il capitolo 9 ne parla.
+
+; --- esercizi ---
+;
+; 1. «Oppure» è commutativo.
+; (def either-scambia : (→ (Either A B) (Either B A))
+;   ___)
+;
+; 2. L'altra direzione di De Morgan.
+; (def de-morgan-inversa : (→ (× (¬ A) (¬ B)) (¬ (Either A B)))
+;   ___)
+;
+; 3. Tre negazioni valgono una.
+; (def tripla : (→ (¬ (¬ (¬ A))) (¬ A))
+;   ___)
+;
+; 4. Nessun numero è il proprio successore. Suggerimento: induzione su n; nel caso (add1 k)
+;    serve togliere un add1 da entrambi i lati di un'uguaglianza.
+; (def add1-iniettivo : (→ (≡ (add1 n) (add1 m)) (≡ n m))
+;   ___)
+; (def mai-il-successivo : (→ [n Nat] (¬ (≡ n (add1 n))))
+;   ___)
