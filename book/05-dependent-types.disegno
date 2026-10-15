@@ -6,7 +6,7 @@
 ;   (def primo : (→ (List A) A)
 ;     [(:: a _)] a)
 ;
-; viene rifiutata: «primo: manca il caso ((vuota))». È di nuovo l'armonia del capitolo 2:
+; viene rifiutata: «primo: manca il caso [vuota]». È di nuovo l'armonia del capitolo 2:
 ; un'eliminazione deve rispondere a ogni introduzione, e vuota è un'introduzione di List. Il
 ; rimedio non è un valore d'errore. È un tipo che sa quanti elementi ci sono.
 ;
@@ -36,7 +36,7 @@
 ; Ora il primo elemento si può chiedere solo a un vettore di (add1 n) elementi. Basta un caso:
 ; vnil sta in (Vec A zero), e zero non è mai (add1 n). Il checker lo vede confrontando gli indici,
 ; e non chiede la clausola. Se nel tipo si scrive (Vec A n), la chiede di nuovo: «testa: manca il
-; caso ((vnil))».
+; caso [vnil]».
 
 (def testa : (→ (Vec A (add1 n)) A)
   [(vcons a _)] a)

@@ -52,6 +52,7 @@
 (rifiuta "(def tipo-in-tipo : Type Type)" "atteso")
 (rifiuta "(data U : Type [u : (→ Type U)])" "livello")
 (rifiuta "(def pred : (→ Nat Nat) [(add1 k)] k)" "manca il caso")
+(rifiuta "(def scegli : (→ (Either A B) (→ A C) (→ B C) C) [(left a) f _] (f a))" "manca il caso [(right _) _ _]")   ; come una clausola, senza metavariabili
 (rifiuta "(def giro : (→ Nat Nat) [n] (giro n))" "ricorsione non strutturale")
 (rifiuta "(def falso : (≡ 1 2) refl)" "atteso")
 (rifiuta "(def testa-vuota : (→ (Vec A 0) A) [nil] nil)" "atteso")

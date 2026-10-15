@@ -1108,17 +1108,25 @@
 (define fresh-count 0)
 (define (fresh-sym) (set! fresh-count (+ fresh-count 1)) (string->symbol (format "?~a" fresh-count)))
 
+;; Un caso come lo si scriverebbe in una clausola: [(right _) _ _]. Le variabili fresche sono _.
+(define (show-case cand)
+  (define (pat p) (cond [(and (symbol? p) (char=? (string-ref (symbol->string p) 0) #\?)) '_]
+                        [(and (pair? p) (null? (cdr p))) (pat (car p))]   ; (inverno) è inverno
+                        [(pair? p) (map pat p)]
+                        [else p]))
+  (format "[~{~s~^ ~}]" (map pat cand)))
+
 (define (cover f ty pats)
   (let loop ([todo (list (map (lambda (_) (fresh-sym)) (car pats)))])
     (unless (null? todo)
       (let ([cand (car todo)] [todo (cdr todo)])
         (set! pmetas '())
         (if (guard (x [(and (unify-failure? x) (eq? (unify-failure-kind x) 'conflict)) #f]
-                      [(unify-failure? x) (oops "~a: non so decidere se il caso ~s è possibile" f cand)])
+                      [(unify-failure? x) (oops "~a: non so decidere se il caso ~a è possibile" f (show-case cand))])
               (call-with-values (lambda () (check-pats ty cand)) (lambda _ #t)))
             (let ([r (exists (lambda (q) (let ([r (match-syn* q cand)]) (and (not (eq? r 'no)) r))) pats)])
               (cond [(and (not r) (empty-split? f ty cand)) (loop todo)]
-                    [(not r) (oops "~a: manca il caso ~s" f cand)]
+                    [(not r) (oops "~a: manca il caso ~a" f (show-case cand))]
                     [(eq? r 'yes) (loop todo)]
                     [else (loop (append (split f r cand) todo))]))
             (loop todo))))))                            ; caso impossibile: gli indici non si unificano
