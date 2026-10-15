@@ -1,8 +1,8 @@
 ;; Uso: dagger run scheme --script disegno.ss programma.disegno
 ;; Senza sessione Dagger stampa il piano invece di eseguirlo.
-(load "nucleo.ss")
-(load "tipi.ss")
-(load "piano.ss")
+(load "core.ss")
+(load "types.ss")
+(load "plan.ss")
 
 (parameterize ([privileged #t]) (check-file "std.disegno"))
 (check-file (car (command-line-arguments)))

@@ -11,10 +11,17 @@
 (def sym : (→ (≡ x y) (≡ y x))
   [refl] refl)
 
+; --- liste: ["a" "b"] è zucchero per (:: "a" (:: "b" vuota)) ---
+
+(data List : (→ Type Type)
+  [vuota : (List A)]
+  [::    : (→ A (List A) (List A))])
+
 ; --- tipi opachi del motore ---
 
-(extern String : Type String)
-(extern Dir    : Type Directory)
+(extern String    : Type String)
+(extern Dir       : Type Directory)
+(extern Container : Type Container)
 
 ; --- file system del motore: valori immutabili, scrivere è costruire una nuova directory ---
 
@@ -23,6 +30,16 @@
 (extern without   : (→ [dir Dir] [path String] Dir)                    Directory.withoutFile)
 (extern sub       : (→ [dir Dir] [path String] Dir)                    Directory.directory)
 (extern put       : (→ [dir Dir] [path String] [source Dir] Dir)       Directory.withDirectory)
+
+; --- container: anch'essi valori immutabili; with-exec dichiara un comando, non lo esegue ---
+
+(extern container    : Container                                                     container)
+(extern from         : (→ [ctr Container] [address String] Container)                 Container.from)
+(extern with-exec    : (→ [ctr Container] [args (List String)] Container)             Container.withExec)
+(extern with-dir     : (→ [ctr Container] [path String] [source Dir] Container)       Container.withDirectory)
+(extern with-workdir : (→ [ctr Container] [path String] Container)                    Container.withWorkdir)
+(extern with-env     : (→ [ctr Container] [name String] [value String] Container)     Container.withEnvVariable)
+(extern dir-of       : (→ [ctr Container] [path String] Dir)                          Container.directory)
 
 ; --- confine con l'host: il programma dichiara cosa riceve e cosa restituisce ---
 ; %host-dir è riservato: l'utente legge l'host solo tramite (Host "percorso") nella firma di main.

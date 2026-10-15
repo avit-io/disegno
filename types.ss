@@ -207,9 +207,9 @@
 (define (nat n) (if (zero? n) '(glob zero) `(app (glob add1) ,(nat (- n 1)) e)))
 (define (string-type) (if (gget 'String) '(vglob String ()) (oops "i letterali stringa richiedono String")))
 
-;; ponytail: il reader di Chez legge [..] come (..), quindi in (→ ...) un binder è (x T) con x non globale.
-(define (binder? e)
-  (and (list? e) (= (length e) 2) (symbol? (car e)) (not (eq? (car e) 'Type)) (not (gget (car e)))))
+;; [..] arriva come (%br ..) (vedi brackets): in (→ ...) è un binder [x T], in un termine una lista.
+(define (binder? e) (and (pair? e) (eq? (car e) '%br) (= (length e) 3) (symbol? (cadr e))))
+(define (unbracket e) (if (and (pair? e) (eq? (car e) '%br)) (cdr e) e))
 
 (define (infer c e)                                     ; → (values termine tipo)
   (cond
@@ -226,6 +226,8 @@
     [(and (pair? e) (eq? (car e) '→))
      (let-values ([(t n) (elab-arrow c (cdr e))]) (values t `(vtype ,n)))]
     [(and (pair? e) (eq? (car e) 'Type) (nat? (cadr e))) (values `(type ,(cadr e)) `(vtype ,(+ 1 (cadr e))))]
+    [(and (pair? e) (eq? (car e) '%br))                ; ["a" "b"] = (:: "a" (:: "b" vuota))
+     (infer c (fold-right (lambda (x acc) (list ':: x acc)) 'vuota (cdr e)))]
     [(pair? e)
      (let-values ([(t ty) (infer c (car e))])
        (let loop ([t t] [ty ty] [args (cdr e)])
@@ -260,7 +262,7 @@
 (define (elab-arrow c as)                               ; → (values termine livello)
   (if (null? (cdr as))
       (check-type c (car as))
-      (let*-values ([(x a) (if (binder? (car as)) (values (caar as) (cadar as)) (values '_ (car as)))]
+      (let*-values ([(x a) (if (binder? (car as)) (values (cadar as) (caddar as)) (values '_ (car as)))]
                     [(ta na) (check-type c a)]
                     [(tb nb) (elab-arrow (bind c x (ev (ctx-env c) ta)) (cdr as))])
         (values `(pi ,x e ,ta ,tb) (max na nb)))))
@@ -271,12 +273,12 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (memq e '(→ Type _))) (set! acc (cons e acc)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (memq e '(→ Type _ %br))) (set! acc (cons e acc)))]
         [(and (pair? e) (eq? (car e) '→))
          (let loop ([as (cdr e)] [bound bound])
            (cond [(null? as) (void)]
                  [(and (pair? (cdr as)) (binder? (car as)))
-                  (walk (cadar as) bound) (loop (cdr as) (cons (caar as) bound))]
+                  (walk (caddar as) bound) (loop (cdr as) (cons (cadar as) bound))]
                  [else (walk (car as) bound) (loop (cdr as) bound)]))]
         [(pair? e) (for-each (lambda (x) (walk x bound)) e)]))
     (reverse acc)))
@@ -340,8 +342,26 @@
               (oops "~a: un extern deve restituire un tipo opaco del motore" name))
             (hashtable-set! globals name (make-g 'extern (ev '() t) (cons (list-ref d 4) (reverse names)))))))))
 
+;; Il reader di Chez non distingue [..] da (..): prima di leggere, [ diventa (%br  fuori da stringhe e commenti.
+(define (brackets s)
+  (call-with-string-output-port
+    (lambda (p)
+      (let loop ([cs (string->list s)] [mode 'code])
+        (unless (null? cs)
+          (let ([c (car cs)])
+            (case mode
+              [(string) (write-char c p)
+                        (cond [(and (char=? c #\\) (pair? (cdr cs))) (write-char (cadr cs) p) (loop (cddr cs) mode)]
+                              [else (loop (cdr cs) (if (char=? c #\") 'code mode))])]
+              [(comment) (write-char c p) (loop (cdr cs) (if (char=? c #\newline) 'code mode))]
+              [else (cond [(char=? c #\[) (display "(%br " p)]
+                          [(char=? c #\]) (write-char #\) p)]
+                          [else (write-char c p)])
+                    (loop (cdr cs) (case c [(#\") 'string] [(#\;) 'comment] [else mode]))])))))))
+
 (define (check-port p)
-  (let loop () (let ([d (read p)]) (unless (eof-object? d) (check-decl d) (loop)))))
+  (let ([p (open-string-input-port (brackets (get-string-all p)))])
+    (let loop () (let ([d (read p)]) (unless (eof-object? d) (check-decl d) (loop))))))
 (define (check-file path)
   (call-with-port (open-file-input-port path (file-options) (buffer-mode block) (make-transcoder (utf-8-codec)))
     check-port))
@@ -351,8 +371,9 @@
 (define (check-data d)
   (let*-values ([(name) (cadr d)]
                 [(sig ks) (if (and (pair? (cddr d)) (eq? (caddr d) ':))
-                              (values (cadddr d) (map (lambda (k) (cons (car k) (caddr k))) (list-tail d 4)))
-                              (values 'Type (map (lambda (k) (cons (car k) (if (null? (cdr k)) name `(→ ,@(cdr k) ,name))))
+                              (values (cadddr d) (map (lambda (k) (let ([k (unbracket k)]) (cons (car k) (caddr k)))) (list-tail d 4)))
+                              (values 'Type (map (lambda (k) (let ([k (unbracket k)])
+                                                               (cons (car k) (if (null? (cdr k)) name `(→ ,@(cdr k) ,name)))))
                                                  (cddr d))))])
     (fresh-name! name)
     (let* ([t (elab-sig sig)] [n (begin (k-type t) (data-level (ev '() t)))])
@@ -421,7 +442,7 @@
          [clauses (cond [(null? rest) (oops "~a: manca la definizione" name)]
                         [(null? (cdr rest)) (list (cons '() (car rest)))]
                         [(odd? (length rest)) (oops "~a: clausola senza corpo" name)]
-                        [else (let pairs ([r rest]) (if (null? r) '() (cons (cons (car r) (cadr r)) (pairs (cddr r)))))])])
+                        [else (let pairs ([r rest]) (if (null? r) '() (cons (cons (unbracket (car r)) (cadr r)) (pairs (cddr r)))))])])
     (fresh-name! name)
     (let* ([t (elab-sig (cadddr d))] [ty (begin (k-type t) (ev '() t))])
       (hashtable-set! globals name (make-g 'def ty #f))

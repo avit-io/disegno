@@ -1,7 +1,7 @@
 ;; Controlli: nucleo, type checker, piano (a secco) e, sotto `dagger run`, esecuzione dal vivo.
-(load "nucleo.ss")
-(load "tipi.ss")
-(load "piano.ss")
+(load "core.ss")
+(load "types.ss")
+(load "plan.ss")
 
 (define (contiene? s sub)
   (let ([n (string-length s)] [k (string-length sub)])
@@ -20,7 +20,7 @@
 ;; --- type checker ---
 
 (parameterize ([privileged #t]) (check-file "std.disegno"))
-(check-file "esempi.disegno")
+(check-file "examples.disegno")
 
 (define (rifiuta src atteso)
   (let ([msg (guard (e [(message-condition? e) (condition-message e)]) (check-string src) #f)])
@@ -61,13 +61,29 @@
 (assert (contiene? secco "} }>\") { export(path:"))
 (assert (contiene? secco "wipe: true"))
 
+;; Container: la directory dell'host entra nel container, un comando la elabora, il risultato esce.
+(check-string (format "
+  (def costruisci : (→ [src (Host ~s)] (Export Dir))
+    [src] (replace ~s
+            (dir-of (with-exec (with-workdir (with-dir (from container \"alpine\") \"/w\" src) \"/w\")
+                               [\"sh\" \"-c\" \"cat dati.txt dati.txt > doppio.txt\"])
+                    \"/w\")))"
+  (string-append dir "/in") (string-append dir "/out2")))
+(define secco2 (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))) 'costruisci)))
+(assert (contiene? secco2 "container { from(address: \"alpine\") { withDirectory(path: \"/w\", source: \"<host"))
+(assert (contiene? secco2 "withExec(args: [\"sh\", \"-c\", \"cat dati.txt dati.txt > doppio.txt\"]) { directory(path: \"/w\")"))
+(rifiuta "(def mista : (List String) [\"a\" 1])" "atteso")
+
 ;; --- dal vivo ---
+
 
 (when (getenv "DAGGER_SESSION_PORT")
   (system (format "rm -rf ~a && mkdir -p ~a/in && echo dati > ~a/in/dati.txt" dir dir dir))
   (submit-leaf (plan (lambda (ch) (submit-leaf (append ch '((id)))))))
   (for-each (lambda (f) (assert (file-exists? (string-append dir "/out/" f))))
             '("LEGGIMI" "cfg/dati.txt" "cfg/config/app.toml"))
+  (submit-leaf (plan (lambda (ch) (submit-leaf (append ch '((id))))) 'costruisci))
+  (assert (string=? (call-with-input-file (string-append dir "/out2/doppio.txt") get-string-all) "dati\ndati\n"))
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

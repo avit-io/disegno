@@ -22,13 +22,20 @@
                   (list (call-field (list-ref segs (- (length segs) 1)) names args resolve)))))))
 
 (define (call-field name names args resolve)
-  (cons (string->symbol name)
-        (map (lambda (n a) (let ([a (force a)]) (list n (if (eq? (car a) 'vstr) (cadr a) (resolve (chain a resolve))))))
-             names args)))
+  (cons (string->symbol name) (map (lambda (n a) (list n (gql-arg a resolve))) names args)))
+
+(define (gql-arg v resolve)                              ; stringa, lista o oggetto (per ID)
+  (let ([v (force v)])
+    (cond [(eq? (car v) 'vstr) (cadr v)]
+          [(and (eq? (car v) 'vglob) (eq? (cadr v) 'vuota)) '()]
+          [(and (eq? (car v) 'vglob) (eq? (cadr v) '::))
+           (let ([xs (explicit (caddr v))]) (cons (gql-arg (car xs) resolve) (gql-arg (cadr xs) resolve)))]
+          [else (resolve (chain v resolve))])))
 
 ;; main : (→ [x (Host "p")] ... (Export Dir)) → catena che termina con export.
-(define (plan resolve)
-  (let* ([sig (or (hashtable-ref sigs 'main #f) (oops "manca main"))]
+(define (plan resolve . entry)
+  (let* ([main (if (null? entry) 'main (car entry))]
+         [sig (or (hashtable-ref sigs main #f) (oops "manca ~a" main))]
          [hosts (let loop ([t sig])
                   (if (eq? (car t) 'pi)
                       (let ([dom (cadddr t)])
@@ -36,7 +43,7 @@
                           (oops "gli argomenti di main devono essere (Host \"percorso\")"))
                         (cons `(vglob %host-dir ((,(ev '() (caddr dom)) . e))) (loop (list-ref t 4))))
                       '()))]
-         [v (force (vapp-sp (ev '() '(glob main)) (map (lambda (h) (cons h 'e)) hosts)))])
+         [v (force (vapp-sp (ev '() `(glob ,main)) (map (lambda (h) (cons h 'e)) hosts)))])
     (unless (and (eq? (car v) 'vglob) (memq (cadr v) '(overlay replace))) (oops "main deve restituire un Export"))
     (let ([path (force (car (explicit (caddr v))))])
       (unless (eq? (car path) 'vstr) (oops "il percorso di export deve essere noto"))
