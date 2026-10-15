@@ -37,14 +37,13 @@ Se il capitolo passa, tutto ciò che vi è scritto è vero: tipi e teoremi compr
 | [6. L'uguaglianza](06-equality.disegno) | `≡` e `refl`, uguaglianza per calcolo e per prova, `transport` come eliminazione, `+-comm`, `accoda` con `(+ m n)`, assioma K |
 | [7. Esiste](07-exists.disegno) | Σ: il testimone e la prova, `fst` e `snd`, per ogni ed esiste, `differenza` come algoritmo, `×` come caso particolare |
 | [8. Oppure, e il nulla](08-or-and-nothing.disegno) | `Either` e il ragionamento per casi, pari o dispari, `⊥` e `¬`, il pattern assurdo, De Morgan, il terzo escluso e la sua doppia negazione |
-| 9. Le prove come programmi | relazioni induttive, decidibilità, `auto` come calcolo, e uno sguardo al piano |
-
-Il capitolo 9 è in preparazione.
+| [9. Le prove come programmi](09-proofs-as-programs.disegno) | Curry–Howard, relazioni induttive (`≤`), decidibilità, `So` e i bit che dicono il vero, che cosa fa `auto`, e uno sguardo al piano |
 
 ## Letture
 
 - G. Gentzen, *Untersuchungen über das logische Schließen*, 1935: le introduzioni come definizioni dei segni.
 - D. Prawitz, *Natural Deduction: A Proof-Theoretical Study*, 1965: il principio di inversione e la riduzione delle deviazioni.
 - M. Dummett, *The Logical Basis of Metaphysics*, 1991: l'armonia e una teoria del significato basata sulle regole.
+- W. A. Howard, *The formulae-as-types notion of construction*, 1980 (circolato dal 1969): le proposizioni come tipi.
 - P. Martin-Löf, *On the meanings of the logical constants and the justifications of the logical laws*, 1983 (pubblicato nel 1996): il ponte tra queste idee e la teoria dei tipi.
 - D. P. Friedman e D. Thrane Christiansen, *The Little Typer*, 2018: lo stesso viaggio, in Pie.

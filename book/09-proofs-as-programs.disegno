@@ -1,0 +1,174 @@
+; Capitolo 9 — Le prove come programmi
+;
+; Lungo il libro programmi e prove si sono scritti allo stesso modo. Questo capitolo lo dice per
+; esteso, aggiunge l'ultimo ingrediente, le relazioni definite per induzione, e mostra che cosa fa
+; auto quando dimostra qualcosa. Alla fine guarda a che cosa serve tutto questo in Disegno: provare
+; proprietà di un piano prima di eseguirlo.
+;
+;   disegno check book/09-proofs-as-programs.disegno
+
+; --- il dizionario ---
+; Ogni connettivo è stato un tipo, e ogni sua regola un costrutto del linguaggio:
+;
+;   proposizione         tipo                    introduzione      eliminazione
+;   A e B                (× A B)                 pair              fst, snd, pattern
+;   A oppure B           (Either A B)            left, right       pattern, per casi
+;   A implica B          (→ A B)                 λ                 applicazione
+;   per ogni x, P x      (→ [x A] (P x))         λ                 applicazione
+;   esiste x, P x        (Σ A P)                 pair              fst, snd
+;   x è y                (≡ x y)                 refl              pattern refl, transport
+;   falso                ⊥                       nessuna           pattern assurdo ()
+;   non A                (¬ A), cioè (→ A ⊥)     λ                 applicazione
+;
+; È la corrispondenza di Curry e Howard. Letta da Prawitz, dice una cosa precisa: le prove
+; normali, senza deviazioni, sono i valori canonici, e normalizzare una prova è calcolare un
+; programma.
+
+; --- relazioni induttive ---
+; Una proposizione si può dichiarare direttamente con le sue introduzioni, come un tipo qualsiasi.
+; La libreria standard dichiara così l'ordine sui naturali:
+;
+;   (data ≤ : (→ Nat Nat Type)
+;     [≤-zero : (≤ zero n)]
+;     [≤-succ : (→ (≤ m n) (≤ (add1 m) (add1 n)))])
+;
+; Sono due regole d'inferenza: zero sta sotto ogni n; se m sta sotto n, (add1 m) sta sotto
+; (add1 n). Una prova di (≤ 1 3) è una derivazione, un albero di regole, scritta come un termine:
+
+(def uno-sotto-tre : (≤ 1 3)
+  (≤-succ ≤-zero))
+
+; Il primo ≤-succ porta da (≤ 0 2) a (≤ 1 3), e ≤-zero prova (≤ 0 2). Gli indici li calcola il
+; checker.
+
+; --- le prove si eliminano ---
+; Una prova è un dato, e come ogni dato si elimina per casi. Qui la riflessività per induzione su
+; n, e la transitività per induzione sulle prove stesse.
+
+(def ≤-rifl : (→ [n Nat] (≤ n n))
+  [zero]     ≤-zero
+  [(add1 k)] (≤-succ (≤-rifl k)))
+
+(def ≤-trans : (→ (≤ a b) (≤ b c) (≤ a c))
+  [≤-zero     _]          ≤-zero
+  [(≤-succ p) (≤-succ q)] (≤-succ (≤-trans p q)))
+
+; Nella seconda clausola, la prima prova dice che b è un (add1 …). Allora la seconda, una prova
+; di (≤ (add1 …) c), non può essere ≤-zero, che sta solo in (≤ zero …): il checker lo vede dagli
+; indici e non chiede quel caso. È il principio di inversione applicato a una relazione:
+; da una prova si ricava ciò che la sua introduzione richiedeva.
+
+(def ≤-giù : (→ (≤ (add1 m) (add1 n)) (≤ m n))
+  [(≤-succ p)] p)
+
+(def niente-sotto-zero : (¬ (≤ (add1 m) zero))
+  [()])
+
+; --- decidere ---
+; Il capitolo 8 lasciava una domanda: per quali A si può scegliere tra A e (¬ A)? Per quelli per
+; cui c'è un programma che decide. Lo si dice con un tipo:
+
+(def Decidibile : (→ Type Type)
+  [A] (Either A (¬ A)))
+
+; ≤ è decidibile. La prova è un programma che confronta due numeri e restituisce, insieme alla
+; risposta, la sua giustificazione: la derivazione se sì, la refutazione se no.
+
+(def un-passo-su : (→ (Decidibile (≤ m n)) (Decidibile (≤ (add1 m) (add1 n))))
+  [(left p)]   (left (≤-succ p))
+  [(right np)] (right (λ [q] (np (≤-giù q)))))
+
+(def decidi-≤ : (→ [m Nat] [n Nat] (Decidibile (≤ m n)))
+  [zero     _]        (left ≤-zero)
+  [(add1 _) zero]     (right niente-sotto-zero)
+  [(add1 j) (add1 k)] (un-passo-su (decidi-≤ j k)))
+
+(def tre-sotto-cinque : (≡ (decidi-≤ 3 5) (left (≤-succ (≤-succ (≤-succ ≤-zero)))))
+  auto)
+
+; Per un A qualunque non c'è un decidi, ed è per questo che il terzo escluso non è una legge. Per
+; ≤ c'è, e qui il terzo escluso vale: è un teorema, non un assioma.
+
+; --- un bit, e una prova ---
+; La libreria standard ha anche ≤?, che risponde con un Bool. Un Bool dice sì o no, ma non perché.
+; So trasforma un Bool in una proposizione:
+;
+;   (def So : (→ Bool Type)
+;     [true]  ⊤
+;     [false] ⊥)
+;
+; (So (≤? 2 5)) si riduce a ⊤, e tt lo prova. Il calcolo ha fatto tutto il lavoro.
+
+(def per-calcolo : (So (≤? 2 5))
+  tt)
+
+; Che il bit dica il vero è un teorema, e lo si prova come gli altri. Nella seconda clausola
+; (≤? (add1 _) zero) si riduce a false, (So false) a ⊥, e il pattern assurdo chiude il caso.
+
+(def ≤?-corretto : (→ [m Nat] [n Nat] (So (≤? m n)) (≤ m n))
+  [zero     _        _]  ≤-zero
+  [(add1 _) zero     ()]
+  [(add1 j) (add1 k) s]  (≤-succ (≤?-corretto j k s)))
+
+; --- che cosa fa auto ---
+; Nei capitoli precedenti auto ha dimostrato molti teoremi. Non indovina: fa tre cose, tutte
+; meccaniche.
+;   1. Calcola. Se il tipo si riduce a ⊤, la prova è tt; se è (≡ x y) e i lati hanno la stessa
+;      forma canonica, la prova è refl.
+;   2. Cerca un'introduzione. Per (≤ 2 5) prova i costruttori di ≤ finché uno combacia con gli
+;      indici, e ripete sui pezzi: costruisce la derivazione.
+;   3. Refuta. Per (¬ A) cerca una ragione per cui A non ha introduzioni possibili, come fa il
+;      pattern assurdo.
+; Quando non ci riesce, dice dove si è fermato. Ciò che auto produce è un termine come quelli
+; scritti a mano, e il checker lo controlla allo stesso modo.
+
+(def due-sotto-cinque : (≤ 2 5)
+  auto)
+
+; --- uno sguardo al piano ---
+; Tutto questo serve a Disegno per una ragione pratica. Un programma Disegno non esegue una
+; pipeline: ne costruisce una descrizione, il piano, che è un dato come Albero o Vec. Le
+; proprietà del piano si scrivono come funzioni e si dimostrano come teoremi, prima di eseguire
+; niente.
+;
+; Un piano di build, e una politica: nessuna immagine con il tag :latest. images raccoglie le
+; immagini del piano, All chiede che il predicato valga per ognuna.
+
+(def senza-latest? : (→ Image Bool)
+  [i] (not (contains? (Image.raw i) ":latest")))
+
+(def build : Container
+  (pipe (container)
+        (from "golang:1.25-alpine")
+        (with-exec ["go" "build" "./..."])))
+
+(def build-è-fissato : (All senza-latest? (images build))
+  auto)
+
+; E il teorema opposto: un piano con :latest viola la politica. Se qualcuno lo cambiasse, questa
+; prova smetterebbe di passare.
+
+(def latest-rifiutato : (¬ (All senza-latest? (images (pipe (container) (from "golang:latest")))))
+  auto)
+
+; Il cookbook (cookbook/06-theorems.disegno) prosegue da qui: test prima della pubblicazione,
+; montaggi disgiunti, porte distinte. Sono le stesse idee di questo libro, applicate a un dato
+; che poi Dagger realizza.
+
+; --- esercizi ---
+;
+; 1. Ogni n sta sotto il suo successore.
+; (def ≤-add1 : (→ [n Nat] (≤ n (add1 n)))
+;   ___)
+;
+; 2. L'uguaglianza dei naturali è decidibile. Suggerimento: come per decidi-≤, con un passo
+;    ausiliario; per la refutazione serve togliere un add1 da un'uguaglianza.
+; (def decidi-≡ : (→ [m Nat] [n Nat] (Decidibile (≡ m n)))
+;   ___)
+;
+; 3. Il viceversa di ≤?-corretto: se m ≤ n, il bit lo dice.
+; (def ≤?-completo : (→ (≤ m n) (So (≤? m n)))
+;   ___)
+;
+; 4. Una politica tua: ogni immagine del piano viene da golang. Suggerimento: contains? e
+;    Image.raw, come sopra.
