@@ -78,7 +78,6 @@
 (extern String    : Type String)
 (extern contains? : (→ String String Bool) %contains?)
 
-(extern string=?   : (→ String String Bool) %string=?)
 (extern image-ref? : (→ String Bool)        %image-ref?)
 (extern segment?   : (→ String Bool)        %segment?)
 
@@ -94,26 +93,50 @@
   [name : String]
   [ok   : (So (segment? name))])
 
-; --- percorsi: il file system come spazio affine ---
-; Un punto è la radice più dei passi: /out è (/ root "out"), (/ out "hello") è punto + vettore.
-; Punto + punto non ha senso, e infatti / vuole un Segment.
+; --- I punti non si sommano: il file system come spazio affine ---
+; Un punto è la radice più dei passi: /out è (/ root "out"). Un vettore è una sequenza di passi:
+; "bin/hello". Punto ⊕ vettore = punto; punto ⊖ punto = vettore, solo se uno contiene l'altro;
+; punto + punto non si può nemmeno scrivere: / vuole un Segment.
+; Senza .. i vettori sono un monoide, non un gruppo: per questo la differenza è parziale.
 
 (data Abs
   [root]
   [/ Abs Segment])
 
-(def abs=? : (→ Abs Abs Bool)
-  [root    root]    true
-  [root    (/ _ _)] false
-  [(/ _ _) root]    false
-  [(/ p s) (/ q t)] (if (string=? (Segment.name s) (Segment.name t)) (abs=? p q) false))
+(data Rel
+  [here]
+  [step Rel Segment])
 
-(def ⊑? : (→ Abs Abs Bool)                ; p sta dentro q
-  [root    q] (abs=? root q)
-  [(/ p s) q] (if (abs=? (/ p s) q) true (⊑? p q)))
+; (⊑ p q): p sta dentro q. È induttivo, quindi la differenza si calcola sulla prova e le leggi
+; si dimostrano per induzione, senza confrontare stringhe.
+(data ⊑ : (→ Abs Abs Type)
+  [⊑-refl : (⊑ p p)]
+  [⊑-step : (→ (⊑ p q) (⊑ (/ p s) q))])
 
-(def ⊑ : (→ Abs Abs Type)
-  [p q] (So (⊑? p q)))
+(def ⊕ : (→ Abs Rel Abs)
+  [p here]       p
+  [p (step v s)] (/ (⊕ p v) s))
+
+(def ⊖ : (→ [p Abs] [q Abs] (⊑ p q) Rel)
+  [p       q ⊑-refl]     here
+  [(/ p s) q (⊑-step h)] (step (⊖ p q h) s))
+
+(def /s : (→ Segment Abs Abs)
+  [s p] (/ p s))
+
+; La legge: q ⊕ (p ⊖ q) = p. Dimostrata qui una volta; chi scrive un disegno la eredita.
+(def ⊕-⊖ : (→ [p Abs] [q Abs] [h (⊑ p q)] (≡ (⊕ q (⊖ p q h)) p))
+  [p       q ⊑-refl]     refl
+  [(/ p s) q (⊑-step h)] (cong (/s s) (⊕-⊖ p q h)))
+
+; Uno spazio affine: punti P, spostamenti V, una relazione ≤ che dice quando la differenza esiste.
+(record (Affine P V [≤ (→ P P Type)])
+  [+   : (→ P V P)]
+  [-   : (→ [p P] [q P] (≤ p q) V)]
+  [law : (→ [p P] [q P] [h (≤ p q)] (≡ (+ q (- p q h)) p))])
+
+(def percorsi : (Affine Abs Rel ⊑)
+  (affine ⊕ ⊖ ⊕-⊖))
 
 ; La riga di comando resta lo scalpello: si tipano i valori che vi si interpolano, non la sintassi.
 

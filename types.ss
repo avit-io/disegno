@@ -121,7 +121,7 @@
 ;; Un passo di percorso: non vuoto, senza /, né . né ..
 (define (segment? s) (and (> (string-length s) 0) (not (memv #\/ (string->list s))) (not (member s '("." "..")))))
 
-(define prims `((%contains? 2 ,string-contains?) (%string=? 2 ,string=?)
+(define prims `((%contains? 2 ,string-contains?)
                 (%image-ref? 1 ,image-ref?) (%segment? 1 ,segment?)))
 
 ;; Clausola a runtime: (pattern n corpo); pattern: (pvar livello) (pdot) (pcon c pattern...).
@@ -259,7 +259,7 @@
 (define (string-type) (if (gget 'String) '(vglob String ()) (oops "i letterali stringa richiedono String")))
 
 ;; [..] arriva come (%br ..) (vedi brackets): in (→ ...) è un binder [x T], in un termine una lista.
-(define (binder? e) (and (pair? e) (eq? (car e) '%br) (= (length e) 3) (symbol? (cadr e))))
+(define (binder? e) (and (pair? e) (memq (car e) '(%br %imp)) (= (length e) 3) (symbol? (cadr e))))  ; %imp: implicito, solo interno
 (define (unbracket e) (if (and (pair? e) (eq? (car e) '%br)) (cdr e) e))
 
 (define (infer c e)                                     ; → (values termine tipo)
@@ -340,16 +340,52 @@
 
 ;; auto: prova per calcolo. Le proposizioni decidibili si scrivono (So (test? ...)), che si riduce
 ;; a ⊤ o a ⊥; auto è tt quando il tipo atteso, calcolato, è ⊤, e refl quando è un'uguaglianza.
+;; Per le relazioni induttive, come (⊑ p q), cerca una prova componendo costruttori.
 (define (auto c ty)
   (let ([v (force ty)])
     (cond [(and (eq? (car v) 'vglob) (eq? (cadr v) '⊤)) '(glob tt)]
           [(and (eq? (car v) 'vglob) (eq? (cadr v) '≡)) (check c 'refl ty)]
-          [else (oops "auto: la proposizione si riduce a ~s, non a vero" (show c ty))])))
+          [(and (eq? (car v) 'vglob) (eq? (cadr v) '⊥)) (oops "auto: la proposizione si riduce a ⊥, non a vero")]
+          [(search c v 32)]
+          [else (oops "auto: nessuna prova di ~s" (show c ty))])))
+
+(define (has-meta? z) (and (pair? z) (or (memq (car z) '(meta imeta)) (exists has-meta? z))))
+
+;; ponytail: ricerca in profondità limitata, primo costruttore che riesce; basta per relazioni
+;; strutturali come ⊑. Solo su obiettivi senza metavariabili, così i tentativi falliti
+;; toccano soltanto metavariabili nuove.
+(define (search c goal depth)
+  (let ([g (force goal)])
+    (and (> depth 0) (eq? (car g) 'vglob) (not (has-meta? (reify (ctx-l c) g)))
+         (case (cadr g)
+           [(⊤) '(glob tt)]
+           [(≡) (guard (x [#t #f]) (check c 'refl g))]
+           [else (let ([d (gget (cadr g))])
+                   (and (eq? (g-kind d) 'data)
+                        (exists (lambda (k) (try-constructor c k g depth)) (g-info d))))]))))
+
+(define (try-constructor c k goal depth)
+  (let loop ([t `(glob ,k)] [kt (g-type (gget k))] [holes '()])
+    (let ([kt (force kt)])
+      (if (eq? (car kt) 'vpi)
+          (let* ([m `(imeta ,(new-meta #f #f))] [mv (ev (ctx-env c) m)])
+            (loop `(app ,t ,m ,(caddr kt)) (pi-cod kt mv)
+                  (if (eq? (caddr kt) 'e) (cons (cons mv (pi-dom kt)) holes) holes)))
+          (and (guard (x [(unify-failure? x) #f]) (unify (ctx-l c) kt goal) #t)
+               (for-all (lambda (h)
+                          (let ([u (search c (cdr h) (- depth 1))])
+                            (and u (guard (x [(unify-failure? x) #f]) (unify (ctx-l c) (car h) (ev (ctx-env c) u)) #t))))
+                        (reverse holes))
+               t)))))
 
 (define (check c e ty)
   (let ([want (force ty)])
     (cond [(eq? e 'auto) (auto c ty)]
           [(let-form? e) (let-values ([(c body) (let-bind c e)]) (check c body ty))]
+          [(and (string? e) (eq? (car want) 'vglob) (eq? (cadr want) 'Rel))   ; "bin/hello" è un vettore
+           (fold-left (lambda (acc seg) `(app (app (glob step) ,acc e) ,(check c seg '(vglob Segment ())) e))
+                      '(glob here)
+                      (filter (lambda (s) (not (string=? s ""))) (split-on e #\/)))]
           [(and (pair? e) (eq? (car e) '%br) (eq? (car want) 'vglob) (eq? (cadr want) 'List))
            (let ([a (car (car (caddr want)))] [l (ctx-l c)])  ; ogni elemento riceve il tipo atteso
              (fold-right (lambda (x acc) `(app (app (app (glob ::) ,(reify l a) i) ,(check c x a) e) ,acc e))
@@ -416,7 +452,7 @@
       (let*-values ([(x a) (if (binder? (car as)) (values (cadar as) (caddar as)) (values '_ (car as)))]
                     [(ta na) (check-type c a)]
                     [(tb nb) (elab-arrow (bind c x (ev (ctx-env c) ta)) (cdr as))])
-        (values `(pi ,x e ,ta ,tb) (max na nb)))))
+        (values `(pi ,x ,(if (and (pair? (car as)) (eq? (caar as) '%imp)) 'i 'e) ,ta ,tb) (max na nb)))))
 
 ;; Variabili libere di una firma, in ordine di prima occorrenza: diventano argomenti impliciti.
 (define (free-vars e)
@@ -424,7 +460,7 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (pair? (qualified e)) (path-literal? e) (memq e '(→ Type _ %br pipe let))) (set! acc (cons e acc)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (pair? (qualified e)) (path-literal? e) (memq e '(→ Type _ %br pipe let auto))) (set! acc (cons e acc)))]
         [(let-form? e)                                   ; let lega in sequenza
          (let loop ([bs (cdr (cadr e))] [bound bound])
            (if (and (pair? bs) (pair? (cdr bs)))
@@ -484,8 +520,16 @@
 ;; (record Service [name : String] [replicas : Nat] [ok : (≥ replicas 1)]) è zucchero per
 ;; un data con il solo costruttore service e le proiezioni Service.name, Service.replicas, ...
 ;; Nei tipi dei campi successivi un campo precedente f diventa (Service.f r).
+;; Con parametri: (record (Affine P V [≤ (→ P P Type)]) ...); un parametro senza tipo è un Type.
+;; I parametri sono impliciti nel costruttore e nelle proiezioni.
 (define (record->decls d)
-  (let* ([name (cadr d)]
+  (let* ([head (cadr d)]
+         [name (if (pair? head) (car head) head)]
+         [params (if (pair? head)
+                     (map (lambda (p) (if (symbol? p) (cons p 'Type) (cons (cadr p) (caddr p)))) (cdr head))
+                     '())]
+         [self (if (pair? head) (cons name (map car params)) name)]
+         [imps (map (lambda (p) `(%imp ,(car p) ,(cdr p))) params)]
          [fields (map (lambda (f) (let ([f (unbracket f)])
                                     (unless (and (= (length f) 3) (eq? (cadr f) ':)) (oops "campo malformato: ~s" f))
                                     (cons (car f) (caddr f))))
@@ -493,14 +537,15 @@
          [s (symbol->string name)]
          [k (string->symbol (string-append (string (char-downcase (string-ref s 0))) (substring s 1 (string-length s))))]
          [proj (lambda (f) (string->symbol (format "~a.~a" name f)))])
-    (cons `(data ,name : Type (%br ,k : (→ ,@(map (lambda (f) `(%br ,(car f) ,(cdr f))) fields) ,name)))
+    (cons `(data ,name : ,(if (null? params) 'Type `(→ ,@(map (lambda (p) `(%br ,(car p) ,(cdr p))) params) Type))
+             (%br ,k : (→ ,@imps ,@(map (lambda (f) `(%br ,(car f) ,(cdr f))) fields) ,self)))
           (let loop ([fs fields] [before '()] [i 0])
             (if (null? fs) '()
                 (let ([ty (let subst ([e (cdar fs)])
                             (cond [(memq e before) `(,(proj e) %r)]
                                   [(pair? e) (map subst e)]
                                   [else e]))])
-                  (cons `(def ,(proj (caar fs)) : (→ (%br %r ,name) ,ty)
+                  (cons `(def ,(proj (caar fs)) : (→ ,@imps (%br %r ,self) ,ty)
                            (%br (,k ,@(map (lambda (j) (if (= j i) '%v '_)) (iota (length fields))))) %v)
                         (loop (cdr fs) (cons (caar fs) before) (+ i 1)))))))))
 
@@ -784,9 +829,31 @@
 
 (define (show c v) (sexp (ctx-names c) (reify (ctx-l c) v)))
 (define (sexp names t)
-  (case (and (equal? (car t) 'app) (equal? (cadr t) '(glob Obj)) (equal? (car (caddr t)) 'glob) 'obj)
-    [(obj) (kind-alias (cadr (caddr t)))]                ; (Obj Kind.cache-volume) si legge CacheVolume
-    [else (sexp1 names t)]))
+  (cond [(and (equal? (car t) 'app) (equal? (cadr t) '(glob Obj)) (equal? (car (caddr t)) 'glob))
+         (kind-alias (cadr (caddr t)))]                  ; (Obj Kind.cache-volume) si legge CacheVolume
+        [(literal-of t) => values]                       ; punti e segmenti come si scrivono: /out/bin, "bin"
+        [else (sexp1 names t)]))
+
+(define (literal-of t)
+  (define (seg t)                                        ; (segment "x" prova) → "x"
+    (let-values ([(h args) (spine-of t)])
+      (and (equal? h '(glob segment)) (pair? args) (eq? (car (car args)) 'str) (cadr (car args)))))
+  (define (abs t)                                        ; → lista di segmenti, o #f
+    (let-values ([(h args) (spine-of t)])
+      (cond [(equal? t '(glob root)) '()]
+            [(and (equal? h '(glob /)) (= (length args) 2))
+             (let ([p (abs (car args))] [s (seg (cadr args))]) (and p s (append p (list s))))]
+            [else #f])))
+  (define (rel t)                                        ; (step (step here "bin") "hello") → ("bin" "hello")
+    (let-values ([(h args) (spine-of t)])
+      (cond [(equal? t '(glob here)) '()]
+            [(and (equal? h '(glob step)) (= (length args) 2))
+             (let ([p (rel (car args))] [s (seg (cadr args))]) (and p s (append p (list s))))]
+            [else #f])))
+  (cond [(abs t) => (lambda (ss) (string->symbol (apply string-append "/" (let loop ([ss ss]) (if (or (null? ss) (null? (cdr ss))) ss (cons* (car ss) "/" (loop (cdr ss))))))))]
+        [(seg t) => values]
+        [(rel t) => (lambda (ss) (if (null? ss) "" (fold-left (lambda (a s) (string-append a "/" s)) (car ss) (cdr ss))))]
+        [else #f]))
 
 (define (kind-alias k)
   (let ([s (symbol->string k)])

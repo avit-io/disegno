@@ -32,14 +32,15 @@ Funziona, dal vivo su Dagger, l'intera catena: sorgente `.disegno` → type chec
 - piano come dato induttivo generato dallo schema di Dagger (93 costruttori);
 - `branch` su osservazioni del motore, con un piano a secco per ogni esito;
 - `record` con invarianti nel tipo e `auto` per le prove calcolate;
-- i teoremi `prod-pinnate` e `test-prima-di-publish` del documento originale, provati con `auto`; il secondo per ogni sorgente.
+- i teoremi `prod-pinnate` e `test-prima-di-publish` del documento originale, provati con `auto`; il secondo per ogni sorgente;
+- letterali raffinati (`Image`, percorsi) e lo spazio affine dei percorsi, con la legge `q ⊕ (p ⊖ q) = p` dimostrata per induzione.
 
 ## Superficie del linguaggio
 
 Il linguaggio appare come un linguaggio a sé: dal codice non si vede l'ospite né il meccanismo di valutazione.
 
 - Una sola forma di definizione: `def nome : tipo`, poi clausole `[pattern] corpo`, oppure un corpo solo.
-- `data` per i tipi induttivi, `record` per un solo costruttore con campi nominati.
+- `data` per i tipi induttivi, `record` per un solo costruttore con campi nominati, anche con parametri: `(record (Affine P V [≤ (→ P P Type)]) …)`.
 - `extern` e `include` sono riservati alla libreria standard.
 - Le variabili libere nelle firme sono quantificate implicitamente. Se il tipo di una di esse non si può ricavare, lo si generalizza: `refl : (≡ x x)` diventa `{A : Type}{x : A} → x ≡ x`.
 - I letterali `0, 1, 2…` sono zucchero per `zero`, `add1`; le stringhe `"…"` sono letterali di tipo `String`.
@@ -118,16 +119,66 @@ Confine con l'host. Il programma dichiara cosa riceve, `(Host "percorso")` nella
   [src] (overlay "." (gen-config src)))
 ```
 
-## I punti non si sommano: valori raffinati e percorsi
+## I punti non si sommano
 
-Nel codice di CI quasi tutto è una stringa. Disegno tiene i letterali familiari, ma è il **tipo atteso** a decidere come leggerli.
+È il motto di Disegno: un'operazione senza senso geometrico non si può nemmeno scrivere.
 
-- **Tipo raffinato = coppia Σ.** `(record Image [raw : String] [ok : (So (image-ref? raw))])`. Un costruttore il cui primo campo accoglie il valore e i cui campi restanti sono proposizioni fa da coercizione: `"golang:1.25-alpine"` atteso come `Image` diventa `(image "golang:1.25-alpine" auto)`. Un letterale malformato è un errore di tipo (`«Golang:1.25» non è un Image valido`), non un fallimento nel container.
-- **Percorsi come punti.** `(data Abs [root] [/ Abs Segment])`; `Segment` è a sua volta raffinato (niente `/`, `.`, `..`). Un simbolo che inizia con `/` è un letterale di punto: `/go/pkg/mod`. `(/ out "hello")` è punto più passo; `(/ /out /bin)`, punto più punto, è un errore di tipo. Dagger accetta i percorsi assoluti anche dentro una `Directory` (relativi alla sua radice), quindi nel piano un percorso è sempre un punto.
-- **Contenimento.** `(⊑ p q)`: p sta dentro q. Su punti concreti lo prova `auto`.
-- **La riga di comando resta lo scalpello.** Gli argomenti di `with-exec` sono `(List Arg)`, con `Arg` che accoglie stringhe e punti: si tipano i valori interpolati, non la sintassi dello strumento.
-- **Dal generatore:** gli argomenti `path` sono `Abs`, `address` è `Image`, `args` è `(List Arg)`.
-- **`let`** con legami in sequenza; le virgole sono spazi. I letterali di punto non sono catturabili da un `let` che lega `root`.
+**Il problema.** Nel codice di CI e infrastruttura quasi tutto è una stringa: percorsi, immagini, indirizzi, durate. Le stringhe nascondono una distinzione che causa molti errori, quella tra posizioni e spostamenti. Un percorso assoluto scambiato per uno relativo, un istante per una durata, un indirizzo per un offset: per una stringa sono tutti uguali.
+
+**Tre strati.** L'idea generale sono i letterali raffinati; lo spazio affine è la forma che prendono quelli con posizioni e spostamenti; le regioni sono uno strato a parte.
+
+1. **Letterali raffinati.** I letterali restano familiari, ma è il tipo atteso a decidere come leggerli. Si scrive ancora `"golang:1.25-alpine"` o `/out`, ma dove serve un'immagine il letterale diventa un `Image`, e dove serve un percorso diventa un punto. Un letterale malformato è un errore di tipo (`«Golang:1.25» non è un Image valido`), non un fallimento dentro un container. Sotto, un tipo raffinato è una coppia Σ, il valore più la prova che è valido: `(record Image [raw : String] [ok : (So (image-ref? raw))])`. Nell'elaboratore c'è una regola sola: un costruttore il cui primo campo accoglie il valore e i cui campi restanti sono proposizioni fa da coercizione, e le prove le calcola `auto`.
+2. **Spazio affine** per i valori con posizioni e spostamenti. Uno spazio affine distingue i punti dagli spostamenti, con tre regole: punto + spostamento = punto; punto − punto = spostamento; punto + punto non esiste.
+3. **Regioni**: sottoalberi, blocchi CIDR, intervalli di porte. Le loro proposizioni naturali sono il contenimento e la disgiunzione: subnet disgiunte, montaggi che non si sovrappongono, porte non allocate due volte. Sono teoremi sul disegno, nel senso della sezione su Curry-Howard.
+
+**La struttura nel linguaggio.** La differenza tra punti richiede una prova di relazione come argomento, quindi esiste solo dove ha senso. La relazione è un parametro: per i percorsi è il contenimento, per i gruppi veri (tempo, indirizzi) è sempre vera.
+
+```
+(record (Affine P V [≤ (→ P P Type)])
+  [+   : (→ P V P)]
+  [-   : (→ [p P] [q P] (≤ p q) V)]
+  [law : (→ [p P] [q P] [h (≤ p q)] (≡ (+ q (- p q h)) p))])
+```
+
+Le leggi, come `law`, sono teoremi dimostrati una volta nella libreria standard: chi scrive un disegno le eredita. Gli operatori restano propri di ciascun dominio (`/` e `⊕`, `⊖` per i percorsi); `Affine` serve a enunciare e dimostrare che un dominio è un'istanza, senza bisogno di type class nel linguaggio.
+
+**I percorsi, implementati.**
+
+```
+(data Abs [root] [/ Abs Segment])           ; punti: /out è (/ root "out")
+(data Rel [here] [step Rel Segment])        ; vettori: "bin/hello"
+
+(data ⊑ : (→ Abs Abs Type)                  ; (⊑ p q): p sta dentro q
+  [⊑-refl : (⊑ p p)]
+  [⊑-step : (→ (⊑ p q) (⊑ (/ p s) q))])
+
+(def ⊖ : (→ [p Abs] [q Abs] (⊑ p q) Rel)    ; la differenza si calcola sulla prova
+  [p       q ⊑-refl]     here
+  [(/ p s) q (⊑-step h)] (step (⊖ p q h) s))
+
+(def ⊕-⊖ : (→ [p Abs] [q Abs] [h (⊑ p q)] (≡ (⊕ q (⊖ p q h)) p))
+  [p       q ⊑-refl]     refl
+  [(/ p s) q (⊑-step h)] (cong (/s s) (⊕-⊖ p q h)))
+
+(def percorsi : (Affine Abs Rel ⊑)
+  (affine ⊕ ⊖ ⊕-⊖))
+```
+
+Il contenimento è una relazione **induttiva**, non un test booleano. Così la differenza si calcola per ricorsione sulla prova, e la legge si dimostra per induzione senza mai confrontare due stringhe: il nucleo non guadagna postulati. Sui punti concreti la prova di contenimento la trova `auto`, componendo costruttori: `(⊖ /out/bin/hello /out auto)` è il vettore `"bin/hello"`, mentre `(⊖ /out /src auto)` è un errore (`nessuna prova di (⊑ /out /src)`), e così `(⊕ /out /bin)`, punto più punto. Dagger accetta percorsi assoluti anche dentro una `Directory`, quindi nel piano un percorso è sempre un punto. Il generatore tipa gli argomenti `path` come `Abs`, `address` come `Image`, `args` come `(List Arg)`.
+
+**Le istanze.**
+
+| Dominio | Punti | Spostamenti | Regioni | Stato |
+|---|---|---|---|---|
+| Percorsi | `/out` | `"hello"` | sottoalberi | fatto; regioni da fare |
+| Tempo | istanti | durate | finestre | da fare |
+| Indirizzi IP | `10.0.0.5` | offset | blocchi CIDR | da fare |
+| Porte | `8080` | — | intervalli | da fare (solo regioni) |
+| Immagini | — | — | — | fatto, solo raffinamento |
+
+**Precisazioni matematiche.** I percorsi non sono uno spazio affine in senso stretto: senza `..` gli spostamenti formano un monoide, non un gruppo, e per questo la differenza esiste solo se un punto contiene l'altro. Tempo e indirizzi sono invece gruppi veri, ma gli indirizzi vivono modulo 2³², quindi l'overflow va escluso con un raffinamento. Le porte hanno regioni ma non spostamenti. Le immagini non sono affini: hanno solo il raffinamento; la distinzione tra tag e digest è quella tra un punto mobile e un punto fisso, e `pinned?` significa esattamente "fisso".
+
+**Esempio.** Una build Go che esporta il binario. Il binario `bin` è derivato dal punto `out`, quindi il fatto che stia dentro la directory esportata, `(⊑ bin out)`, vale per costruzione:
 
 ```
 (def go-build : (→ Dir Dir)
@@ -145,7 +196,9 @@ Nel codice di CI quasi tutto è una stringa. Disegno tiene i letterali familiari
   auto)
 ```
 
-La validità dei letterali la decidono primitive pure del nucleo (`image-ref?`, `segment?`, `string=?`), verificate con i test.
+Scritto con le sole stringhe, `"/out/hello"` nel comando e `"/out"` in `dir-of` ripeterebbero la stessa conoscenza due volte, senza che nulla ne controlli la coerenza. `let` lega in sequenza; le virgole sono spazi; un letterale di punto non può essere catturato da un `let` che lega `root`.
+
+**Il limite.** Gli argomenti di `with-exec` restano in gran parte stringhe: modellare la riga di comando di ogni strumento non è fattibile. Si tipano i valori che vi si interpolano, come `bin` (`Arg` accoglie stringhe e punti), non la sintassi dello strumento. È il confine tra disegno ed esecuzione: la riga di comando è lo scalpello dello scultore.
 
 ## Due tempi, due condizionali
 
@@ -265,7 +318,7 @@ In cambio della purezza e della semplicità:
 - terminazione con un solo argomento decrescente fisso (Ackermann è rifiutato);
 - solo gli argomenti obbligatori dei campi del motore; i tipi del motore sono un elenco consentito;
 - l'argomento di `Remote` ed `Export` è per ora documentazione: esistono solo osservazioni booleane ed export di directory;
-- `auto` prova solo su dati concreti; un exit code vale vero se è 0 (convenzione nel runner).
+- `auto` calcola su dati concreti e cerca prove componendo costruttori, in profondità limitata e solo su obiettivi senza metavariabili; un exit code vale vero se è 0 (convenzione nel runner).
 
 ## Questioni aperte
 
@@ -273,7 +326,8 @@ In cambio della purezza e della semplicità:
 - [ ] Export o Changeset per scrivere. Oggi export classico (`overlay`, `replace` con `wipe`).
 - [ ] Il Changeset rappresenta anche le cancellazioni? Deciderebbe se servono ancora due costruttori di export.
 - [x] Quali osservazioni ammettere e come tiparle: elenco chiuso, `(Obj Kind.bool)`. Resta da tipare osservazioni non booleane, con un `Kind` indicizzato.
-- [x] Tipi raffinati per immagini (tag e digest) e percorsi. Restano CIDR, porte, tempo, e la struttura affine generale (vedi la discussione su `Affine`).
+- [x] Tipi raffinati per immagini (tag e digest) e percorsi; struttura `Affine` con la legge dimostrata per i percorsi.
+- [ ] Le altre istanze: tempo, indirizzi IP (modulo 2³², overflow escluso con un raffinamento), porte; le regioni con contenimento e disgiunzione (montaggi che non si sovrappongono, subnet disgiunte).
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.

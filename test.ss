@@ -146,12 +146,22 @@
 (rifiuta "(def c2 : Container (from container \"golang:1.25@sha256:abc\"))" "non è un Image valido")
 (rifiuta "(def c3 : Dir (with-file empty /a/../b \"x\"))" "«..» non è un Segment valido")
 (rifiuta "(def c4 : Abs (/ /out /bin))" "atteso Segment, trovato Abs")
-(rifiuta "(def c5 : (⊑ /out /out/bin) auto)" "si riduce a ⊥")
+(rifiuta "(def c5 : (⊑ /out /out/bin) auto)" "auto: nessuna prova di (⊑ /out /out/bin)")
 (check-string "(def c6 : Container (from container \"ghcr.io/dagger/engine:v0.21.10\"))
                (def c7 : (⊑ (/ /out \"hello\") /out) auto)
                (def c8 : (≡ (let [o /out, b (/ o \"x\")] b) /out/x) auto)")
 
+;; Lo spazio affine dei percorsi: la differenza esiste solo con la prova di contenimento.
+(check-string "
+  (def vettore : (≡ (⊖ /out/bin/hello /out auto) \"bin/hello\") auto)
+  (def somma : (≡ (⊕ /out \"bin/hello\") /out/bin/hello) auto)
+  (def legge-ereditata : (≡ (⊕ /out (⊖ /out/bin /out auto)) /out/bin)
+    (Affine.law percorsi /out/bin /out auto))")
+(rifiuta "(def storto : Rel (⊖ /out /src auto))" "auto: nessuna prova di (⊑ /out /src)")
+(rifiuta "(def punti : Abs (⊕ /out /bin))" "atteso Rel, trovato Abs")
+
 ;; --- dal vivo ---
+
 
 
 
