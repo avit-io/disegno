@@ -3,15 +3,18 @@
 ;; Kernel (fidato): ricontrolla ogni termine elaborato, con universi stratificati.
 ;; Stile elaboration-zoo (Kovács): termini con indici di de Bruijn, valori con livelli, NbE.
 ;;
-;; Termini: (var i) (glob n) (app f u i) (lam x i b) (pi x i a b) (type n) (meta m) (imeta m)
-;; Valori:  (vlam x i env b) (vpi x i a env b) (vtype n) (vrigid l sp) (vflex m sp) (vglob n sp)
+;; Termini: (var i) (glob n) (app f u i) (lam x i b) (pi x i a b) (type n) (meta m) (imeta m) (str s)
+;; Valori:  (vlam x i env b) (vpi x i a env b) (vtype n) (vrigid l sp) (vflex m sp) (vglob n sp) (vstr s)
 ;; Visibilità i ∈ {e, i}. Spine: lista di (valore . visibilità) in ordine di applicazione.
 
 (define (oops fmt . args) (error 'disegno (apply format fmt args)))
 
 ;; --- globali e metavariabili ---
 
-(define-record-type g (fields kind type (mutable info)))  ; data: costruttori; con: data; def: (arità . clausole)
+;; data: costruttori; con: data; def: (arità . clausole); extern: (campo GraphQL . nomi degli argomenti)
+(define-record-type g (fields kind type (mutable info)))
+(define sigs (make-eq-hashtable))                       ; def → firma elaborata, non ridotta (per il runner)
+(define privileged (make-parameter #f))                 ; extern solo nella libreria standard
 (define globals (make-eq-hashtable))
 (define (gget n) (and (symbol? n) (hashtable-ref globals n #f)))
 (define (con? n) (let ([g (gget n)]) (and g (eq? (g-kind g) 'con))))
@@ -43,6 +46,7 @@
     [(lam) `(vlam ,(cadr t) ,(caddr t) ,env ,(cadddr t))]
     [(pi) `(vpi ,(cadr t) ,(caddr t) ,(ev env (cadddr t)) ,env ,(list-ref t 4))]
     [(type) `(vtype ,(cadr t))]
+    [(str) `(vstr ,(cadr t))]
     [(meta) (meta-val (cadr t))]
     [(imeta) (fold-left (lambda (f v) (vapp f v 'e)) (meta-val (cadr t)) (reverse env))]))
 
@@ -99,7 +103,8 @@
       [(vglob) (sp `(glob ,(cadr v)))]
       [(vlam) `(lam ,(cadr v) ,(caddr v) ,(reify (+ l 1) (vapp v (vvar l) (caddr v))))]
       [(vpi) `(pi ,(cadr v) ,(caddr v) ,(reify l (pi-dom v)) ,(reify (+ l 1) (pi-cod v (vvar l))))]
-      [(vtype) `(type ,(cadr v))])))
+      [(vtype) `(type ,(cadr v))]
+      [(vstr) `(str ,(cadr v))])))
 
 ;; --- unificazione (senza metavariabili è la conversione del kernel) ---
 
@@ -117,6 +122,7 @@
        (unify l (pi-dom a) (pi-dom b))
        (unify (+ l 1) (pi-cod a (vvar l)) (pi-cod b (vvar l)))]
       [(and (is? a 'vtype) (is? b 'vtype) (= (cadr a) (cadr b))) (void)]
+      [(and (is? a 'vstr) (is? b 'vstr)) (unless (string=? (cadr a) (cadr b)) (ufail 'conflict))]
       [(and (is? a 'vrigid) (is? b 'vrigid) (= (cadr a) (cadr b))) (unify-sp l (caddr a) (caddr b))]
       [(and (is? a 'vglob) (is? b 'vglob))
        (cond [(eq? (cadr a) (cadr b)) (unify-sp l (caddr a) (caddr b))]
@@ -156,7 +162,8 @@
       [(vglob) (sp `(glob ,(cadr v)))]
       [(vlam) `(lam ,(cadr v) ,(caddr v) ,(under (lambda (x) (vapp v x (caddr v)))))]
       [(vpi) `(pi ,(cadr v) ,(caddr v) ,(rename-v m dom cod ren (pi-dom v)) ,(under (lambda (x) (pi-cod v x))))]
-      [(vtype) `(type ,(cadr v))])))
+      [(vtype) `(type ,(cadr v))]
+      [(vstr) `(str ,(cadr v))])))
 
 ;; --- kernel: l'unica parte fidata del controllo ---
 
@@ -165,6 +172,7 @@
     [(var) (list-ref tys (cadr t))]
     [(glob) (let ([g (gget (cadr t))]) (if g (g-type g) (oops "kernel: ~a non esiste" (cadr t))))]
     [(type) `(vtype ,(+ (cadr t) 1))]                   ; Type n : Type n+1, mai Type : Type
+    [(str) (string-type)]
     [(pi) (let ([la (k-level (k-infer env tys l (cadddr t)))])
             `(vtype ,(max la (k-level (k-infer (cons (vvar l) env) (cons (ev env (cadddr t)) tys) (+ l 1) (list-ref t 4))))))]
     [(app) (let ([tf (force (k-infer env tys l (cadr t)))])
@@ -197,6 +205,7 @@
   (let loop ([xs xs] [i 0]) (cond [(null? xs) #f] [(equal? (car xs) x) i] [else (loop (cdr xs) (+ i 1))])))
 (define (nat? e) (and (integer? e) (exact? e) (>= e 0)))
 (define (nat n) (if (zero? n) '(glob zero) `(app (glob add1) ,(nat (- n 1)) e)))
+(define (string-type) (if (gget 'String) '(vglob String ()) (oops "i letterali stringa richiedono String")))
 
 ;; ponytail: il reader di Chez legge [..] come (..), quindi in (→ ...) un binder è (x T) con x non globale.
 (define (binder? e)
@@ -205,11 +214,13 @@
 (define (infer c e)                                     ; → (values termine tipo)
   (cond
     [(eq? e 'Type) (values '(type 0) '(vtype 1))]
+    [(string? e) (values `(str ,e) (string-type))]
     [(eq? e '_) (oops "_ non è un termine")]
     [(nat? e) (unless (gget 'Nat) (oops "i letterali richiedono Nat")) (values (nat e) '(vglob Nat ()))]
     [(symbol? e)
      (cond [(index-of e (ctx-names c)) => (lambda (i) (values `(var ,i) (list-ref (ctx-tys c) i)))]
            [(assq e (ctx-defs c)) => (lambda (d) (values (reify (ctx-l c) (cadr d)) (caddr d)))]
+           [(and (not (privileged)) (char=? (string-ref (symbol->string e) 0) #\%)) (oops "~a è riservato al nucleo" e)]
            [(gget e) => (lambda (g) (values `(glob ,e) (g-type g)))]
            [else (oops "nome sconosciuto: ~a" e)])]
     [(and (pair? e) (eq? (car e) '→))
@@ -307,7 +318,27 @@
   (case (and (pair? d) (car d))
     [(data) (check-data d)]
     [(def) (check-def d)]
+    [(extern) (check-extern d)]
     [else (oops "dichiarazione sconosciuta: ~s" d)]))
+
+;; (extern with-file : (→ [dir Dir] [path String] [contents String] Dir) Directory.withNewFile)
+;; Il campo è Tipo.campo (metodo sul primo argomento) o a.b (catena dalla radice); i nomi dei
+;; binder espliciti sono i nomi degli argomenti GraphQL. Un extern non mente: restituisce un tipo
+;; opaco del motore (o è esso stesso un tipo), mai una proposizione né una stringa (sarebbe Remote).
+(define (check-extern d)
+  (unless (privileged) (oops "extern è riservato alla libreria standard"))
+  (unless (and (= (length d) 5) (eq? (caddr d) ':) (symbol? (list-ref d 4))) (oops "extern malformato: ~s" d))
+  (let* ([name (cadr d)] [t (begin (fresh-name! name) (elab-sig (cadddr d)))])
+    (k-type t)
+    (let loop ([r t] [names '()])
+      (if (eq? (car r) 'pi)
+          (loop (list-ref r 4) (if (eq? (caddr r) 'e) (cons (cadr r) names) names))
+          (begin
+            (unless (or (eq? (car r) 'type)
+                        (and (eq? (car r) 'glob) (not (eq? (cadr r) 'String))
+                             (let ([g (gget (cadr r))]) (and (eq? (g-kind g) 'extern) (eq? (car (g-type g)) 'vtype)))))
+              (oops "~a: un extern deve restituire un tipo opaco del motore" name))
+            (hashtable-set! globals name (make-g 'extern (ev '() t) (cons (list-ref d 4) (reverse names)))))))))
 
 (define (check-port p)
   (let loop () (let ([d (read p)]) (unless (eof-object? d) (check-decl d) (loop)))))
@@ -394,6 +425,7 @@
     (fresh-name! name)
     (let* ([t (elab-sig (cadddr d))] [ty (begin (k-type t) (ev '() t))])
       (hashtable-set! globals name (make-g 'def ty #f))
+      (hashtable-set! sigs name t)
       (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
              [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
              [cs (map (lambda (ps c) (check-clause name ty ps (cdr c))) pats clauses)])
@@ -550,6 +582,7 @@
   (case (car t)
     [(var) (if (< (cadr t) (length names)) (list-ref names (cadr t)) t)]
     [(glob) (cadr t)]
+    [(str) (cadr t)]
     [(type) (if (zero? (cadr t)) 'Type `(Type ,(cadr t)))]
     [(meta imeta) (string->symbol (format "?~a" (cadr t)))]
     [(lam) `(λ ,(cadr t) ,(sexp (cons (cadr t) names) (cadddr t)))]

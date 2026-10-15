@@ -1,0 +1,7 @@
+; L'esempio IO del documento: genera config/app.toml dentro la directory corrente.
+
+(def gen-config : (→ Dir Dir)
+  [src] (with-file src "config/app.toml" "porta = 8080\n"))
+
+(def main : (→ [src (Host ".")] (Export Dir))
+  [src] (overlay "." (gen-config src)))

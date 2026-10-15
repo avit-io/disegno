@@ -1,0 +1,37 @@
+; Libreria standard: l'unico posto dove extern è ammesso.
+
+; --- uguaglianza ---
+
+(data ≡ : (→ A A Type)
+  [refl : (≡ x x)])
+
+(def cong : (→ [f (→ A B)] (≡ x y) (≡ (f x) (f y)))
+  [f refl] refl)
+
+(def sym : (→ (≡ x y) (≡ y x))
+  [refl] refl)
+
+; --- tipi opachi del motore ---
+
+(extern String : Type String)
+(extern Dir    : Type Directory)
+
+; --- file system del motore: valori immutabili, scrivere è costruire una nuova directory ---
+
+(extern empty     : Dir                                                directory)
+(extern with-file : (→ [dir Dir] [path String] [contents String] Dir) Directory.withNewFile)
+(extern without   : (→ [dir Dir] [path String] Dir)                    Directory.withoutFile)
+(extern sub       : (→ [dir Dir] [path String] Dir)                    Directory.directory)
+(extern put       : (→ [dir Dir] [path String] [source Dir] Dir)       Directory.withDirectory)
+
+; --- confine con l'host: il programma dichiara cosa riceve e cosa restituisce ---
+; %host-dir è riservato: l'utente legge l'host solo tramite (Host "percorso") nella firma di main.
+
+(extern %host-dir : (→ [path String] Dir) host.directory)
+
+(def Host : (→ String Type)
+  [path] Dir)
+
+(data Export : (→ Type Type)
+  [overlay : (→ String A (Export A))]
+  [replace : (→ String A (Export A))])

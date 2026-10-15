@@ -103,6 +103,51 @@
                        [else (loop (+ i 1))]))])
         (substring resp i (string-length resp))))))
 
+;; --- JSON (solo lettura delle risposte): oggetti → alist, array → liste, null → 'null ---
+
+(define (json-read s)
+  (define i 0)
+  (define (peek) (string-ref s i))
+  (define (skip) (let loop () (when (and (< i (string-length s)) (char-whitespace? (peek))) (set! i (+ i 1)) (loop))))
+  (define (eat c) (skip) (unless (char=? (peek) c) (error 'json "atteso" c i)) (set! i (+ i 1)))
+  (define (word w v) (set! i (+ i (string-length w))) v)
+  (define (str)
+    (eat #\")
+    (call-with-string-output-port
+      (lambda (p)
+        (let loop ()
+          (let ([c (peek)])
+            (set! i (+ i 1))
+            (cond [(char=? c #\") (void)]
+                  [(char=? c #\\)
+                   (let ([e (peek)])
+                     (set! i (+ i 1))
+                     (case e
+                       [(#\n) (write-char #\newline p)] [(#\t) (write-char #\tab p)]
+                       [(#\r) (write-char #\return p)] [(#\b) (write-char #\backspace p)] [(#\f) (write-char #\page p)]
+                       [(#\u) (write-char (integer->char (string->number (substring s i (+ i 4)) 16)) p) (set! i (+ i 4))]
+                       [else (write-char e p)]))
+                   (loop)]
+                  [else (write-char c p) (loop)]))))))
+  (define (seq close item)
+    (set! i (+ i 1)) (skip)
+    (if (char=? (peek) close) (begin (set! i (+ i 1)) '())
+        (let loop ([acc (list (item))])
+          (skip)
+          (if (char=? (peek) #\,) (begin (set! i (+ i 1)) (loop (cons (item) acc)))
+              (begin (eat close) (reverse acc))))))
+  (define (value)
+    (skip)
+    (case (peek)
+      [(#\{) (seq #\} (lambda () (let ([k (begin (skip) (str))]) (eat #\:) (cons k (value)))))]
+      [(#\[) (seq #\] value)]
+      [(#\") (str)]
+      [(#\t) (word "true" #t)] [(#\f) (word "false" #f)] [(#\n) (word "null" 'null)]
+      [else (let ([j i])
+              (let loop () (when (and (< i (string-length s)) (memv (peek) (string->list "+-0123456789.eE"))) (set! i (+ i 1)) (loop)))
+              (string->number (substring s j i)))]))
+  (value))
+
 ;; --- Sessione ---
 
 (define (submit chain)
@@ -110,3 +155,11 @@
     (unless (and port token) (error 'submit "manca la sessione: lanciare sotto `dagger run`"))
     (http-post (string->number port) token "/query"
                (format "{\"query\": ~a}" (json-string (format "{ ~a }" (plan->graphql chain)))))))
+
+;; Invia la catena e restituisce il valore della foglia; gli errori del motore diventano errori.
+(define (submit-leaf chain)
+  (let* ([r (json-read (submit chain))] [errs (assoc "errors" r)])
+    (when (and errs (pair? (cdr errs)))
+      (error 'motore (cdr (or (assoc "message" (cadr errs)) (cons #f "errore")))))
+    (let loop ([v (cdr (assoc "data" r))])
+      (if (and (pair? v) (pair? (car v)) (string? (caar v))) (loop (cdar v)) v))))
