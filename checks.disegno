@@ -62,3 +62,7 @@
 
 (def montaggi : (→ [src Dir] (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /cache (cache-volume "c")))))
   [src] auto)
+
+(def montaggi-visti : (≡ (mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /cache (cache-volume "c"))))
+                         [/cache /src])
+  auto)

@@ -170,7 +170,7 @@ Il contenimento è una relazione **induttiva**, non un test booleano. Così la d
 
 | Dominio | Punti | Spostamenti | Regioni | Stato |
 |---|---|---|---|---|
-| Percorsi | `/out` | `"hello"` | sottoalberi | fatto; regioni da fare |
+| Percorsi | `/out` | `"hello"` | sottoalberi | fatto, regioni comprese |
 | Tempo | istanti | durate | finestre | da fare |
 | Indirizzi IP | `10.0.0.5` | offset | blocchi CIDR | da fare |
 | Porte | `8080` | — | intervalli | da fare (solo regioni) |
@@ -271,7 +271,17 @@ Condizioni di consistenza, tutte implementate e coperte da un test di rifiuto:
 
 Una pubblicazione scoperta, protetta da un'osservazione che non è un test (`exists?`) o messa nel ramo "falso" viene rifiutata.
 
-**Cosa resta empirico**: che i test passino o che il binario funzioni sono osservazioni, non proposizioni. Gli unit test del codice dentro i container restano e li esegue Dagger.
+**Regioni e montaggi disgiunti.** Una regione di percorsi è il sottoalbero di un punto. `(⋔ p q)` dice che due sottoalberi sono disgiunti, perché i percorsi si separano a un passo; è induttivo come `⊑`, e `auto` trova il punto di separazione (serve solo la primitiva `distinct?` sui segmenti letterali). I montaggi si raccolgono lungo la catena di un container (`chain`, generato: segue `self` e non scende negli argomenti), perché due container diversi non si contendono il file system. Così la garanzia vale per ogni sorgente:
+
+```
+(def montaggi-disgiunti : (→ [src Dir] (Disjoint-mounts (go-build src)))
+  [src] auto)
+```
+
+**I controlli come teoremi.** `checks.disegno` raccoglie le leggi della libreria standard e le garanzie sui piani: associatività di `+` e `++`, transitività di `⊑`, la legge affine tramite l'istanza, la lettura dei letterali, `pinned`, `Before`, i montaggi. Le leggi generali sono dimostrate per induzione, i casi concreti calcolati da `auto`. Il file si verifica a ogni esecuzione dei test (o da solo: `scheme --script disegno.ss checks.disegno`). È la protezione dalle rotture: una prova di mutazione che rompe `++`, `⊖`, `⊑-step` o la raccolta dei montaggi fa fallire il controllo, con l'errore di tipo che indica la legge violata. I casi che devono essere rifiutati, che un teorema non può enunciare senza negazione, restano in `test.ss`.
+
+**Cosa resta empirico**
+: che i test passino o che il binario funzioni sono osservazioni, non proposizioni. Gli unit test del codice dentro i container restano e li esegue Dagger.
 
 ## Runtime e ospite
 
@@ -299,6 +309,7 @@ Precedente sul lato Dagger: Dang, il linguaggio nativo di Dagger 1.0, conferma c
 | `examples.disegno`, `io.disegno`, `release.disegno` | gli esempi del documento |
 | `go.disegno`, `hello/` | un go build: sorgente dall'host, compilazione in container con cache dei moduli, binario in `bin/` |
 | `disegno.ss` | driver: `scheme --script disegno.ss prog.disegno` stampa i piani; sotto `dagger run` li esegue |
+| `checks.disegno` | le leggi e le garanzie come teoremi, verificate a ogni test |
 | `test.ss` | test: nucleo, tipi, rifiuti, piani a secco e, sotto `dagger run`, dal vivo |
 | `flake.nix` | ambiente: Chez, Dagger, motore dedicato con le CA dell'host |
 
@@ -327,7 +338,9 @@ In cambio della purezza e della semplicità:
 - [ ] Il Changeset rappresenta anche le cancellazioni? Deciderebbe se servono ancora due costruttori di export.
 - [x] Quali osservazioni ammettere e come tiparle: elenco chiuso, `(Obj Kind.bool)`. Resta da tipare osservazioni non booleane, con un `Kind` indicizzato.
 - [x] Tipi raffinati per immagini (tag e digest) e percorsi; struttura `Affine` con la legge dimostrata per i percorsi.
-- [ ] Le altre istanze: tempo, indirizzi IP (modulo 2³², overflow escluso con un raffinamento), porte; le regioni con contenimento e disgiunzione (montaggi che non si sovrappongono, subnet disgiunte).
+- [x] Regioni dei percorsi: contenimento, disgiunzione, montaggi disgiunti come teorema sul piano.
+- [ ] Le altre istanze: tempo, indirizzi IP (modulo 2³², overflow escluso con un raffinamento), porte; subnet disgiunte, porte non allocate due volte.
+- [ ] Negazione nei teoremi (pattern assurdi), per portare anche i casi rifiutati in checks.disegno.
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
