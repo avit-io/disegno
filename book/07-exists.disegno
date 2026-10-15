@@ -1,0 +1,128 @@
+; Capitolo 7 — Esiste
+;
+; Che cosa vuol dire dimostrare che esiste un numero il cui doppio è 4? Per un matematico classico
+; può bastare mostrare che supporre il contrario porta a una contraddizione. Per Brouwer, e poi per
+; Dummett, no: una prova di «esiste un x tale che P» è un x, insieme a una prova che P vale per
+; quell'x. In Disegno questa è letteralmente la definizione: un'esistenza è una coppia.
+;
+;   disegno check book/07-exists.disegno
+
+; --- l'introduzione: pair ---
+; La libreria standard dichiara Σ così:
+;
+;   (data Σ : (→ [A Type] (→ A Type) Type)
+;     [pair : (→ {A Type} {B (→ A Type)} [a A] (B a) (Σ A B))])
+;
+; (Σ A B) prende un tipo A e una famiglia B, un tipo per ogni elemento di A. La sua introduzione,
+; pair, prende un a in A e un elemento di (B a): il tipo della seconda componente dipende dalla
+; prima. Il primo elemento si chiama testimone.
+
+(def il-doppio-di-qualcosa : (Σ Nat (λ [n] (≡ (+ n n) 4)))
+  (pair 2 refl))
+
+; Il checker sa che la seconda componente deve stare in (≡ (+ 2 2) 4), perché il testimone è 2;
+; il calcolo riduce (+ 2 2) a 4, e refl va bene. Con (pair 3 refl) direbbe di no: «refl: atteso
+; (≡ 6 4), trovato (≡ 6 6)».
+
+; --- le eliminazioni: fst e snd ---
+; Da una prova di esistenza si estrae il testimone. È la differenza con la logica classica: chi
+; sa che qualcosa esiste lo sa indicare.
+
+(def il-testimone : (≡ (fst il-doppio-di-qualcosa) 2)
+  auto)
+
+; snd dà la prova, e il suo tipo nomina il primo componente: (B (fst p)).
+;
+;   (def snd : (→ {A Type} {B (→ A Type)} [p (Σ A B)] (B (fst p)))
+;     [(pair _ b)] b)
+
+(def la-prova : (≡ (+ 2 2) 4)
+  (snd il-doppio-di-qualcosa))
+
+; Anche qui le eliminazioni sono in armonia: fst e snd restituiscono esattamente i due pezzi che
+; pair aveva preso, niente di più. (fst (pair a b)) si riduce ad a: una deviazione.
+
+; --- Π e Σ: per ogni, ed esiste ---
+; Una prova di «per ogni n esiste m tale che…» è una funzione che, ricevuto n, restituisce una
+; coppia. Il testimone si calcola. Qui: se n ≤ m, esiste d tale che n + d = m, cioè la differenza.
+; ≤ viene dalla libreria standard:
+;
+;   (data ≤ : (→ Nat Nat Type)
+;     [≤-zero : (≤ zero n)]
+;     [≤-succ : (→ (≤ m n) (≤ (add1 m) (add1 n)))])
+
+(def differenza : (→ (≤ n m) (Σ Nat (λ [d] (≡ (+ n d) m))))
+  [≤-zero]     (pair m refl)
+  [(≤-succ p)] (let [r (differenza p)]
+                 (pair (fst r) (cong add1 (snd r)))))
+
+; Si legga la prova come un programma. Se n è zero, la differenza è m stesso, e (+ 0 m) si riduce a
+; m. Se n e m sono (add1 n') e (add1 m'), la differenza è quella tra n' e m', e la prova si porta
+; dentro add1 con cong. Il teorema calcola: chiesto quanto manca da 2 a 5, risponde.
+
+(def tre-da-cinque : (≡ (fst (differenza (the (≤ 2 5) auto))) 3)
+  auto)
+
+; La prova (≤ 2 5) l'ha trovata auto, e da essa differenza ha estratto il 3. Una dimostrazione
+; d'esistenza è anche un algoritmo.
+
+; --- un tipo che nasconde un valore ---
+; Σ serve anche quando un valore non si conosce in anticipo. Tenere solo alcuni elementi di un
+; vettore dà un vettore, ma di quale lunghezza? Dipende dagli elementi. Il risultato allora è:
+; esiste un k, e un vettore di k elementi.
+
+(data Vec : (→ Type Nat Type)
+  [vnil  : (Vec A zero)]
+  [vcons : (→ A (Vec A n) (Vec A (add1 n)))])
+
+(def tieni : (→ (→ A Bool) (Vec A n) (Σ Nat (λ [k] (Vec A k))))
+  [_ vnil]            (pair 0 vnil)
+  [p (vcons x resto)] (let [r (tieni p resto)]
+                        (if (p x)
+                            (pair (add1 (fst r)) (vcons x (snd r)))
+                            r)))
+
+(def pari? : (→ Nat Bool)
+  [zero]            true
+  [(add1 zero)]     false
+  [(add1 (add1 k))] (pari? k))
+
+(def solo-i-pari : (≡ (tieni pari? (vcons 1 (vcons 2 (vcons 4 vnil))))
+                      (pair 2 (vcons 2 (vcons 4 vnil))))
+  auto)
+
+; --- × : la coppia senza dipendenza ---
+; Se il tipo della seconda componente non dipende dalla prima, Σ è il prodotto, la coppia di
+; sempre. Nella libreria standard:
+;
+;   (def × : (→ Type Type Type)
+;     [A B] (Σ A (λ [_] B)))
+;
+; Come → è il caso di Π che non nomina l'argomento, × è il caso di Σ che non nomina il testimone.
+; Letto come proposizione, (× A B) è «A e B»: una prova di entrambe.
+
+(def coppia : (× Nat String)
+  (pair 1 "uno"))
+
+(def scambia : (→ (× A B) (× B A))
+  [(pair a b)] (pair b a))
+
+; scambia è un programma, e insieme la prova che la congiunzione è commutativa.
+
+; --- esercizi ---
+;
+; 1. Esiste un numero che, sommato a 3, dà 5.
+; (def tre-più : (Σ Nat (λ [n] (≡ (+ 3 n) 5)))
+;   ___)
+;
+; 2. Ogni naturale ha un successore: per ogni n esiste m tale che m ≡ (add1 n).
+; (def successore-esiste : (→ [n Nat] (Σ Nat (λ [m] (≡ m (add1 n)))))
+;   ___)
+;
+; 3. Una lista diventa un vettore, di qualche lunghezza.
+; (def da-lista : (→ (List A) (Σ Nat (λ [k] (Vec A k))))
+;   ___)
+;
+; 4. Se A implica B, una coppia di A e C dà una coppia di B e C.
+; (def a-sinistra : (→ (→ A B) (× A C) (× B C))
+;   ___)

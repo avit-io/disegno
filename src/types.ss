@@ -556,16 +556,17 @@
            (let ([a (car (car (caddr want)))] [l (ctx-l c)])  ; ogni elemento riceve il tipo atteso
              (fold-right (lambda (x acc) `(app (app (app (glob ::) ,(reify l a) i) ,(check c x a) e) ,acc e))
                          `(app (glob vuota) ,(reify l a) i) (cdr e)))]
-          [(and (pair? e) (symbol? (car e)) (con? (car e)) (not (known-local? c (car e))) (pair? (cdr e))
+          [(and (pair? e) (symbol? (car e)) (gget (car e)) (not (known-local? c (car e))) (pair? (cdr e))
                 (check-introduction c e want))
            => values]
           [else (check-inferred c e ty)])))
 
 (define (known-local? c x) (or (index-of x (ctx-names c)) (assq x (ctx-defs c))))
 
-;; Un'introduzione (un costruttore applicato) si controlla contro il tipo che introduce: prima il
+;; Un'applicazione di un globale (un'introduzione, o una funzione come if) si controlla contro il tipo atteso: prima il
 ;; tipo del risultato si unifica con quello atteso, poi gli argomenti si controllano nell'ordine,
 ;; ciascuno contro il suo dominio ormai noto. (pair 2 refl) contro (Σ Nat (λ [n] (≡ (+ n n) 4))).
+;; Così il tipo atteso scende anche negli argomenti: (if b (pair …) r) sa quale Σ costruire.
 ;; → termine, o #f se il risultato non combacia (si ripiega sull'inferenza, che darà l'errore).
 (define (check-introduction c e want)
   (when (and (not (privileged)) (char=? (string-ref (symbol->string (car e)) 0) #\%))   ; come in infer

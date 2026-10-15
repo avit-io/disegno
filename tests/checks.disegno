@@ -165,3 +165,6 @@
 
 (def nomi-come-variabili : (→ Nat (→ Nat Nat) Nat)   ; step e port sono costruttori altrove
   [port step] (step port))
+
+(def atteso-negli-argomenti : (→ Bool (Σ Nat (λ [n] (≡ n n))))   ; il tipo atteso scende dentro if
+  [b] (if b (pair 1 refl) (pair 2 refl)))
