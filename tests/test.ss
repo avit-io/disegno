@@ -279,10 +279,10 @@
 
 
 
-(define (esegui-rotto)                                   ; → (messaggio . output) di run 'rotto
+(define (esegui entry)                                    ; → (messaggio . output) di run entry
   (let* ([msg #f]
          [out (with-output-to-string
-                (lambda () (set! msg (guard (e [(message-condition? e) (condition-message e)]) (run 'rotto) #f))))])
+                (lambda () (set! msg (guard (e [(message-condition? e) (condition-message e)]) (run entry) #f))))])
     (cons msg out)))
 
 (when (getenv "DAGGER_SESSION_PORT")
@@ -297,18 +297,28 @@
   (assert (string=? (call-with-input-file (string-append dir "/out3/manca/esito") get-string-all) "fallisce\n"))
   ;; Un passo fallito dice dove sta nel sorgente, con e senza i log per passo (DISEGNO_LOGS, come
   ;; in CI: un gruppo per with-exec). Prima senza: Chez non sa togliere una variabile d'ambiente.
-  (check-string "(def rotto : (→ (Export Dir))
+  ;; in-diretta ha un comando nuovo a ogni prova, così non è in cache e le righe passano dal flusso.
+  (let ([n (time-nanosecond (current-time))])
+    (check-string (format "(def rotto : (→ (Export Dir))
     (overlay \"rotto\" (pipe (container) (from \"alpine\")
                              (with-exec [\"sh\" \"-c\" \"echo A; sleep 0.3; echo B >&2; sleep 0.3; echo C\"])
-                             (with-exec [\"sh\" \"-c\" \"echo male >&2; exit 3\"]) (dir-of /tmp))))")
-  (let ([r (esegui-rotto)])
-    (assert (and (car r) (contiene? (car r) "<stringa>:4:30: passo fallito (exit 3)")))
-    (assert (string=? (cdr r) "")))
-  (putenv "DISEGNO_LOGS" "1")
-  (let* ([r (esegui-rotto)] [msg (car r)] [out (cdr r)])
-    (assert (contiene? out "── sh -c \"echo A; sleep 0.3; echo B >&2; sleep 0.3; echo C\"\nA\nB\nC\n"))   ; intrecciati
-    (assert (contiene? out "── sh -c \"echo male >&2; exit 3\"\nmale\n"))
-    (assert (and msg (contiene? msg "<stringa>:4:30: passo fallito (exit 3)"))))
+                             (with-exec [\"sh\" \"-c\" \"echo male >&2; exit 3\"]) (dir-of /tmp))))
+  (def in-diretta : (→ (Export Dir))
+    (overlay \"rotto\" (pipe (container) (from \"alpine\")
+                             (with-exec [\"sh\" \"-c\" \"echo A~a; sleep 0.3; echo B >&2; sleep 0.3; echo C\"])
+                             (with-exec [\"sh\" \"-c\" \"echo male~a >&2; exit 3\"]) (dir-of /tmp))))" n n))
+    (let ([r (esegui 'rotto)])
+      (assert (and (car r) (contiene? (car r) "<stringa>:4:30: passo fallito (exit 3)")))
+      (assert (string=? (cdr r) "")))
+    (putenv "DISEGNO_LOGS" "1")
+    (let* ([r (esegui 'in-diretta)] [msg (car r)] [out (cdr r)])
+      (assert (> streamed 0))                                 ; le righe sono arrivate dal flusso
+      (assert (contiene? out (format "\"\nA~a\nB\nC\n" n)))   ; intrecciate, nell'ordine d'arrivo
+      (assert (contiene? out (format "\"\nmale~a\n" n)))
+      (assert (and msg (contiene? msg "<stringa>:8:30: passo fallito (exit 3)"))))
+    (set! logged '())                                         ; un run nuovo, come un processo nuovo
+    (let ([r (esegui 'in-diretta)])                          ; il primo passo ora è in cache: il flusso
+      (assert (contiene? (cdr r) (format "\"\nA~a\nB\nC\n" n)))))   ; tace, le righe sono di combinedOutput
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

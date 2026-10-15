@@ -103,6 +103,44 @@
                        [else (loop (+ i 1))]))])
         (substring resp i (string-length resp))))))
 
+;; --- il flusso dei log del motore: server-sent events su /v1/logs, record OTLP in JSON ---
+;; Gira in un thread: la read è __collect_safe (su un buffer immobile), così mentre aspetta una
+;; riga non ferma il garbage collector, e con lui il thread principale. Le righe si separano
+;; sui byte \n, che in UTF-8 non stanno mai dentro un carattere.
+
+(define c-read-safe (foreign-procedure __collect_safe "read" (int u8* size_t) ssize_t))
+(define c-shutdown (foreign-procedure "shutdown" (int int) int))
+(define (log-stream-stop fd) (c-shutdown fd 2))          ; SHUT_RDWR: anche la read in attesa torna
+
+(define (log-stream port token on-record)               ; on-record riceve ogni record (alist); → fd
+  (let ([fd (c-socket 2 1 0)])
+    (unless (zero? (c-connect fd (sockaddr-localhost port) 16))
+      (c-close fd) (error 'http "connect fallita" port))
+    (write-all fd (string->utf8
+                    (format "GET /v1/logs HTTP/1.0\r\nHost: 127.0.0.1\r\nAuthorization: Basic ~a\r\nAccept: text/event-stream\r\n\r\n"
+                            (base64 (string->utf8 (string-append token ":"))))))
+    (fork-thread
+      (lambda ()
+        (let ([buf (make-immobile-bytevector 65536)])
+          (let-values ([(line get) (open-bytevector-output-port)])
+            (let loop ()
+              (let ([k (c-read-safe fd buf 65536)])
+                (when (> k 0)
+                  (do ([i 0 (+ i 1)]) ((= i k))
+                    (let ([b (bytevector-u8-ref buf i)])
+                      (if (= b 10) (sse-line (utf8->string (get)) on-record) (put-u8 line b))))
+                  (loop))))))))
+    fd))
+
+(define (sse-line s on-record)                          ; data: {"resourceLogs":[{"scopeLogs":[{"logRecords":[…]}]}]}
+  (when (and (> (string-length s) 7) (string=? (substring s 0 7) "data: {"))
+    (for-each (lambda (rl)
+                (for-each (lambda (sl) (for-each on-record (json-field sl "logRecords" '())))
+                          (json-field rl "scopeLogs" '())))
+              (json-field (json-read (substring s 6 (string-length s))) "resourceLogs" '()))))
+
+(define (json-field obj k default) (cond [(and (list? obj) (assoc k obj)) => cdr] [else default]))
+
 ;; --- JSON (solo lettura delle risposte): oggetti → alist, array → liste, null → 'null ---
 
 (define (json-read s)

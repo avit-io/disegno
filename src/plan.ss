@@ -124,9 +124,6 @@
 ;; --- i log: con DISEGNO_LOGS, l'output di ogni with-exec, un gruppo per passo ---
 ;; Dagger è pigro e ha la cache: chiedere l'output del prefisso che termina con un withExec esegue
 ;; la catena fino a lì, e la richiesta finale non rifà niente. I log escono nell'ordine dei passi.
-;; combinedOutput intreccia stdout e stderr nell'ordine in cui il motore li riceve.
-;; ponytail: un passo fallito li ha separati (stdout, poi stderr): intrecciarli vorrebbe dire
-;; rieseguire il comando con expect: ANY, che il motore non ha in cache.
 
 (define logged '())                                      ; prefissi già mostrati
 
@@ -145,14 +142,88 @@
 (define (lines . ss)                                     ; testi uno dopo l'altro, ciascuno chiuso da un a capo
   (apply string-append (map (lambda (s) (if (or (string=? s "") (char=? (string-ref s (- (string-length s) 1)) #\newline)) s (string-append s "\n"))) ss)))
 
+;; Un passo: si apre il gruppo, le righe arrivano dal flusso mentre il passo gira, si chiude.
+;; Un passo in cache non esegue niente e il flusso tace: allora si mostra combinedOutput, che
+;; intreccia stdout e stderr nell'ordine in cui il motore li ha ricevuti.
+;; ponytail: un passo fallito senza flusso ha stdout e stderr separati (le extensions
+;; dell'errore): intrecciarli vorrebbe dire rieseguirlo con expect: ANY, fuori dalla cache.
 (define (show-step pre)
   (let* ([step (list-ref pre (- (length pre) 1))] [title (show-args (cadr (assq 'args (cdr step))))])
-    (guard (e [(exec-error e)
-               => (lambda (x)                            ; il motore dà stdout e stderr separati
-                    (define (ext k) (cond [(assoc k x) => cdr] [else ""]))
-                    (log-group title (lines (ext "stdout") (ext "stderr")) #t)
-                    (step-failed (hashtable-ref step-pos step #f) (ext "exitCode") title))])
-      (log-group title (lines (submit-leaf (append pre '((combinedOutput)))))))))
+    (start-stream!)
+    (set! log-port (current-output-port))
+    (group-open title)
+    (let ([before streamed])
+      (guard (e [(exec-error e)
+                 => (lambda (x)
+                      (define (ext k) (cond [(assoc k x) => cdr] [else ""]))
+                      (settle!)
+                      (when (= streamed before) (out (lines (ext "stdout") (ext "stderr"))))
+                      (group-close)
+                      (step-failed (hashtable-ref step-pos step #f) (ext "exitCode") title))])
+        (let ([o (submit-leaf (append pre '((combinedOutput))))])
+          (settle!)
+          (when (= streamed before) (out o))
+          (group-close))))))
+
+;; --- il flusso: le righe dei comandi appena il motore le riceve (in CI, con DISEGNO_LOGS) ---
+
+(define out-mutex (make-mutex))                          ; il thread del flusso e il principale
+(define log-port #f)                                     ; la porta del passo corrente
+(define streamed 0)                                      ; righe arrivate dal flusso
+(define at-line-start #t)
+(define stream-on #f)                                    ; #f: da aprire; un fd: aperto; no: chiuso o assente
+
+(define stream-since 0)                                 ; ns: il flusso ripete lo storico della sessione
+
+(define (start-stream!)
+  (unless stream-on
+    (set! stream-since (let ([t (current-time 'time-utc)]) (+ (* (time-second t) 1000000000) (time-nanosecond t))))
+    (set! stream-on (guard (e [#t 'no])
+                      (log-stream (string->number (getenv "DAGGER_SESSION_PORT")) (getenv "DAGGER_SESSION_TOKEN") on-log)))))
+
+;; Il flusso si chiude prima della sessione: Dagger non sopporta una richiesta ancora aperta.
+(define (stop-stream!)
+  (when (number? stream-on) (log-stream-stop stream-on) (set! stream-on #f)))   ; un altro run lo riapre
+
+;; Solo l'output dei comandi (stdio.stream); non i valori restituiti, che il motore ripete come
+;; log verbosi (dagger.io/logs.verbose): combinedOutput uscirebbe due volte. E non lo storico:
+;; all'iscrizione il motore rimanda i log già prodotti nella sessione.
+(define (on-log rec)
+  (let ([body (json-field (json-field rec "body" '()) "stringValue" #f)]
+        [keys (map (lambda (a) (json-field a "key" #f)) (json-field rec "attributes" '()))])
+    (when (and body log-port (member "stdio.stream" keys) (not (member "dagger.io/logs.verbose" keys))
+               (>= (or (string->number (json-field rec "timeUnixNano" "0")) 0) stream-since))
+      (with-mutex out-mutex (set! streamed (+ streamed 1)) (emit body)))))
+
+(define (out s) (with-mutex out-mutex (emit s)))
+(define (emit s)
+  (unless (string=? s "")
+    (display s log-port) (flush-output-port log-port)
+    (set! at-line-start (char=? (string-ref s (- (string-length s) 1)) #\newline))))
+
+;; Le ultime righe possono arrivare dopo la risposta: si aspetta che il flusso taccia.
+;; ponytail: 100 ms di silenzio bastano su un motore locale; fino a 2 s se continua a parlare.
+(define (settle!)
+  (when (number? stream-on)
+    (let loop ([n streamed] [k 0])
+      (sleep (make-time 'time-duration 100000000 0))
+      (unless (or (= n streamed) (> k 20)) (loop streamed (+ k 1))))))
+
+(define (gitlab-section what)                            ; section_start / section_end del passo
+  (format "\x1b;[0Ksection_~a:~a:passo-~a" what (time-second (current-time)) (length logged)))
+
+;; ponytail: su GitLab le sezioni partono chiuse anche per il passo fallito: si apre prima di
+;; sapere come finisce. Il messaggio d'errore, fuori dalla sezione, dice comunque dove guardare.
+(define (group-open title)
+  (out (cond [(getenv "GITHUB_ACTIONS") (format "::group::~a\n" title)]
+             [(getenv "GITLAB_CI") (format "~a[collapsed=true]\r\x1b;[0K~a\n" (gitlab-section "start") title)]
+             [else (format "── ~a\n" title)])))
+
+(define (group-close)
+  (unless at-line-start (out "\n"))
+  (out (cond [(getenv "GITHUB_ACTIONS") "::endgroup::\n"]
+             [(getenv "GITLAB_CI") (format "~a\r\x1b;[0K\n" (gitlab-section "end"))]
+             [else ""])))
 
 ;; Un passo fallito: dove sta nel sorgente, con che exit code, quale comando. Su GitHub anche
 ;; un'annotazione, che compare sul file e sulla riga.
@@ -161,15 +232,6 @@
     (when (getenv "GITHUB_ACTIONS")
       (printf "::error~@[ ~{file=~a,line=~a,col=~a~}~]::~a\n" at what))
     (error 'disegno (format "~@[~{~a:~a:~a~}: ~]~a" at what))))
-
-(define (log-group title body . failed)                 ; un passo fallito resta aperto, dove si può
-  (cond [(getenv "GITHUB_ACTIONS") (printf "::group::~a\n~a::endgroup::\n" title body)]
-        [(getenv "GITLAB_CI")
-         (let ([id (format "passo-~a" (length logged))] [t (time-second (current-time))])
-           (printf "\x1b;[0Ksection_start:~a:~a[collapsed=~a]\r\x1b;[0K~a\n~a\x1b;[0Ksection_end:~a:~a\r\x1b;[0K\n"
-                   t id (if (null? failed) "true" "false") title body t id))]
-        [else (printf "── ~a\n~a" title body)])
-  (flush-output-port))
 
 (define (resolve-live ch) (log-steps ch) (submit-leaf (append ch '((id)))))
 (define (resolve-dry ch) (format "<~a>" (plan->graphql ch)))
@@ -185,7 +247,9 @@
     (guard (e [(exec-error e) => (lambda (x)                ; anche senza log: quale passo, e dove
                                    (let ([cmd (cdr (assoc "cmd" x))])
                                      (step-failed (cmd-pos cmd) (cdr (assoc "exitCode" x)) (show-args cmd))))])
-      (let ([p (plan resolve-live entry)]) (log-steps p) (submit-leaf p)))))
+      (dynamic-wind void
+        (lambda () (let ([p (plan resolve-live entry)]) (log-steps p) (submit-leaf p)))
+        stop-stream!))))
 
 (define (exec-error e)                                   ; → le extensions di un EXEC_ERROR, o #f
   (and (irritants-condition? e) (pair? (condition-irritants e))
