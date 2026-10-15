@@ -54,34 +54,60 @@
   [vuota : (List A)]
   [::    : (→ A (List A) (List A))])
 
-; --- tipi opachi del motore ---
+; --- il motore: tipi ed extern generati dallo schema (gen.ss) ---
 
-(extern String    : Type String)
-(extern Dir       : Type Directory)
-(extern Container : Type Container)
+(extern String : Type String)
+(extern Remote : (→ Type Type) %remote)   ; osservazioni: esistono solo durante l'esecuzione
 
-; --- file system del motore: valori immutabili, scrivere è costruire una nuova directory ---
+(include "engine.disegno")
 
-(extern empty     : Dir                                                directory)
-(extern with-file : (→ [dir Dir] [path String] [contents String] Dir) Directory.withNewFile)
-(extern without   : (→ [dir Dir] [path String] Dir)                    Directory.withoutFile)
-(extern sub       : (→ [dir Dir] [path String] Dir)                    Directory.directory)
-(extern put       : (→ [dir Dir] [path String] [source Dir] Dir)       Directory.withDirectory)
+; --- nomi corti: file system del motore, valori immutabili; scrivere è costruire una nuova directory ---
+
+(def Dir : Type
+  Directory)
+
+(def empty : Dir
+  Query.directory)
+
+(def with-file : (→ Dir String String Dir)
+  [d path contents] (Directory.with-new-file d path contents))
+
+(def without : (→ Dir String Dir)
+  [d path] (Directory.without-file d path))
+
+(def sub : (→ Dir String Dir)
+  [d path] (Directory.directory d path))
+
+(def put : (→ Dir String Dir Dir)
+  [d path source] (Directory.with-directory d path source))
 
 ; --- container: anch'essi valori immutabili; with-exec dichiara un comando, non lo esegue ---
 
-(extern container    : Container                                                     container)
-(extern from         : (→ [ctr Container] [address String] Container)                 Container.from)
-(extern with-exec    : (→ [ctr Container] [args (List String)] Container)             Container.withExec)
-(extern with-dir     : (→ [ctr Container] [path String] [source Dir] Container)       Container.withDirectory)
-(extern with-workdir : (→ [ctr Container] [path String] Container)                    Container.withWorkdir)
-(extern with-env     : (→ [ctr Container] [name String] [value String] Container)     Container.withEnvVariable)
-(extern dir-of       : (→ [ctr Container] [path String] Dir)                          Container.directory)
+(def container : Container
+  Query.container)
+
+(def from : (→ Container String Container)
+  [c address] (Container.from c address))
+
+(def with-exec : (→ Container (List String) Container)
+  [c args] (Container.with-exec c args))
+
+(def with-dir : (→ Container String Dir Container)
+  [c path source] (Container.with-directory c path source))
+
+(def with-workdir : (→ Container String Container)
+  [c path] (Container.with-workdir c path))
+
+(def with-env : (→ Container String String Container)
+  [c name value] (Container.with-env-variable c name value))
+
+(def dir-of : (→ Container String Dir)
+  [c path] (Container.directory c path))
 
 ; --- confine con l'host: il programma dichiara cosa riceve e cosa restituisce ---
 ; %host-dir è riservato: l'utente legge l'host solo tramite (Host "percorso") nella firma di main.
 
-(extern %host-dir : (→ [path String] Dir) host.directory)
+(extern %host-dir : (→ [path String] Directory) host.directory)
 
 (def Host : (→ String Type)
   [path] Dir)
@@ -94,8 +120,9 @@
 ; if (sopra) decide su valori noti quando si costruisce il piano; branch su osservazioni Remote,
 ; che esistono solo durante l'esecuzione. Un (Remote Bool) non è un Bool: non entra in un if.
 
-(extern Remote   : (→ Type Type)                                            %remote)
-(extern try-exec : (→ [ctr Container] [args (List String)] Container)      (Container.withExec (expect ANY)))
-(extern passes?  : (→ [ctr Container] (Remote Bool))                        Container.exitCode)
-(extern exists?  : (→ [dir Dir] [path String] (Remote Bool))                Directory.exists)
-(extern branch   : (→ (Remote Bool) A A A)                                  %branch)
+(extern try-exec : (→ [ctr Container] [args (List String)] Container) (Container.withExec (expect ANY)))
+(extern passes?  : (→ [ctr Container] (Remote Bool))                   Container.exitCode)
+(extern branch   : (→ (Remote Bool) A A A)                             %branch)
+
+(def exists? : (→ Dir String (Remote Bool))
+  [d path] (Directory.exists d path))

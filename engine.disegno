@@ -1,0 +1,117 @@
+; Generato da gen.ss dallo schema di Dagger: non modificare a mano.
+
+(extern Container : Type Container)
+(extern Directory : Type Directory)
+(extern File : Type File)
+(extern CacheVolume : Type CacheVolume)
+(extern GitRepository : Type GitRepository)
+(extern GitRef : Type GitRef)
+
+; --- Query ---
+
+(extern Query.cache-volume : (→ [key String] CacheVolume) cacheVolume)
+(extern Query.container : Container container)
+(extern Query.directory : Directory directory)
+(extern Query.file : (→ [name String] [contents String] File) file)
+(extern Query.git : (→ [url String] GitRepository) git)
+(extern Query.http : (→ [url String] File) http)
+
+; --- Container ---
+
+(extern Container.as-tarball : (→ [self Container] File) Container.asTarball)
+(extern Container.directory : (→ [self Container] [path String] Directory) Container.directory)
+(extern Container.exists : (→ [self Container] [path String] (Remote Bool)) Container.exists)
+(extern Container.experimental-with-all-gpus : (→ [self Container] Container) Container.experimentalWithAllGPUs)
+(extern Container.experimental-with-gpu : (→ [self Container] [devices (List String)] Container) Container.experimentalWithGPU)
+(extern Container.file : (→ [self Container] [path String] File) Container.file)
+(extern Container.from : (→ [self Container] [address String] Container) Container.from)
+(extern Container.import : (→ [self Container] [source File] Container) Container.import)
+(extern Container.rootfs : (→ [self Container] Directory) Container.rootfs)
+(extern Container.terminal : (→ [self Container] Container) Container.terminal)
+(extern Container.with-annotation : (→ [self Container] [name String] [value String] Container) Container.withAnnotation)
+(extern Container.with-default-args : (→ [self Container] [args (List String)] Container) Container.withDefaultArgs)
+(extern Container.with-default-terminal-cmd : (→ [self Container] [args (List String)] Container) Container.withDefaultTerminalCmd)
+(extern Container.with-directory : (→ [self Container] [path String] [source Directory] Container) Container.withDirectory)
+(extern Container.with-docker-healthcheck : (→ [self Container] [args (List String)] Container) Container.withDockerHealthcheck)
+(extern Container.with-entrypoint : (→ [self Container] [args (List String)] Container) Container.withEntrypoint)
+(extern Container.with-env-variable : (→ [self Container] [name String] [value String] Container) Container.withEnvVariable)
+(extern Container.with-error : (→ [self Container] [err String] Container) Container.withError)
+(extern Container.with-exec : (→ [self Container] [args (List String)] Container) Container.withExec)
+(extern Container.with-exposed-port : (→ [self Container] [port Nat] Container) Container.withExposedPort)
+(extern Container.with-file : (→ [self Container] [path String] [source File] Container) Container.withFile)
+(extern Container.with-label : (→ [self Container] [name String] [value String] Container) Container.withLabel)
+(extern Container.with-mounted-cache : (→ [self Container] [path String] [cache CacheVolume] Container) Container.withMountedCache)
+(extern Container.with-mounted-directory : (→ [self Container] [path String] [source Directory] Container) Container.withMountedDirectory)
+(extern Container.with-mounted-file : (→ [self Container] [path String] [source File] Container) Container.withMountedFile)
+(extern Container.with-mounted-temp : (→ [self Container] [path String] Container) Container.withMountedTemp)
+(extern Container.with-new-file : (→ [self Container] [path String] [contents String] Container) Container.withNewFile)
+(extern Container.with-rootfs : (→ [self Container] [directory Directory] Container) Container.withRootfs)
+(extern Container.with-symlink : (→ [self Container] [target String] [linkName String] Container) Container.withSymlink)
+(extern Container.with-user : (→ [self Container] [name String] Container) Container.withUser)
+(extern Container.with-volatile-variable : (→ [self Container] [name String] [value String] Container) Container.withVolatileVariable)
+(extern Container.with-workdir : (→ [self Container] [path String] Container) Container.withWorkdir)
+(extern Container.without-annotation : (→ [self Container] [name String] Container) Container.withoutAnnotation)
+(extern Container.without-default-args : (→ [self Container] Container) Container.withoutDefaultArgs)
+(extern Container.without-directory : (→ [self Container] [path String] Container) Container.withoutDirectory)
+(extern Container.without-docker-healthcheck : (→ [self Container] Container) Container.withoutDockerHealthcheck)
+(extern Container.without-entrypoint : (→ [self Container] Container) Container.withoutEntrypoint)
+(extern Container.without-env-variable : (→ [self Container] [name String] Container) Container.withoutEnvVariable)
+(extern Container.without-exposed-port : (→ [self Container] [port Nat] Container) Container.withoutExposedPort)
+(extern Container.without-file : (→ [self Container] [path String] Container) Container.withoutFile)
+(extern Container.without-files : (→ [self Container] [paths (List String)] Container) Container.withoutFiles)
+(extern Container.without-label : (→ [self Container] [name String] Container) Container.withoutLabel)
+(extern Container.without-mount : (→ [self Container] [path String] Container) Container.withoutMount)
+(extern Container.without-registry-auth : (→ [self Container] [address String] Container) Container.withoutRegistryAuth)
+(extern Container.without-secret-variable : (→ [self Container] [name String] Container) Container.withoutSecretVariable)
+(extern Container.without-unix-socket : (→ [self Container] [path String] Container) Container.withoutUnixSocket)
+(extern Container.without-user : (→ [self Container] Container) Container.withoutUser)
+(extern Container.without-volatile-variable : (→ [self Container] [name String] Container) Container.withoutVolatileVariable)
+(extern Container.without-workdir : (→ [self Container] Container) Container.withoutWorkdir)
+
+; --- Directory ---
+
+(extern Directory.as-git : (→ [self Directory] GitRepository) Directory.asGit)
+(extern Directory.chown : (→ [self Directory] [path String] [owner String] Directory) Directory.chown)
+(extern Directory.diff : (→ [self Directory] [other Directory] Directory) Directory.diff)
+(extern Directory.directory : (→ [self Directory] [path String] Directory) Directory.directory)
+(extern Directory.docker-build : (→ [self Directory] Container) Directory.dockerBuild)
+(extern Directory.exists : (→ [self Directory] [path String] (Remote Bool)) Directory.exists)
+(extern Directory.file : (→ [self Directory] [path String] File) Directory.file)
+(extern Directory.filter : (→ [self Directory] Directory) Directory.filter)
+(extern Directory.terminal : (→ [self Directory] Directory) Directory.terminal)
+(extern Directory.with-directory : (→ [self Directory] [path String] [source Directory] Directory) Directory.withDirectory)
+(extern Directory.with-error : (→ [self Directory] [err String] Directory) Directory.withError)
+(extern Directory.with-file : (→ [self Directory] [path String] [source File] Directory) Directory.withFile)
+(extern Directory.with-new-directory : (→ [self Directory] [path String] Directory) Directory.withNewDirectory)
+(extern Directory.with-new-file : (→ [self Directory] [path String] [contents String] Directory) Directory.withNewFile)
+(extern Directory.with-patch : (→ [self Directory] [patch String] Directory) Directory.withPatch)
+(extern Directory.with-patch-file : (→ [self Directory] [patch File] Directory) Directory.withPatchFile)
+(extern Directory.with-symlink : (→ [self Directory] [target String] [linkName String] Directory) Directory.withSymlink)
+(extern Directory.with-timestamps : (→ [self Directory] [timestamp Nat] Directory) Directory.withTimestamps)
+(extern Directory.without-directory : (→ [self Directory] [path String] Directory) Directory.withoutDirectory)
+(extern Directory.without-file : (→ [self Directory] [path String] Directory) Directory.withoutFile)
+(extern Directory.without-files : (→ [self Directory] [paths (List String)] Directory) Directory.withoutFiles)
+
+; --- File ---
+
+(extern File.chown : (→ [self File] [owner String] File) File.chown)
+(extern File.with-name : (→ [self File] [name String] File) File.withName)
+(extern File.with-replaced : (→ [self File] [search String] [replacement String] File) File.withReplaced)
+(extern File.with-timestamps : (→ [self File] [timestamp Nat] File) File.withTimestamps)
+
+; --- CacheVolume ---
+
+
+; --- GitRepository ---
+
+(extern GitRepository.branch : (→ [self GitRepository] [name String] GitRef) GitRepository.branch)
+(extern GitRepository.commit : (→ [self GitRepository] [id String] GitRef) GitRepository.commit)
+(extern GitRepository.head : (→ [self GitRepository] GitRef) GitRepository.head)
+(extern GitRepository.latest-version : (→ [self GitRepository] GitRef) GitRepository.latestVersion)
+(extern GitRepository.ref : (→ [self GitRepository] [name String] GitRef) GitRepository.ref)
+(extern GitRepository.tag : (→ [self GitRepository] [name String] GitRef) GitRepository.tag)
+
+; --- GitRef ---
+
+(extern GitRef.common-ancestor : (→ [self GitRef] [other GitRef] GitRef) GitRef.commonAncestor)
+(extern GitRef.tree : (→ [self GitRef] Directory) GitRef.tree)

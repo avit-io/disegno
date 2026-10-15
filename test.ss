@@ -102,7 +102,17 @@
 (rifiuta "(def confuso : (→ (Remote Bool) Dir) [c] (if c empty empty))" "atteso")
 (rifiuta "(def scelta : (→ Bool Dir) [b] (branch b empty empty))" "atteso")
 
+;; Extern generati dallo schema, usati direttamente: Nat e oggetti per ID negli argomenti.
+(check-string "
+  (def servizio : (→ [src (Host \"/x\")] (Export Dir))
+    [src] (overlay \"out\" (pipe (Query.git \"https://example.com/r.git\") (GitRepository.branch \"main\") GitRef.tree
+                              (put \"porta\" (dir-of (Container.with-exposed-port (container) 8080) \"/\")))))")
+(define secco3 (plan->graphql (plan resolve-dry 'servizio)))
+(assert (contiene? secco3 "git(url: \"https://example.com/r.git\") { branch(name: \"main\") { tree {"))
+(assert (contiene? secco3 "withExposedPort(port: 8080)"))
+
 ;; --- dal vivo ---
+
 
 
 

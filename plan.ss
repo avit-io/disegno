@@ -42,9 +42,12 @@
 (define (map-ltr f xs ys)                                ; map con ordine garantito, da sinistra
   (reverse (fold-left (lambda (acc x y) (cons (f x y) acc)) '() xs ys)))
 
-(define (gql-arg v resolve)                              ; stringa, lista o oggetto (per ID)
+(define (gql-arg v resolve)                              ; stringa, naturale, booleano, lista o oggetto (per ID)
   (let ([v (pick v resolve)])
     (cond [(eq? (car v) 'vstr) (cadr v)]
+          [(and (eq? (car v) 'vglob) (memq (cadr v) '(true false))) (eq? (cadr v) 'true)]
+          [(and (eq? (car v) 'vglob) (eq? (cadr v) 'zero)) 0]
+          [(and (eq? (car v) 'vglob) (eq? (cadr v) 'add1)) (+ 1 (gql-arg (car (explicit (caddr v))) resolve))]
           [(and (eq? (car v) 'vglob) (eq? (cadr v) 'vuota)) '()]
           [(and (eq? (car v) 'vglob) (eq? (cadr v) '::))
            (let* ([xs (explicit (caddr v))] [x (gql-arg (car xs) resolve)]) (cons x (gql-arg (cadr xs) resolve)))]

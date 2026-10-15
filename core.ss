@@ -150,11 +150,12 @@
 
 ;; --- Sessione ---
 
-(define (submit chain)
+(define (query text)                                    ; documento GraphQL → risposta JSON (testo)
   (let ([port (getenv "DAGGER_SESSION_PORT")] [token (getenv "DAGGER_SESSION_TOKEN")])
     (unless (and port token) (error 'submit "manca la sessione: lanciare sotto `dagger run`"))
-    (http-post (string->number port) token "/query"
-               (format "{\"query\": ~a}" (json-string (format "{ ~a }" (plan->graphql chain)))))))
+    (http-post (string->number port) token "/query" (format "{\"query\": ~a}" (json-string text)))))
+
+(define (submit chain) (query (format "{ ~a }" (plan->graphql chain))))
 
 ;; Invia la catena e restituisce il valore della foglia; gli errori del motore diventano errori.
 (define (submit-leaf chain)

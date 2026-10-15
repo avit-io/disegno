@@ -339,6 +339,7 @@
     [(def) (check-def d)]
     [(extern) (check-extern d)]
     [(record) (for-each check-decl (record->decls d))]
+    [(include) (unless (privileged) (oops "include è riservato alla libreria standard")) (check-file (cadr d))]
     [else (oops "dichiarazione sconosciuta: ~s" d)]))
 
 ;; (record Service [name : String] [replicas : Nat] [ok : (≥ replicas 1)]) è zucchero per
