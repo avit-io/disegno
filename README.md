@@ -28,14 +28,19 @@ Un linguaggio totale, con tipi dipendenti, per CI/CD e infrastruttura. Progetta,
 
 ## Uso
 
-Serve [Nix](https://nixos.org) con i flake e Docker. La shell avvia un motore Dagger dedicato.
+Serve [Nix](https://nixos.org) con i flake, e Docker per il motore Dagger.
 
 ```
-nix develop
-scheme --script disegno.ss checks.disegno              # disegno interno: tipi e teoremi
-scheme --script disegno.ss go.disegno                  # disegno esterno: il piano, in GraphQL
-dagger run scheme --script disegno.ss go.disegno       # opera: l'esecuzione su Dagger
-scheme --script test.ss                                # i test (sotto dagger run anche dal vivo)
+nix run github:avit-io/disegno -- check prog.disegno   # disegno interno: tipi e teoremi
+nix run github:avit-io/disegno -- plan  prog.disegno   # disegno esterno: il piano, in GraphQL
+nix run github:avit-io/disegno -- run   prog.disegno   # opera: l'esecuzione su Dagger
+```
+
+Dal repository, `nix run . -- run cookbook/go.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger run scheme --script tests/test.ss`).
+
+```
+src/       il nucleo e il driver          lib/    la libreria standard (engine è generata dallo schema)
+tests/     test e teoremi di controllo    tools/  il generatore      cookbook/  gli esempi
 ```
 
 Il progetto, le scelte e le questioni aperte sono in [DESIGN.md](DESIGN.md). È un esperimento: l'ospite è Chez Scheme, il motore Dagger 0.21.

@@ -652,7 +652,7 @@
     [(def) (check-def d)]
     [(extern) (check-extern d)]
     [(record) (for-each check-decl (record->decls d))]
-    [(include) (unless (privileged) (oops "include è riservato alla libreria standard")) (check-file (cadr d))]
+    [(include) (unless (privileged) (oops "include è riservato alla libreria standard")) (check-file (in-dir (current-dir) (cadr d)))]
     [else (oops "dichiarazione sconosciuta: ~s" d)]))
 
 ;; (record Service [name : String] [replicas : Nat] [ok : (≥ replicas 1)]) è zucchero per
@@ -729,9 +729,14 @@
 (define (check-port p)
   (let ([p (open-string-input-port (brackets (get-string-all p)))])
     (let loop () (let ([d (read p)]) (unless (eof-object? d) (check-decl d) (loop))))))
+;; I percorsi relativi si risolvono rispetto alla cartella del file che li nomina.
+(define current-dir (make-parameter ""))
+(define (in-dir dir p) (if (or (string=? dir "") (path-absolute? p)) p (string-append dir "/" p)))
+
 (define (check-file path)
-  (call-with-port (open-file-input-port path (file-options) (buffer-mode block) (make-transcoder (utf-8-codec)))
-    check-port))
+  (parameterize ([current-dir (path-parent path)])
+    (call-with-port (open-file-input-port path (file-options) (buffer-mode block) (make-transcoder (utf-8-codec)))
+      check-port)))
 (define (check-string s) (check-port (open-string-input-port s)))
 
 ;; (data Nat [zero] [add1 Nat])  oppure  (data Vec : (→ Type Nat Type) [nil : (Vec A 0)] ...)

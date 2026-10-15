@@ -1,7 +1,10 @@
 ;; Controlli: nucleo, type checker, piano (a secco) e, sotto `dagger run`, esecuzione dal vivo.
-(load "core.ss")
-(load "types.ss")
-(load "plan.ss")
+;; Uso: scheme --script tests/test.ss   (dal vivo: dagger run scheme --script tests/test.ss)
+(define root (path-parent (path-parent (car (command-line)))))   ; <root>/tests/test.ss
+(define (at-root p) (if (string=? root "") p (string-append root "/" p)))
+(load (at-root "src/core.ss"))
+(load (at-root "src/types.ss"))
+(load (at-root "src/plan.ss"))
 
 (define (contiene? s sub)
   (let ([n (string-length s)] [k (string-length sub)])
@@ -19,7 +22,7 @@
 
 ;; --- type checker ---
 
-(parameterize ([privileged #t]) (check-file "std.disegno"))
+(parameterize ([privileged #t]) (check-file (at-root "lib/std.disegno")))
 ;; L'accelerazione è fidata: su numeri piccoli deve coincidere con le clausole unarie.
 (for-each
   (lambda (f)
@@ -35,8 +38,8 @@
       (iota 7)))
   fast)
 
-(check-file "examples.disegno")
-(check-file "checks.disegno")                           ; le leggi e le garanzie, come teoremi
+(check-file (at-root "cookbook/examples.disegno"))
+(check-file (at-root "tests/checks.disegno"))                          ; le leggi e le garanzie, come teoremi
 
 (define (rifiuta src atteso)
   (let ([msg (guard (e [(message-condition? e) (condition-message e)]) (check-string src) #f)])

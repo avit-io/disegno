@@ -18,9 +18,9 @@ Federico Zuccari, nell'*Idea de' pittori, scultori et architetti* (1607), svilup
 
 | Momento | In Zuccari | In Disegno | Comando |
 |---|---|---|---|
-| Disegno interno | l'idea nell'intelletto | il programma tipato, con i suoi teoremi: ciò che il type checker verifica | `scheme --script disegno.ss checks.disegno` |
-| Disegno esterno | la forma visibile sul foglio | il piano stampato, un GraphQL per ogni esito dei `branch`, ispezionabile prima di eseguire | `scheme --script disegno.ss prog.disegno` |
-| Opera | la realizzazione nella materia | l'esecuzione su Dagger, governata dal nucleo fidato | `dagger run scheme --script disegno.ss prog.disegno` |
+| Disegno interno | l'idea nell'intelletto | il programma tipato, con i suoi teoremi: ciò che il type checker verifica | `disegno check tests/checks.disegno` |
+| Disegno esterno | la forma visibile sul foglio | il piano stampato, un GraphQL per ogni esito dei `branch`, ispezionabile prima di eseguire | `disegno plan prog.disegno` |
+| Opera | la realizzazione nella materia | l'esecuzione su Dagger, governata dal nucleo fidato | `disegno run prog.disegno` |
 
 La distinzione non è decorativa. Tutto ciò che si prova sta nel disegno interno: i teoremi parlano del piano come dato, non della sua esecuzione. Il disegno esterno è ciò che si rivede, come un diff o una pull request: è determinato per intero dal disegno interno, e a secco non tocca il motore. L'opera è l'unico momento in cui entra il mondo, con le osservazioni di `branch`, e l'unico in cui il non determinismo è ammesso. Si prova che il disegno è pulcro, non che lo scultore lo esegua esatto.
 
@@ -107,7 +107,7 @@ Il linguaggio non ha primitive di IO. Le operazioni del motore sono **costruttor
 
 - **Una famiglia sola, indicizzata dal tipo GraphQL**: `Container`, `Directory`, `File` si richiamano a vicenda; con un indice non servono data mutuamente ricorsivi, e positività, copertura e universi funzionano senza casi speciali.
 - **Il nome del costruttore è il campo**: `Container.with-exec` è `withExec` su `Container`; `Query.git` è un campo radice. I nomi dei binder espliciti sono gli argomenti GraphQL; `self` è l'oggetto su cui si chiama il metodo.
-- **Generazione** (`gen.ss`): introspezione sulla sessione; solo i tipi in un elenco consentito (per non invadere lo spazio dei nomi dell'utente), solo gli argomenti obbligatori. Gli argomenti oggetto sono `ID` generici nello schema: il tipo vero si legge dalla direttiva `@expectedType`. `Int` diventa `Nat`, `Boolean` diventa `Bool` negli argomenti e un'osservazione `(Obj Kind.bool)` nei risultati. Il file generato, `engine.disegno`, si committa: il type checking non richiede una sessione.
+- **Generazione** (`tools/gen.ss`): introspezione sulla sessione; solo i tipi in un elenco consentito (per non invadere lo spazio dei nomi dell'utente), solo gli argomenti obbligatori. Gli argomenti oggetto sono `ID` generici nello schema: il tipo vero si legge dalla direttiva `@expectedType`. `Int` diventa `Nat`, `Boolean` diventa `Bool` negli argomenti e un'osservazione `(Obj Kind.bool)` nei risultati. Il file generato, `lib/engine.disegno`, si committa: il type checking non richiede una sessione.
 - **Nomi curati**: i campi si scrivono senza prefisso (vedi Superficie); `std.disegno` aggiunge solo i nomi che rinominano davvero, come `with-file` (`withNewFile`), `with-dir`, `dir-of`, `put`, `exists?`.
 - **Attraversamento generato**: `nodes : (→ (Obj k) (List Any))` elenca tutti i sotto-piani per ricorsione strutturale, un caso per costruttore. Sopra di esso le proprietà si scrivono in poche righe, senza ricorsione annidata:
 
@@ -291,7 +291,7 @@ Una pubblicazione scoperta, protetta da un'osservazione che non è un test (`exi
   [src] auto)
 ```
 
-**I controlli come teoremi.** `checks.disegno` raccoglie le leggi della libreria standard e le garanzie sui piani: associatività di `+` e `++`, transitività di `⊑`, la legge affine tramite l'istanza, la lettura dei letterali, `pinned`, `Before`, i montaggi. Le leggi generali sono dimostrate per induzione, i casi concreti calcolati da `auto`. Il file si verifica a ogni esecuzione dei test (o da solo: `scheme --script disegno.ss checks.disegno`). È la protezione dalle rotture: una prova di mutazione che rompe `++`, `⊖`, `⊑-step` o la raccolta dei montaggi fa fallire il controllo, con l'errore di tipo che indica la legge violata. Anche ciò che **non** deve valere è un teorema, grazie alla negazione.
+**I controlli come teoremi.** `checks.disegno` raccoglie le leggi della libreria standard e le garanzie sui piani: associatività di `+` e `++`, transitività di `⊑`, la legge affine tramite l'istanza, la lettura dei letterali, `pinned`, `Before`, i montaggi. Le leggi generali sono dimostrate per induzione, i casi concreti calcolati da `auto`. Il file si verifica a ogni esecuzione dei test (o da solo: `disegno check tests/checks.disegno`). È la protezione dalle rotture: una prova di mutazione che rompe `++`, `⊖`, `⊑-step` o la raccolta dei montaggi fa fallire il controllo, con l'errore di tipo che indica la legge violata. Anche ciò che **non** deve valere è un teorema, grazie alla negazione.
 
 **Negazione e pattern assurdi.** `(¬ A)` è `(→ A ⊥)`. Un pattern assurdo `()` dichiara che a quella posizione non c'è alcun valore, e la clausola non ha corpo:
 
@@ -330,22 +330,30 @@ Precedente sul lato Dagger: Dang, il linguaggio nativo di Dagger 1.0, conferma c
 
 ## Architettura
 
+```
+README.md  DESIGN.md  flake.nix
+src/       core.ss  types.ss  plan.ss  main.ss      il nucleo e il driver
+lib/       std.disegno  engine.disegno              la libreria standard (engine è generato)
+tools/     gen.ss                                    il generatore dallo schema
+tests/     test.ss  checks.disegno                   i test e i teoremi di controllo
+cookbook/  *.disegno  hello/                         i programmi d'esempio
+```
+
 | File | Ruolo |
 |---|---|
-| `core.ss` | nucleo: stampa GraphQL, HTTP su socket, JSON, sessione |
-| `types.ss` | elaboratore e kernel: NbE, unificazione, pattern, copertura, terminazione, positività, `record`, `auto` |
-| `plan.ss` | runner: dal piano (dato) al GraphQL, `branch`, esecuzione e piani a secco |
-| `gen.ss` | generatore di `engine.disegno` dallo schema |
-| `std.disegno` | libreria standard: uguaglianza, `Bool`, `Nat`, liste, nomi corti, `Host`, `Export`, proprietà del piano |
-| `engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes` |
-| `examples.disegno`, `io.disegno`, `release.disegno` | gli esempi del documento |
-| `go.disegno`, `hello/` | un go build: sorgente dall'host, compilazione in container con cache dei moduli, binario in `bin/` |
-| `disegno.ss` | driver: `scheme --script disegno.ss prog.disegno` stampa i piani; sotto `dagger run` li esegue |
-| `checks.disegno` | le leggi e le garanzie come teoremi, verificate a ogni test |
-| `test.ss` | test: nucleo, tipi, rifiuti, piani a secco e, sotto `dagger run`, dal vivo |
-| `flake.nix` | ambiente: Chez, Dagger, motore dedicato con le CA dell'host |
+| `src/core.ss` | nucleo: stampa GraphQL, HTTP su socket, JSON, sessione |
+| `src/types.ss` | elaboratore e kernel: NbE, unificazione, pattern, copertura, terminazione, positività, `record`, `auto`, letterali, numerali nativi |
+| `src/plan.ss` | runner: dal piano (dato) al GraphQL, `branch`, esecuzione e piani a secco |
+| `src/main.ss` | driver: `check`, `plan`, `run`; trova la radice dalla propria posizione |
+| `lib/std.disegno` | libreria standard: uguaglianza, `Bool`, `Nat`, liste, spazi affini, regioni, nomi corti, `Host`, `Export`, proprietà del piano |
+| `lib/engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes`, `chain` |
+| `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger run`) |
+| `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger run`, dal vivo |
+| `tests/checks.disegno` | le leggi e le garanzie come teoremi, verificate a ogni test |
+| `cookbook/` | gli esempi del documento (`examples`, `io`, `release`) e il go build con `hello/` |
+| `flake.nix` | il pacchetto `disegno` (`nix run`), la shell, il motore dedicato con le CA dell'host |
 
-Ambiente: `env -u LD_LIBRARY_PATH nix develop -c …`. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare il proxy TLS aziendale; il motore passa le CA anche ai container che esegue.
+**Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`. `run` apre da sé la sessione con `dagger run`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, e `include` rispetto al file che lo contiene, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.
 
 ## Limitazioni accettate
 

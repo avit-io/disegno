@@ -8,6 +8,9 @@
 
 (define observe (make-parameter (lambda (ch) (oops "branch richiede una sessione Dagger"))))
 
+;; Host ed Export relativi si risolvono rispetto alla cartella del programma, non a quella corrente.
+(define program-dir (make-parameter ""))
+
 (define (explicit sp) (map car (filter (lambda (a) (eq? (cdr a) 'e)) sp)))
 
 (define (map-ltr f xs ys)                                ; map con ordine garantito, da sinistra
@@ -95,12 +98,13 @@
                       (let ([dom (cadddr t)])
                         (unless (and (eq? (caddr t) 'e) (eq? (car dom) 'app) (equal? (cadr dom) '(glob Host)) (eq? (car (caddr dom)) 'str))
                           (oops "gli argomenti di main devono essere (Host \"percorso\")"))
-                        (cons `(vglob %host-dir ((,(ev '() (caddr dom)) . e))) (loop (list-ref t 4))))
+                        (cons (list 'vglob '%host-dir (list (cons (list 'vstr (in-dir (program-dir) (cadr (caddr dom)))) 'e)))
+                              (loop (list-ref t 4))))
                       '()))]
          [v (pick (vapp-sp (ev '() `(glob ,main)) (map (lambda (h) (cons h 'e)) hosts)) resolve)])
     (case (node v)
       [(overlay replace)                                 ; export sull'host; replace è con wipe
-       (let* ([path (gql-arg (car (explicit (caddr v))) resolve)]
+       (let* ([path (in-dir (program-dir) (gql-arg (car (explicit (caddr v))) resolve))]
               [dir (chain (cadr (explicit (caddr v))) resolve)])
          (append dir (list `(export (path ,path) (wipe ,(eq? (node v) 'replace))))))]
       [(publish)                                         ; pubblicazione dell'immagine su un registry

@@ -1,12 +1,14 @@
 ;; Genera engine.disegno dallo schema del motore (introspezione sulla sessione).
-;; Uso: dagger run scheme --script gen.ss
+;; Uso: dagger run scheme --script tools/gen.ss
 ;;
 ;; Il piano è un dato: ogni campo del motore diventa un costruttore della famiglia
 ;; (data Obj : (→ Kind Type) ...), indicizzata dal tipo GraphQL (Kind.container, ...).
 ;; Il nome del costruttore dà il campo (Container.with-exec → withExec), i binder gli argomenti.
 ;; Solo i tipi in `allowed`, solo gli argomenti obbligatori; i campi non esprimibili si saltano.
 ;; Un risultato Boolean diventa un'osservazione, (Obj Kind.bool).
-(load "core.ss")
+(define root (path-parent (path-parent (car (command-line)))))   ; <root>/tools/gen.ss
+(define (at-root p) (if (string=? root "") p (string-append root "/" p)))
+(load (at-root "src/core.ss"))
 
 (define allowed '("Container" "Directory" "File" "CacheVolume" "GitRepository" "GitRef"))
 
@@ -124,7 +126,7 @@
                      [else "vuota"])])
     (format "  [~a] (:: (any ~a) ~a)" self self rest)))
 
-(call-with-output-file "engine.disegno"
+(call-with-output-file (at-root "lib/engine.disegno")
   (lambda (p)
     (format p "; Generato da gen.ss dallo schema di Dagger: non modificare a mano.~%~%")
     (format p "(data Kind~%~{  [~a]~^~%~})~%~%"
