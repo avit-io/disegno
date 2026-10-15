@@ -80,7 +80,28 @@
 (check-string "(def raddoppia : (→ Nat Nat) [n] (+ n n))
                (def otto : (≡ (pipe 2 raddoppia raddoppia) 8) refl)")
 
+;; branch: la condizione è un test nel container; i due rami sono entrambi nel piano.
+(check-string (format "
+  (def prova-in : (→ Dir String Container)
+    [src file] (pipe (container) (from \"alpine\") (with-dir \"/w\" src) (try-exec [\"test\" \"-f\" file])))
+
+  (def esito : (→ (Remote Bool) Dir)
+    [c] (branch c (with-file empty \"esito\" \"passa\\n\") (with-file empty \"esito\" \"fallisce\\n\")))
+
+  (def verifica : (→ [src (Host ~s)] (Export Dir))
+    [src] (replace ~s (put (esito (passes? (prova-in src \"/w/dati.txt\")))
+                           \"manca\" (esito (exists? src \"manca.txt\")))))"
+  (string-append dir "/in") (string-append dir "/out3")))
+(define piani (all-plans 'verifica))
+(assert (= (length piani) 4))
+(assert (contiene? (plan->graphql (car (car (car (car piani)))))
+                   "withExec(args: [\"test\", \"-f\", \"/w/dati.txt\"], expect: ANY) { exitCode }"))
+(assert (equal? (map (lambda (p) (map cdr (car p))) piani) '((#t #t) (#t #f) (#f #t) (#f #f))))
+(rifiuta "(def confuso : (→ (Remote Bool) Dir) [c] (if c empty empty))" "atteso")
+(rifiuta "(def scelta : (→ Bool Dir) [b] (branch b empty empty))" "atteso")
+
 ;; --- dal vivo ---
+
 
 
 (when (getenv "DAGGER_SESSION_PORT")
@@ -90,6 +111,9 @@
             '("LEGGIMI" "cfg/dati.txt" "cfg/config/app.toml"))
   (submit-leaf (plan (lambda (ch) (submit-leaf (append ch '((id))))) 'costruisci))
   (assert (string=? (call-with-input-file (string-append dir "/out2/doppio.txt") get-string-all) "dati\ndati\n"))
+  (run 'verifica)
+  (assert (string=? (call-with-input-file (string-append dir "/out3/esito") get-string-all) "passa\n"))
+  (assert (string=? (call-with-input-file (string-append dir "/out3/manca/esito") get-string-all) "fallisce\n"))
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

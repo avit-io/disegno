@@ -52,3 +52,21 @@
 (data Export : (→ Type Type)
   [overlay : (→ String A (Export A))]
   [replace : (→ String A (Export A))])
+
+; --- due tempi, due condizionali ---
+; if decide su valori noti quando si costruisce il piano; branch su osservazioni Remote, che
+; esistono solo durante l'esecuzione. Un (Remote Bool) non è un Bool: non entra in un if.
+
+(data Bool
+  [true]
+  [false])
+
+(def if : (→ Bool A A A)
+  [true  a _] a
+  [false _ b] b)
+
+(extern Remote   : (→ Type Type)                                            %remote)
+(extern try-exec : (→ [ctr Container] [args (List String)] Container)      (Container.withExec (expect ANY)))
+(extern passes?  : (→ [ctr Container] (Remote Bool))                        Container.exitCode)
+(extern exists?  : (→ [dir Dir] [path String] (Remote Bool))                Directory.exists)
+(extern branch   : (→ (Remote Bool) A A A)                                  %branch)

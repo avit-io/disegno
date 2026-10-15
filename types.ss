@@ -332,21 +332,23 @@
 ;; (extern with-file : (→ [dir Dir] [path String] [contents String] Dir) Directory.withNewFile)
 ;; Il campo è Tipo.campo (metodo sul primo argomento) o a.b (catena dalla radice); i nomi dei
 ;; binder espliciti sono i nomi degli argomenti GraphQL. Un extern non mente: restituisce un tipo
-;; opaco del motore (o è esso stesso un tipo), mai una proposizione né una stringa (sarebbe Remote).
+;; opaco del motore (Dir, Remote Bool…) o è esso stesso un tipo; mai una proposizione né una
+;; stringa (sarebbe un dato del mondo che rientra nel linguaggio). Il campo può fissare argomenti:
+;; (Container.withExec (expect ANY)). %branch è uno snodo del nucleo: risultato generico, lo realizza il runner.
 (define (check-extern d)
   (unless (privileged) (oops "extern è riservato alla libreria standard"))
-  (unless (and (= (length d) 5) (eq? (caddr d) ':) (symbol? (list-ref d 4))) (oops "extern malformato: ~s" d))
-  (let* ([name (cadr d)] [t (begin (fresh-name! name) (elab-sig (cadddr d)))])
+  (unless (and (= (length d) 5) (eq? (caddr d) ':)) (oops "extern malformato: ~s" d))
+  (let* ([name (cadr d)] [spec (let ([f (list-ref d 4)]) (if (symbol? f) (list f) f))]
+         [t (begin (fresh-name! name) (elab-sig (cadddr d)))])
     (k-type t)
     (let loop ([r t] [names '()])
       (if (eq? (car r) 'pi)
           (loop (list-ref r 4) (if (eq? (caddr r) 'e) (cons (cadr r) names) names))
-          (begin
-            (unless (or (eq? (car r) 'type)
-                        (and (eq? (car r) 'glob) (not (eq? (cadr r) 'String))
-                             (let ([g (gget (cadr r))]) (and (eq? (g-kind g) 'extern) (eq? (car (g-type g)) 'vtype)))))
+          (let-values ([(h args) (spine-of r)])
+            (unless (or (eq? (car r) 'type) (eq? (car spec) '%branch)
+                        (and (eq? (car h) 'glob) (not (eq? (cadr h) 'String)) (eq? (g-kind (gget (cadr h))) 'extern)))
               (oops "~a: un extern deve restituire un tipo opaco del motore" name))
-            (hashtable-set! globals name (make-g 'extern (ev '() t) (cons (list-ref d 4) (reverse names)))))))))
+            (hashtable-set! globals name (make-g 'extern (ev '() t) (cons spec (reverse names)))))))))
 
 ;; Il reader di Chez non distingue [..] da (..): prima di leggere, [ diventa (%br  fuori da stringhe e commenti.
 (define (brackets s)
