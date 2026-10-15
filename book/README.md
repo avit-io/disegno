@@ -32,14 +32,14 @@ Se il capitolo passa, tutto ciò che vi è scritto è vero: tipi e teoremi compr
 | [1. Il significato è nelle introduzioni](01-introductions.disegno) | `data`, forme canoniche, il giudizio `e : T`, il tipo vuoto |
 | [2. Eliminare con armonia](02-eliminations.disegno) | pattern matching, inversione, copertura, deviazioni che si riducono |
 | [3. Funzioni](03-functions.disegno) | `λ` e applicazione, `the`, argomenti impliciti, polimorfismo |
-| 4. Ricorsione e totalità | ricorsione strutturale, `ind-Nat` come regola di eliminazione, perché niente ricorsione generale |
+| [4. Ricorsione e totalità](04-recursion.disegno) | ricorsione strutturale, `ind-Nat` come regola di eliminazione, `rec-Nat`, perché niente ricorsione generale, positività |
 | 5. Tipi che dipendono da valori | famiglie indicizzate (`Vec`), Π dipendente, `head` totale |
 | 6. L'uguaglianza | `≡` e `refl`, `transport` come eliminazione, `cong`, `sym`, `trans`; prove per calcolo e per induzione |
 | 7. Esiste | Σ: la coppia dipendente, `fst` e `snd`; `×` come caso particolare |
 | 8. Oppure, e il nulla | `Either`, `⊥` senza introduzioni, il pattern assurdo, `¬` |
 | 9. Le prove come programmi | relazioni induttive, decidibilità, `auto` come calcolo, e uno sguardo al piano |
 
-I capitoli 4–9 sono in preparazione.
+I capitoli 5–9 sono in preparazione.
 
 ## Letture
 

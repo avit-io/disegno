@@ -1,0 +1,119 @@
+; Capitolo 4 — Ricorsione e totalità
+;
+; Nel capitolo 2 somma chiamava sé stessa. Perché è lecito? Una definizione che chiama sé stessa
+; potrebbe non finire mai, e allora la promessa del capitolo 1, ogni espressione chiusa arriva a
+; una forma canonica, cadrebbe. Questo capitolo mostra quale ricorsione è ammessa, e perché proprio
+; quella: è l'eliminazione di Nat, scritta per esteso.
+;
+;   disegno check book/04-recursion.disegno
+
+; --- la ricorsione strutturale ---
+; In somma, la chiamata ricorsiva prende k, che sta dentro (add1 k): un pezzo più piccolo di ciò
+; che si sta eliminando. Ogni chiamata smonta un add1, e gli add1 sono finiti: la catena si ferma.
+; Il checker accetta una ricorsione solo se un argomento scende così, di costruttore in
+; costruttore. Si chiama ricorsione strutturale.
+
+(def doppio : (→ Nat Nat)
+  [zero]     zero
+  [(add1 k)] (add1 (add1 (doppio k))))
+
+(def doppio-di-tre : (≡ (doppio 3) 6)
+  auto)
+
+; --- perché niente ricorsione generale ---
+; Se ogni chiamata ricorsiva fosse ammessa, questa definizione passerebbe:
+;
+;   (def assurdo : ⊥
+;     assurdo)
+;
+; Il tipo dice ⊥ e il corpo è assurdo stesso: il checker non avrebbe niente da obiettare. Ma
+; allora ⊥ avrebbe un elemento, e dal capitolo 2 sappiamo che da ⊥ segue qualunque cosa: ogni
+; teorema diventerebbe dimostrabile, cioè nessuno varrebbe più niente. Il checker la rifiuta:
+; «assurdo: ricorsione non strutturale». Lo stesso vale per (gira (add1 n)), che sale invece di
+; scendere.
+;
+; La totalità non è una limitazione di comodo. È ciò che permette di leggere un tipo come una
+; proposizione: un elemento chiuso di un tipo si riduce a un'introduzione, e un'introduzione di ⊥
+; non esiste.
+
+; --- l'eliminatore di Nat ---
+; Tutte le ricorsioni strutturali su Nat hanno la stessa forma: un caso per zero, e un caso per
+; (add1 k) che può usare il risultato su k. Possiamo scriverla una volta per tutte. Il risultato
+; può dipendere dal numero: mot (il «motivo», come in The Little Typer) dice di che tipo è il
+; risultato per ciascun n.
+
+(def ind-Nat : (→ [n Nat] [mot (→ Nat Type)]
+                  (mot zero)
+                  (→ [k Nat] (mot k) (mot (add1 k)))
+                  (mot n))
+  [zero     mot base passo] base
+  [(add1 k) mot base passo] (passo k (ind-Nat k mot base passo)))
+
+; Si legga il tipo come una regola di Gentzen. Per ottenere (mot n) bastano due cose: (mot zero),
+; e un modo di passare da (mot k) a (mot (add1 k)). Le due premesse corrispondono alle due
+; introduzioni di Nat: è il principio di inversione del capitolo 2, scritto come tipo. Ed è anche
+; il principio di induzione, perché un programma e una prova qui sono la stessa cosa.
+;
+; Le deviazioni si riducono come sempre: (ind-Nat zero mot base passo) è base, e su (add1 k)
+; si fa un passo e si riparte da k.
+
+; --- il motivo costante: rec-Nat ---
+; Quando il tipo del risultato non dipende dal numero, il motivo è una funzione costante, e
+; ind-Nat diventa la ricorsione semplice.
+
+(def rec-Nat : (→ {X Type} Nat X (→ Nat X X) X)
+  [n base passo] (ind-Nat n (λ [_] X) base passo))
+
+(def doppio-bis : (→ Nat Nat)
+  [n] (rec-Nat n 0 (λ [_ d] (add1 (add1 d)))))
+
+(def stesso-doppio : (≡ (doppio-bis 3) (doppio 3))
+  auto)
+
+; --- un motivo che dipende ---
+; Ora un motivo vero: per ogni n, (+ n 0) è n. Il calcolo non basta, perché (+ n 0) con n
+; ignoto non si riduce (+ elimina il primo argomento, non il secondo). Serve l'induzione:
+;   base:  (+ 0 0) si riduce a 0, e refl lo prova;
+;   passo: dalla prova per k, (≡ (+ k 0) k), si ottiene quella per (add1 k) applicando add1 ai
+;          due lati: è cong, dalla libreria standard. L'uguaglianza ha il capitolo 6; per ora
+;          basta sapere che cong porta un'uguaglianza dentro una funzione.
+
+(def +-zero : (→ [n Nat] (≡ (+ n 0) n))
+  [n] (ind-Nat n (λ [k] (≡ (+ k 0) k))
+         refl
+         (λ [k ih] (cong add1 ih))))
+
+; ih sta per ipotesi induttiva. La stessa prova si può scrivere con il pattern matching e la
+; ricorsione strutturale: è la stessa eliminazione, senza nominarla.
+
+(def +-zero-bis : (→ [n Nat] (≡ (+ n 0) n))
+  [zero]     refl
+  [(add1 k)] (cong add1 (+-zero-bis k)))
+
+; --- anche i tipi devono essere ben fondati ---
+; La ricorsione si può nascondere anche in un data. Questo tipo verrebbe rifiutato:
+;
+;   (data Strano
+;     [avvolgi (→ Strano ⊥)])
+;
+; Un elemento di Strano conterrebbe una funzione che consuma Strano; con essa si riesce a
+; scrivere un elemento di ⊥ senza nessuna definizione ricorsiva. Il checker richiede che il
+; tipo che si sta definendo compaia nelle introduzioni solo a destra delle frecce: «avvolgi:
+; Strano non compare in posizione strettamente positiva». Albero, che prende due Albero, va bene.
+
+; --- esercizi ---
+;
+; 1. La lunghezza di un ramo sinistro: quante volte si può scendere a sinistra in un Albero.
+; (data Albero [foglia] [nodo Albero Albero])
+; (def sinistra : (→ Albero Nat)
+;   ___)
+;
+; 2. Il prodotto con rec-Nat, senza pattern matching. Suggerimento: (* n m) è m sommato n volte.
+; (def prodotto : (→ Nat Nat Nat)
+;   [n m] (rec-Nat n ___ ___))
+; (def sei : (≡ (prodotto 2 3) 6) auto)
+;
+; 3. Per ogni n, (+ n (add1 m)) è (add1 (+ n m)). Usa ind-Nat, poi riscrivila col pattern
+;    matching.
+; (def +-add1 : (→ [n Nat] [m Nat] (≡ (+ n (add1 m)) (add1 (+ n m))))
+;   [n m] (ind-Nat n ___ ___ ___))
