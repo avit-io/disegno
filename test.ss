@@ -65,14 +65,20 @@
 (check-string (format "
   (def costruisci : (→ [src (Host ~s)] (Export Dir))
     [src] (replace ~s
-            (dir-of (with-exec (with-workdir (with-dir (from container \"alpine\") \"/w\" src) \"/w\")
-                               [\"sh\" \"-c\" \"cat dati.txt dati.txt > doppio.txt\"])
-                    \"/w\")))"
+            (pipe (container)
+                  (from \"alpine\")
+                  (with-dir \"/w\" src)
+                  (with-workdir \"/w\")
+                  (with-exec [\"sh\" \"-c\" \"cat dati.txt dati.txt > doppio.txt\"])
+                  (dir-of \"/w\"))))"
   (string-append dir "/in") (string-append dir "/out2")))
 (define secco2 (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))) 'costruisci)))
 (assert (contiene? secco2 "container { from(address: \"alpine\") { withDirectory(path: \"/w\", source: \"<host"))
 (assert (contiene? secco2 "withExec(args: [\"sh\", \"-c\", \"cat dati.txt dati.txt > doppio.txt\"]) { directory(path: \"/w\")"))
 (rifiuta "(def mista : (List String) [\"a\" 1])" "atteso")
+(rifiuta "(def pipe : Dir empty)" "parola riservata")
+(check-string "(def raddoppia : (→ Nat Nat) [n] (+ n n))
+               (def otto : (≡ (pipe 2 raddoppia raddoppia) 8) refl)")
 
 ;; --- dal vivo ---
 

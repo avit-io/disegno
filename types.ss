@@ -18,7 +18,9 @@
 (define globals (make-eq-hashtable))
 (define (gget n) (and (symbol? n) (hashtable-ref globals n #f)))
 (define (con? n) (let ([g (gget n)]) (and g (eq? (g-kind g) 'con))))
-(define (fresh-name! n) (when (gget n) (oops "~a è già definito" n)))
+(define (fresh-name! n)
+  (when (memq n '(→ Type _ pipe)) (oops "~a è una parola riservata" n))
+  (when (gget n) (oops "~a è già definito" n)))
 
 (define metas (make-eqv-hashtable))                     ; m → #(soluzione nome tipo)
 (define (new-meta name type)
@@ -226,6 +228,10 @@
     [(and (pair? e) (eq? (car e) '→))
      (let-values ([(t n) (elab-arrow c (cdr e))]) (values t `(vtype ,n)))]
     [(and (pair? e) (eq? (car e) 'Type) (nat? (cadr e))) (values `(type ,(cadr e)) `(vtype ,(+ 1 (cadr e))))]
+    [(and (pair? e) (eq? (car e) 'pipe) (pair? (cdr e))) ; (pipe x (f a) g) = (g (f x a))
+     (infer c (fold-left (lambda (acc s)
+                           (if (and (pair? s) (not (eq? (car s) '%br))) `(,(car s) ,acc ,@(cdr s)) (list s acc)))
+                         (cadr e) (cddr e)))]
     [(and (pair? e) (eq? (car e) '%br))                ; ["a" "b"] = (:: "a" (:: "b" vuota))
      (infer c (fold-right (lambda (x acc) (list ':: x acc)) 'vuota (cdr e)))]
     [(pair? e)
@@ -273,7 +279,7 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (memq e '(→ Type _ %br))) (set! acc (cons e acc)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (memq e '(→ Type _ %br pipe))) (set! acc (cons e acc)))]
         [(and (pair? e) (eq? (car e) '→))
          (let loop ([as (cdr e)] [bound bound])
            (cond [(null? as) (void)]
