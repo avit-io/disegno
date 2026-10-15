@@ -11,6 +11,18 @@
 (def sym : (→ (≡ x y) (≡ y x))
   [refl] refl)
 
+(def trans : (→ (≡ x y) (≡ y z) (≡ x z))
+  [refl refl] refl)
+
+; transport (il replace di Pie): l'eliminazione dell'uguaglianza. Ciò che vale di x vale di y, se x ≡ y.
+(def transport : (→ {A Type} {x A} {y A} (≡ x y) [P (→ A Type)] (P x) (P y))
+  [refl P px] px)
+
+; Either: la disgiunzione. Due introduzioni; eliminarla vuol dire trattare entrambi i casi.
+(data Either : (→ Type Type Type)
+  [left  : (→ A (Either A B))]
+  [right : (→ B (Either A B))])
+
 ; --- proposizioni decidibili: (So b) è ⊤ se b è vero, ⊥ altrimenti; auto prova ⊤ calcolando ---
 
 (data ⊥ : Type)
@@ -136,8 +148,19 @@
 
 ; Proposizioni su liste: Every p xs (ogni elemento soddisfa p), Pairwise r xs (ogni coppia è in r).
 
-(data × : (→ Type Type Type)
-  [pair : (→ A B (× A B))])
+; Σ: la coppia dipendente. Il secondo elemento ha un tipo che dipende dal primo; è "esiste a
+; tale che B a". × è il caso in cui B non dipende da a.
+(data Σ : (→ [A Type] (→ A Type) Type)
+  [pair : (→ {A Type} {B (→ A Type)} [a A] (B a) (Σ A B))])
+
+(def fst : (→ {A Type} {B (→ A Type)} (Σ A B) A)
+  [(pair a _)] a)
+
+(def snd : (→ {A Type} {B (→ A Type)} [p (Σ A B)] (B (fst p)))
+  [(pair _ b)] b)
+
+(def × : (→ Type Type Type)
+  [A B] (Σ A (λ [_] B)))
 
 (def Every : (→ (→ A Type) (List A) Type)
   [p vuota]     ⊤

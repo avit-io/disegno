@@ -142,3 +142,26 @@
 
 (def resa-cidr : (≡ (render-cidr "10.0.1.0/24") "10.0.1.0/24")
   auto)
+
+; --- il linguaggio puro: λ, the, impliciti, Σ, Either, transport, ex falso ---
+
+(def id : (→ {A Type} A A)
+  (λ [x] x))
+
+(def applica : (≡ ((the (→ Nat Nat) (λ [n] (add1 n))) 1) 2)
+  auto)
+
+(def un-testimone : (Σ Nat (λ [n] (≡ (+ n n) 4)))
+  (pair 2 refl))
+
+(def il-testimone : (≡ (fst un-testimone) 2)
+  auto)
+
+(def ex-falso : (→ ⊥ A)
+  [()])
+
+(def sposta : (→ (≡ x y) (≡ y y) (≡ x y))
+  [e p] (transport (sym e) (λ [m] (≡ m y)) p))
+
+(def nomi-come-variabili : (→ Nat (→ Nat Nat) Nat)   ; step e port sono costruttori altrove
+  [port step] (step port))

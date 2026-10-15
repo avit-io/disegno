@@ -250,7 +250,15 @@
     (assert (contiene? r "\"id\":3,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```disegno\\nAbs.⊕ : (→ Abs Rel Abs)\\n"))   ; e le altre varianti di ⊕
     (assert (contiene? r "\"id\":2,\"result\":null"))))
 
+;; Nei pattern un simbolo è un costruttore solo se lo è del tipo atteso: step, port, root…
+;; restano variabili dove il tipo è un altro. La copertura usa la stessa risoluzione.
+(check-string "
+  (def somma-step : (→ Nat (→ Nat Nat) Nat) [port step] (step port))
+  (def usa-step : (≡ (somma-step 2 add1) 3) auto)")
+(rifiuta "(def manca-step : (→ Rel Nat) [here] 0)" "manca il caso")
+
 ;; --- dal vivo ---
+
 
 
 

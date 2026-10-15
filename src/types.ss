@@ -22,7 +22,7 @@
 (define (gget n) (and (symbol? n) (hashtable-ref globals n #f)))
 (define (con? n) (let ([g (gget n)]) (and g (eq? (g-kind g) 'con))))
 (define (fresh-name! n)
-  (when (memq n '(→ Type _ pipe auto let)) (oops "~a è una parola riservata" n))
+  (when (memq n '(→ Type _ pipe auto let λ the)) (oops "~a è una parola riservata" n))
   (when (gget n) (oops "~a è già definito" n)))
 
 (define metas (make-eqv-hashtable))                     ; m → #(soluzione nome tipo)
@@ -53,6 +53,7 @@
     [(type) `(vtype ,(cadr t))]
     [(str) `(vstr ,(cadr t))]
     [(num) `(vnum ,(cadr t))]
+    [(ann) (ev env (cadr t))]                            ; (ann t T): l'annotazione non calcola
     [(meta) (meta-val (cadr t))]
     [(imeta) (fold-left (lambda (f v) (vapp f v 'e)) (meta-val (cadr t)) (reverse env))]))
 
@@ -322,6 +323,7 @@
     [(type) `(vtype ,(+ (cadr t) 1))]                   ; Type n : Type n+1, mai Type : Type
     [(str) (string-type)]
     [(num) '(vglob Nat ())]
+    [(ann) (let ([ty (ev env (caddr t))]) (k-type-in env tys l (caddr t)) (k-check env tys l (cadr t) ty) ty)]
     [(pi) (let ([la (k-level (k-infer env tys l (cadddr t)))])
             `(vtype ,(max la (k-level (k-infer (cons (vvar l) env) (cons (ev env (cadddr t)) tys) (+ l 1) (list-ref t 4))))))]
     [(app) (let ([tf (force (k-infer env tys l (cadr t)))])
@@ -340,6 +342,7 @@
 (define (k-level ty)
   (let ([ty (force ty)]) (if (eq? (car ty) 'vtype) (cadr ty) (oops "kernel: atteso un tipo"))))
 (define (k-type t) (k-level (k-infer '() '() 0 t)))
+(define (k-type-in env tys l t) (k-level (k-infer env tys l t)))
 
 ;; --- elaboratore ---
 
@@ -376,6 +379,10 @@
            [(path-literal? e) (values (path-term c e) (quote (vglob Abs ())))]
            [else (oops "nome sconosciuto: ~a" e)])]
     [(let-form? e) (let-values ([(c body) (let-bind c e)]) (infer c body))]
+    [(and (pair? e) (eq? (car e) 'the) (= (length e) 3))   ; (the T e): e controllato contro T
+     (let-values ([(ta n) (check-type c (cadr e))])
+       (let ([ty (ev (ctx-env c) ta)]) (values `(ann ,(check c (caddr e) ty) ,ta) ty)))]
+    [(lambda-form? e) (oops "λ ha bisogno di un tipo atteso: scrivi (the T (λ …))")]
     [(and (pair? e) (eq? (car e) '→))
      (let-values ([(t n) (elab-arrow c (cdr e))]) (values t `(vtype ,n)))]
     [(and (pair? e) (eq? (car e) 'Type) (nat? (cadr e))) (values `(type ,(cadr e)) `(vtype ,(+ 1 (cadr e))))]
@@ -512,7 +519,7 @@
                [else (let ([d (gget (cadr g))])
                        (and (eq? (g-kind d) 'data)
                             (exists (lambda (k) (try-constructor c k g depth conj)) (g-info d))))])
-             (begin (when (and conj (blame) (not (unbox (blame))) (not (memq (cadr g) '(× ⊤ ⊥))))
+             (begin (when (and conj (blame) (not (unbox (blame))) (not (memq (cadr g) '(× Σ ⊤ ⊥))))
                       (set-box! (blame) g))
                     #f)))))
 
@@ -536,6 +543,7 @@
   (let ([want (force ty)])
     (cond [(eq? e 'auto) (auto c ty)]
           [(let-form? e) (let-values ([(c body) (let-bind c e)]) (check c body ty))]
+          [(lambda-form? e) (check-lambda c (cdr (cadr e)) (caddr e) ty)]
           [(and (string? e) (eq? (car want) 'vglob) (assq (cadr want) readers))
            => (lambda (r) (let ([x ((cdr r) e)])           ; letterale letto secondo il tipo, nel contesto
                             (unless x (oops "«~a» non è un ~a valido" e (cadr want)))   ; vuoto: nessuna cattura
@@ -548,7 +556,40 @@
            (let ([a (car (car (caddr want)))] [l (ctx-l c)])  ; ogni elemento riceve il tipo atteso
              (fold-right (lambda (x acc) `(app (app (app (glob ::) ,(reify l a) i) ,(check c x a) e) ,acc e))
                          `(app (glob vuota) ,(reify l a) i) (cdr e)))]
+          [(and (pair? e) (symbol? (car e)) (con? (car e)) (not (known-local? c (car e))) (pair? (cdr e))
+                (check-introduction c e want))
+           => values]
           [else (check-inferred c e ty)])))
+
+(define (known-local? c x) (or (index-of x (ctx-names c)) (assq x (ctx-defs c))))
+
+;; Un'introduzione (un costruttore applicato) si controlla contro il tipo che introduce: prima il
+;; tipo del risultato si unifica con quello atteso, poi gli argomenti si controllano nell'ordine,
+;; ciascuno contro il suo dominio ormai noto. (pair 2 refl) contro (Σ Nat (λ [n] (≡ (+ n n) 4))).
+;; → termine, o #f se il risultato non combacia (si ripiega sull'inferenza, che darà l'errore).
+(define (check-introduction c e want)
+  (when (and (not (privileged)) (char=? (string-ref (symbol->string (car e)) 0) #\%))   ; come in infer
+    (oops "~a è riservato al nucleo" (car e)))
+  (let loop ([kt (g-type (gget (car e)))] [args (cdr e)] [spine '()])   ; spine: (meta-o-arg . visibilità)
+    (let ([kt (force kt)])
+      (cond
+        [(and (eq? (car kt) 'vpi) (or (eq? (caddr kt) 'i) (pair? args)))
+         (let* ([m `(imeta ,(new-meta #f #f))] [mv (ev (ctx-env c) m)])
+           (if (eq? (caddr kt) 'i)
+               (loop (pi-cod kt mv) args (cons (list 'i m) spine))
+               (loop (pi-cod kt mv) (cdr args) (cons (list 'e m mv (car args) (pi-dom kt)) spine))))]
+        [(pair? args) #f]
+        [(not (guard (x [(unify-failure? x) #f]) (unify (ctx-l c) kt want) #t)) #f]
+        [else
+         (fold-left (lambda (t s)
+                      (if (eq? (car s) 'i)
+                          `(app ,t ,(cadr s) i)
+                          (let ([u (check c (list-ref s 3) (list-ref s 4))])
+                            (guard (x [(unify-failure? x) (oops "~s: argomento incoerente" e)])
+                              (unify (ctx-l c) (list-ref s 2) (ev (ctx-env c) u)))
+                            `(app ,t ,u e))))
+                    `(glob ,(car e))
+                    (reverse spine))]))))
 
 (define (check-inferred c e ty)
   (let*-values ([(t ty2) (infer c e)] [(t ty2) (insert c t ty2)])
@@ -577,6 +618,21 @@
                  (cond [(not (and (eq? (car p) 'vglob) (memq (cadr p) '(⊤ ≡ ⊥)))) #f]
                        [(eq? (cadr p) '⊥) (oops "«~a» non è un ~a valido" (if (string? e) e (show c (ev (ctx-env c) t))) tname)]
                        [else (let ([pf (auto c p)]) (loop `(app ,tm ,pf e) (force (pi-cod kt (ev (ctx-env c) pf)))))])))))))
+
+;; (λ [x y] corpo): si controlla contro un Π. Un Π implicito non nominato riceve una λ implicita
+;; inserita da sé, come in Agda: (the (→ {A Type} A A) (λ [x] x)).
+(define (lambda-form? e)
+  (and (pair? e) (eq? (car e) 'λ) (= (length e) 3) (pair? (cadr e)) (eq? (car (cadr e)) '%br)
+       (for-all symbol? (cdr (cadr e)))))
+
+(define (check-lambda c xs body ty)
+  (if (null? xs)
+      (check c body ty)
+      (let ([want (force ty)])
+        (unless (eq? (car want) 'vpi) (oops "λ: atteso ~s, che non è una funzione" (show c ty)))
+        (let* ([implicit (eq? (caddr want) 'i)] [x (if implicit '_ (car xs))]
+               [body (check-lambda (bind c x (pi-dom want)) (if implicit xs (cdr xs)) body (pi-cod want (vvar (ctx-l c))))])
+          `(lam ,(if implicit (cadr want) x) ,(caddr want) ,body)))))
 
 ;; (let [x e, y e2] corpo): legami in sequenza; x è un nome definito, il suo valore si sostituisce.
 (define (let-form? e) (and (pair? e) (eq? (car e) 'let) (= (length e) 3) (pair? (cadr e)) (eq? (car (cadr e)) '%br)))
@@ -618,7 +674,8 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ %br pipe let auto))) (set! acc (cons e acc)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ %br %imp pipe let auto λ the))) (set! acc (cons e acc)))]
+        [(lambda-form? e) (walk (caddr e) (append (cdr (cadr e)) bound))]   ; λ lega i suoi nomi
         [(let-form? e)                                   ; let lega in sequenza
          (let loop ([bs (cdr (cadr e))] [bound bound])
            (if (and (pair? bs) (pair? (cdr bs)))
@@ -659,6 +716,7 @@
     [(app) `(app ,(zonk l env (cadr t)) ,(zonk l env (caddr t)) ,(cadddr t))]
     [(lam) `(lam ,(cadr t) ,(caddr t) ,(zonk (+ l 1) (cons (vvar l) env) (cadddr t)))]
     [(pi) `(pi ,(cadr t) ,(caddr t) ,(zonk l env (cadddr t)) ,(zonk (+ l 1) (cons (vvar l) env) (list-ref t 4)))]
+    [(ann) `(ann ,(zonk l env (cadr t)) ,(zonk l env (caddr t)))]
     [else t]))
 (define (zonked l env t)
   (let ([z (zonk l env t)])
@@ -744,7 +802,9 @@
                             [else (loop (+ i 1) (if (char=? c #\") 'code mode))])]
             [(comment) (loop (+ i 1) (if (char=? c #\newline) 'code mode))]
             [else (case c
-                    [(#\[) (string-set! out i #\() (hashtable-set! opens i #t)]
+                    [(#\[) (string-set! out i #\() (hashtable-set! opens i '%br)]
+                    [(#\{) (string-set! out i #\() (hashtable-set! opens i '%imp)]   ; {x T}: binder implicito
+                    [(#\}) (string-set! out i #\))]
                     [(#\]) (string-set! out i #\))]
                     [(#\,) (string-set! out i #\space)])         ; le virgole sono spazi, come in Clojure
                   (loop (+ i 1) (case c [(#\") 'string] [(#\;) 'comment] [else mode]))]))))
@@ -776,7 +836,7 @@
             (let* ([items (let loop ([e e]) (cond [(pair? e) (cons (strip file opens (car e)) (loop (cdr e)))]
                                                   [(null? e) '()]
                                                   [else (strip file opens e)]))]
-                   [d (if br (cons '%br items) items)])
+                   [d (if br (cons br items) items)])
               (when (pair? d) (hashtable-set! pos-of d (cons file at)))
               d)
             e))))
@@ -896,31 +956,59 @@
     (hashtable-set! sigs name t)
     (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
            [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
-           [cs (filter values (map (lambda (ps c) (check-clause name ty ps (cdr c))) pats clauses))])
-      (cover name ty pats)
+           [checked (map (lambda (ps c) (check-clause name ty ps (cdr c))) pats clauses)]   ; (clausola . sintassi risolta)
+           [cs (filter values (map car checked))])
+      (cover name ty (map cdr checked))
       (terminates! name cs)
       (g-info-set! (gget name) (if (null? cs) '(0) (cons (length (car (car cs))) cs))))))
 
 (define (norm-pat p)
   (cond [(null? p) '()]                                  ; pattern assurdo
         [(nat? p) (if (zero? p) '(zero) `(add1 ,(norm-pat (- p 1))))]
-        [(con? p) (list p)]
-        [(symbol? p) p]
+        [(symbol? p) p]                                  ; variabile o costruttore: lo decide il tipo (check-pat)
         [(and (pair? p) (con? (car p))) (cons (car p) (map norm-pat (cdr p)))]
         [else (oops "pattern non valido: ~s" p)]))
 
 ;; Fase A: i pattern si controllano con le variabili come metavariabili chiuse, così
 ;; l'unificazione degli indici le risolve (pattern forzati). → (values alberi tipo-restante)
+;; → (values alberi tipo-restante alberi-espliciti); gli espliciti servono alla copertura.
+;; Gli impliciti della firma prendono il nome del loro binder ({X Type} → X nel corpo), salvo che
+;; quel nome sia usato da un pattern della clausola: allora vale il pattern.
+(define implicit-pmetas '())
 (define (check-pats ty pats)
-  (let loop ([ty ty] [pats pats] [trees '()])
+  (define used (let flat ([p pats]) (cond [(symbol? p) (list p)] [(pair? p) (append (flat (car p)) (flat (cdr p)))] [else '()])))
+  (let loop ([ty ty] [pats pats] [trees '()] [explicit '()])
     (if (null? pats)
-        (values (reverse trees) ty)
+        (values (reverse trees) ty (reverse explicit))
         (let ([ty (force ty)])
           (unless (eq? (car ty) 'vpi) (oops "troppi pattern"))
           (if (eq? (caddr ty) 'i)
-              (let ([m (new-pmeta '_ (pi-dom ty))]) (loop (pi-cod ty (meta-val m)) pats (cons `(pmeta ,m) trees)))
+              (let ([m (new-pmeta (if (memq (cadr ty) used) '_ (cadr ty)) (pi-dom ty))])
+                (set! implicit-pmetas (cons m implicit-pmetas))
+                (loop (pi-cod ty (meta-val m)) pats (cons `(pmeta ,m) trees) explicit))
               (let-values ([(tree v) (check-pat (car pats) (pi-dom ty))])
-                (loop (pi-cod ty v) (cdr pats) (cons tree trees))))))))
+                (loop (pi-cod ty v) (cdr pats) (cons tree trees) (cons tree explicit))))))))
+
+;; La sintassi risolta di un albero, per la copertura: le variabili restano simboli, i costruttori
+;; diventano (c argomenti-espliciti…).
+(define (tree->syn tr)
+  (case (car tr)
+    [(pmeta) (or (meta-name (cadr tr)) '_)]
+    [(pcon) (cons (cadr tr)
+                  (let loop ([kt (force (g-type (gget (cadr tr))))] [ts (caddr tr)] [l 0])
+                    (cond [(or (null? ts) (not (eq? (car kt) 'vpi))) '()]
+                          [(eq? (caddr kt) 'e) (cons (tree->syn (car ts)) (loop (force (pi-cod kt (vvar l))) (cdr ts) (+ l 1)))]
+                          [else (loop (force (pi-cod kt (vvar l))) (cdr ts) (+ l 1))])))]))
+
+;; Un simbolo in un pattern è un costruttore solo se è un costruttore del tipo atteso: così
+;; [port] o [step] restano variabili dove si aspetta un Nat o una funzione.
+(define (constructor-here? p ty)
+  (and (con? p)
+       (let ([v (force ty)])
+         (case (car v)
+           [(vglob) (eq? (g-info (gget p)) (cadr v))]
+           [(vflex) #t]                                  ; tipo ancora ignoto: vale il nome
+           [else #f]))))
 
 ;; Pattern assurdo: la posizione non ha valori. Si verifica dopo l'unificazione di tutti i pattern
 ;; della clausola (absurd-check!), quando il tipo è determinato: ogni costruttore deve essere in
@@ -947,6 +1035,11 @@
     [else (check-pat1 p ty)]))
 
 (define (check-pat1 p ty)
+  (if (and (symbol? p) (constructor-here? p ty))
+      (check-pat1 (list p) ty)
+      (check-pat2 p ty)))
+
+(define (check-pat2 p ty)
   (if (symbol? p)
       (let ([m (new-pmeta p ty)]) (values `(pmeta ,m) (meta-val m)))
       (let loop ([kty (g-type (gget (car p)))] [ps (cdr p)] [trees '()] [sp '()])
@@ -967,16 +1060,18 @@
 (define (check-clause f ty pats body)
   (set! pmetas '())
   (set! absurds '())
-  (let-values ([(trees rest) (guard (x [(unify-failure? x) (oops "~a: clausola ~s impossibile o mal tipata" f pats)])
-                               (check-pats ty pats))])
+  (set! implicit-pmetas '())
+  (let-values ([(trees rest explicit) (guard (x [(unify-failure? x) (oops "~a: clausola ~s impossibile o mal tipata" f pats)])
+                                        (check-pats ty pats))])
     (for-each absurd-check! absurds)
-    (if (not body)
-        (begin (when (null? absurds) (oops "~a: clausola ~s senza corpo e senza ()" f pats)) #f)
-        (check-clause-body f pats body trees rest))))
+    (let ([syn (map tree->syn explicit)])                 ; → (clausola-a-runtime . sintassi risolta)
+      (if (not body)
+          (begin (when (null? absurds) (oops "~a: clausola ~s senza corpo e senza ()" f pats)) (cons #f syn))
+          (cons (check-clause-body f pats body trees rest) syn)))))
 
 (define (check-clause-body f pats body trees rest)
   (begin
-    (let* ([named (filter (lambda (x) (not (eq? x '_))) (map meta-name pmetas))]
+    (let* ([named (filter (lambda (x) (not (eq? x '_))) (map meta-name (filter (lambda (m) (not (memv m implicit-pmetas))) pmetas)))]
            [_ (unless (= (length named) (length (remove-dups named))) (oops "~a: variabile ripetuta in ~s" f pats))]
            [free (topo (filter (lambda (m) (not (meta-sol m))) (reverse pmetas)))]
            [c (fold-left (lambda (c m) (let ([c2 (bind c (meta-name m) (meta-type m))]) (solve! m (vvar (ctx-l c))) c2))
@@ -1080,6 +1175,7 @@
               (case (car h)
                 [(lam) (calls (cadddr h) (+ d 1))]
                 [(pi) (append (calls (cadddr h) d) (calls (list-ref h 4) (+ d 1)))]
+                [(ann) (append (calls (cadr h) d) (calls (caddr h) d))]   ; anche dentro un the
                 [else '()])
               (apply append (map (lambda (a) (calls a d)) args)))))
   (define (inside? l p) (or (equal? p `(pvar ,l)) (and (eq? (car p) 'pcon) (exists (lambda (q) (inside? l q)) (caddr p)))))
@@ -1157,6 +1253,7 @@
     [(glob) (cadr t)]
     [(str) (cadr t)]
     [(num) (cadr t)]
+    [(ann) `(the ,(sexp names (caddr t)) ,(sexp names (cadr t)))]
     [(type) (if (zero? (cadr t)) 'Type `(Type ,(cadr t)))]
     [(meta imeta) (string->symbol (format "?~a" (cadr t)))]
     [(lam) `(λ ,(cadr t) ,(sexp (cons (cadr t) names) (cadddr t)))]
