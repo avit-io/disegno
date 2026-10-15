@@ -45,7 +45,7 @@ tests/     test e teoremi di controllo    tools/  il generatore      cookbook/  
 
 ## Editor
 
-Un solo binario, `disegno`, fa anche da server LSP (`disegno lsp`: diagnostica all'apertura e al salvataggio). Per Neovim il flake dà il plugin `nvim-disegno`: filetype `.disegno`, evidenziazione con tree-sitter, LSP, e `:make` con la quickfix. Con home-manager:
+Un solo binario, `disegno`, fa anche da server LSP (`disegno lsp`: diagnostica all'apertura e al salvataggio, hover con i tipi) e risponde a `disegno type prog.disegno nome`. Per Neovim il flake dà il plugin `nvim-disegno`: filetype `.disegno`, evidenziazione con tree-sitter, LSP, e `:make` con la quickfix. Con home-manager:
 
 ```nix
 # inputs.disegno.url = "github:avit-io/disegno";

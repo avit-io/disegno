@@ -2,7 +2,8 @@
 ;; Diagnostica all'apertura e al salvataggio: il testo del documento si controlla in un processo
 ;; a sé (disegno check), così ogni controllo parte pulito; l'errore file:riga:colonna: messaggio
 ;; diventa una diagnostica. Si legge e si scrive in byte: Content-Length conta byte, non caratteri.
-;; ponytail: solo il primo errore del file, e solo all'apertura e al salvataggio; hover e
+;; Hover: il tipo del nome globale sotto il cursore (disegno type).
+;; ponytail: solo il primo errore del file, e solo all'apertura e al salvataggio; hover sulle variabili locali e
 ;; diagnostica mentre si scrive verranno se servono.
 
 (define lsp-in (standard-input-port))
@@ -77,6 +78,35 @@
     (send `(("jsonrpc" . "2.0") ("method" . "textDocument/publishDiagnostics")
             ("params" . (("uri" . ,uri) ("diagnostics" . ,diags)))))))
 
+;; --- hover: il tipo del nome sotto il cursore (disegno type, in un processo a sé) ---
+
+(define (word-at text line character)                    ; il simbolo che contiene la posizione, o #f
+  (let* ([lines (split-on text #\newline)]
+         [s (and (< line (length lines)) (list-ref lines line))])
+    (and s
+         (let* ([delim? (lambda (c) (or (char-whitespace? c) (memv c '(#\( #\) #\[ #\] #\; #\, #\"))))]
+                [n (string-length s)] [i (min character n)]
+                [start (let loop ([j i]) (if (and (> j 0) (not (delim? (string-ref s (- j 1))))) (loop (- j 1)) j))]
+                [end (let loop ([j i]) (if (and (< j n) (not (delim? (string-ref s j)))) (loop (+ j 1)) j))])
+           (and (< start end) (substring s start end))))))
+
+(define (type-at uri text word)                          ; → testo dei tipi, o #f
+  (let* ([tmp (format "/tmp/disegno-lsp-~a.disegno" (random 1000000000))] [out (string-append tmp ".out")])
+    (call-with-output-file tmp (lambda (p) (put-string p text)) 'replace)
+    (let* ([ok (zero? (system (format "~a --script ~a type ~a '~a' >~a 2>/dev/null" scheme-bin (at-root "src/main.ss") tmp word out)))]   ; let*: prima il comando
+          [r (call-with-input-file out get-string-all)])
+      (delete-file tmp) (when (file-exists? out) (delete-file out))
+      (and ok (string? r) r))))
+
+(define (hover msg params)
+  (let* ([uri (get (get params "textDocument") "uri")] [pos (get params "position")]
+         [text (hashtable-ref documents uri "")]
+         [word (word-at text (get pos "line") (get pos "character"))]
+         [types (and word (not (memv #\' (string->list word))) (type-at uri text word))])
+    (respond msg (if types
+                     `(("contents" . (("kind" . "markdown") ("value" . ,(string-append "```disegno\n" types "```")))))
+                     'null))))
+
 ;; --- il ciclo ---
 
 (define (serve)
@@ -86,7 +116,8 @@
         (let ([method (get msg "method")] [params (get msg "params")])
           (cond
             [(equal? method "initialize")
-             (respond msg `(("capabilities" . (("textDocumentSync" . (("openClose" . #t) ("change" . 1) ("save" . #t)))))
+             (respond msg `(("capabilities" . (("textDocumentSync" . (("openClose" . #t) ("change" . 1) ("save" . #t)))
+                                               ("hoverProvider" . #t)))
                             ("serverInfo" . (("name" . "disegno")))))]
             [(member method '("textDocument/didOpen"))
              (let ([doc (get params "textDocument")])
@@ -100,6 +131,7 @@
              (publish-diagnostics (get (get params "textDocument") "uri"))]
             [(equal? method "textDocument/didClose")
              (hashtable-delete! documents (get (get params "textDocument") "uri"))]
+            [(equal? method "textDocument/hover") (hover msg params)]
             [(equal? method "shutdown") (respond msg 'null)]
             [(equal? method "exit") (exit 0)]
             [(get msg "id") (send `(("jsonrpc" . "2.0") ("id" . ,(get msg "id"))

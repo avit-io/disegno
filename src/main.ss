@@ -17,6 +17,21 @@
   (serve)
   (exit 0))
 
+;; disegno type prog.disegno nome: il tipo di un nome globale (usato dall'hover dell'LSP). Il file
+;; si controlla fin dove si può: un errore più avanti non impedisce di conoscere i nomi già definiti.
+;; Un nome corto risolto dal tipo (from, with-exec…) mostra tutte le sue varianti.
+(let ([args (command-line-arguments)])
+  (when (and (= (length args) 3) (equal? (car args) "type"))
+    (parameterize ([privileged #t]) (check-file (at-root "lib/std.disegno")))
+    (guard (e [#t #f]) (check-file (cadr args)))
+    (let* ([name (string->symbol (caddr args))]
+           [lines (cond [(type-of-global name) => list]
+                        [(path-literal? name) (list (format "~a : Abs" name))]
+                        [else (filter values (map type-of-global (qualified name)))])])
+      (if (null? lines)
+          (exit 1)
+          (begin (for-each (lambda (l) (display l) (newline)) lines) (exit 0))))))
+
 (define-values (mode file)
   (let ([args (command-line-arguments)])
     (cond [(and (= (length args) 2) (member (car args) '("check" "plan" "run"))) (values (string->symbol (car args)) (cadr args))]

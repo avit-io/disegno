@@ -351,7 +351,7 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `src/core.ss` | nucleo: stampa GraphQL, HTTP su socket, JSON, sessione |
 | `src/types.ss` | elaboratore e kernel: NbE, unificazione, pattern, copertura, terminazione, positività, `record`, `auto`, letterali, numerali nativi |
 | `src/plan.ss` | runner: dal piano (dato) al GraphQL, `branch`, esecuzione e piani a secco |
-| `src/main.ss` | driver: `check`, `plan`, `run`, `lsp`; trova la radice dalla propria posizione |
+| `src/main.ss` | driver: `check`, `plan`, `run`, `lsp`, `type`; trova la radice dalla propria posizione |
 | `src/lsp.ss` | il server LSP: JSON-RPC su stdin/stdout, diagnostica da un controllo in un processo a sé |
 | `editors/` | la grammatica tree-sitter con le query, e il plugin per Neovim (filetype, tree-sitter, LSP, `:make`) |
 | `lib/std.disegno` | libreria standard: uguaglianza, `Bool`, `Nat`, liste, spazi affini, regioni, nomi corti, `Host`, `Export`, proprietà del piano |
@@ -399,7 +399,7 @@ In cambio della purezza e della semplicità:
 
 ### Da fare
 
-- **Editor**: fatto tree-sitter (grammatica, evidenziazione) e l'LSP in Chez (`disegno lsp`, diagnostica all'apertura e al salvataggio), con il plugin `nvim-disegno`. Restano l'hover con i tipi, la diagnostica mentre si scrive e più errori per file.
+- **Editor**: fatti tree-sitter (grammatica, evidenziazione) e l'LSP in Chez (`disegno lsp`: diagnostica all'apertura e al salvataggio, hover con il tipo dei nomi globali e le varianti dei nomi corti), con il plugin `nvim-disegno`. Restano l'hover sulle variabili locali, la diagnostica mentre si scrive e più errori per file.
 - **Pointless Disegno**: un testo per imparare i tipi dipendenti attraverso il linguaggio, dalle definizioni per casi alle prove per induzione, dai tipi indicizzati alle prove sul piano. Ogni capitolo è un file `.disegno` verificato dal checker, come il cookbook.
 - **I log su Dagger**: il problema pratico più sentito. L'output dei comandi è un'osservazione (`stdout`, `stderr`), e Dagger lo mostra in una TUI pensata per l'interazione; in CI servono log leggibili, raggruppati per passo e conservati. Da capire cosa si può dichiarare nel disegno (quali passi, quali flussi, dove finiscono) e cosa resta del runner.
 

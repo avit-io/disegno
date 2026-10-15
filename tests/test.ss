@@ -238,6 +238,7 @@
               (msg "textDocument/didOpen" `(("textDocument" . (("uri" . ,uri) ("text" . "(def male : Abs\n  (⊕ /out /bin))\n")))))
               (msg "textDocument/didChange" `(("textDocument" . (("uri" . ,uri))) ("contentChanges" . ,(vector '(("text" . "(def bene : Abs (⊕ /out \"bin\"))\n"))))))
               (msg "textDocument/didSave" `(("textDocument" . (("uri" . ,uri)))))
+              (msg "textDocument/hover" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 0) ("character" . 17)))) 3)
               (msg "shutdown" '(("x" . 1)) 2)
               (msg "exit" '(("x" . 1)))))) 'replace)
   (system (format "scheme --script ~a lsp < ~a > ~a" (at-root "src/main.ss") in out))
@@ -246,6 +247,7 @@
     (assert (contiene? r "\"range\":{\"start\":{\"line\":1,\"character\":2}"))
     (assert (contiene? r "\"message\":\"/bin: atteso Rel, trovato Abs\""))
     (assert (contiene? r "\"diagnostics\":[]"))
+    (assert (contiene? r "\"id\":3,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```disegno\\nAbs.⊕ : (→ Abs Rel Abs)\\n"))   ; e le altre varianti di ⊕
     (assert (contiene? r "\"id\":2,\"result\":null"))))
 
 ;; --- dal vivo ---

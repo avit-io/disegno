@@ -1138,6 +1138,12 @@
         [else #f]))
 
 (define (kind-alias k)
+  (case k
+    [(Kind.bool) '(Remote Bool)]                          ; un'osservazione, non un Bool
+    [(Kind.export) '(Export Dir)]
+    [else (kind-alias1 k)]))
+
+(define (kind-alias1 k)
   (let ([s (symbol->string k)])
     (string->symbol
       (let loop ([cs (string->list (substring s 5 (string-length s)))] [up #t])
@@ -1159,3 +1165,27 @@
              (cond [(not (eq? (car t) 'app)) (if (null? as) (sexp names t) (cons (sexp names t) as))]
                    [(eq? (cadddr t) 'e) (loop (cadr t) (cons (sexp names (caddr t)) as))]
                    [else (loop (cadr t) as)]))]))
+
+;; --- tipi leggibili, come si scrivono: (→ {A Type} [x A] B C) ---
+;; Le frecce annidate si appiattiscono; un binder senza nome è solo il suo tipo; gli impliciti
+;; stanno tra graffe. Serve all'hover dell'LSP e a disegno type.
+
+(define (render-term names t)
+  (if (eq? (car t) 'pi)
+      (let loop ([names names] [t t] [parts '()])
+        (if (eq? (car t) 'pi)
+            (let* ([x (let ([s (symbol->string (cadr t))])   ; %r (interno) si mostra r
+                        (if (and (> (string-length s) 1) (char=? (string-ref s 0) #\%)) (substring s 1 (string-length s)) s))]
+                   [dom (render-term names (cadddr t))]
+                   [part (cond [(eq? (caddr t) 'i) (format "{~a ~a}" x dom)]
+                               [(string=? x "_") dom]
+                               [else (format "[~a ~a]" x dom)])])
+              (loop (cons (cadr t) names) (list-ref t 4) (cons part parts)))
+            (format "(→ ~a~a)" (apply string-append (map (lambda (p) (string-append p " ")) (reverse parts)))
+                    (render-term names t))))
+      (let ([s (sexp names t)])
+        (call-with-string-output-port (lambda (p) (write s p))))))
+
+(define (type-of-global name)                            ; → "nome : tipo", o #f
+  (let ([g (gget name)])
+    (and g (format "~a : ~a" name (render-term '() (reify 0 (g-type g)))))))
