@@ -1,0 +1,14 @@
+; Un banale go build: il sorgente dall'host, la compilazione in un container, il binario sull'host.
+
+(def go-build : (→ Dir Dir)
+  [src] (pipe (container)
+              (from "golang:1.25-alpine")
+              (Container.with-mounted-cache "/go/pkg/mod" (Query.cache-volume "go-mod"))
+              (with-env "CGO_ENABLED" "0")
+              (with-dir "/src" src)
+              (with-workdir "/src")
+              (with-exec ["go" "build" "-o" "/out/hello" "."])
+              (dir-of "/out")))
+
+(def main : (→ [src (Host "hello")] (Export Dir))
+  [src] (overlay "bin" (go-build src)))

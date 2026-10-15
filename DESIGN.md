@@ -213,6 +213,7 @@ Precedente sul lato Dagger: Dang, il linguaggio nativo di Dagger 1.0, conferma c
 | `std.disegno` | libreria standard: uguaglianza, `Bool`, `Nat`, liste, nomi corti, `Host`, `Export`, proprietà del piano |
 | `engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes` |
 | `examples.disegno`, `io.disegno`, `release.disegno` | gli esempi del documento |
+| `go.disegno`, `hello/` | un go build: sorgente dall'host, compilazione in container con cache dei moduli, binario in `bin/` |
 | `disegno.ss` | driver: `scheme --script disegno.ss prog.disegno` stampa i piani; sotto `dagger run` li esegue |
 | `test.ss` | test: nucleo, tipi, rifiuti, piani a secco e, sotto `dagger run`, dal vivo |
 | `flake.nix` | ambiente: Chez, Dagger, motore dedicato con le CA dell'host |
