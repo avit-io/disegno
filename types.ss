@@ -19,7 +19,7 @@
 (define (gget n) (and (symbol? n) (hashtable-ref globals n #f)))
 (define (con? n) (let ([g (gget n)]) (and g (eq? (g-kind g) 'con))))
 (define (fresh-name! n)
-  (when (memq n '(→ Type _ pipe auto)) (oops "~a è una parola riservata" n))
+  (when (memq n '(→ Type _ pipe auto let)) (oops "~a è una parola riservata" n))
   (when (gget n) (oops "~a è già definito" n)))
 
 (define metas (make-eqv-hashtable))                     ; m → #(soluzione nome tipo)
@@ -85,7 +85,44 @@
 (define (string-contains? s sub)
   (let ([n (string-length s)] [k (string-length sub)])
     (let loop ([i 0]) (and (<= (+ i k) n) (or (string=? (substring s i (+ i k)) sub) (loop (+ i 1)))))))
-(define prims `((%contains? 2 ,string-contains?)))
+(define (split-on s ch)
+  (let loop ([cs (string->list s)] [cur '()] [acc '()])
+    (cond [(null? cs) (reverse (cons (list->string (reverse cur)) acc))]
+          [(char=? (car cs) ch) (loop (cdr cs) '() (cons (list->string (reverse cur)) acc))]
+          [else (loop (cdr cs) (cons (car cs) cur) acc)])))
+
+;; Riferimento d'immagine: [registro/]nome[/nome…][:tag][@sha256:<64 esadecimali>]
+;; ponytail: grammatica di distribution/reference semplificata; niente digest diversi da sha256.
+(define (image-ref? s)
+  (define (low? c) (or (char-numeric? c) (and (char-alphabetic? c) (char-lower-case? c))))
+  (define (chars-ok? x ok?) (for-all ok? (string->list x)))
+  (define (component? x)
+    (let ([n (string-length x)])
+      (and (> n 0) (low? (string-ref x 0)) (low? (string-ref x (- n 1)))
+           (chars-ok? x (lambda (c) (or (low? c) (memv c '(#\. #\_ #\-))))))))
+  (define (registry? x)
+    (and (or (memv #\. (string->list x)) (memv #\: (string->list x)) (string=? x "localhost"))
+         (chars-ok? x (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (memv c '(#\. #\- #\:)))))))
+  (define (tag? x)
+    (and (<= 1 (string-length x) 128) (not (memv (string-ref x 0) '(#\. #\-)))
+         (chars-ok? x (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (memv c '(#\_ #\. #\-)))))))
+  (define (digest? x)
+    (and (= (string-length x) 71) (string=? (substring x 0 7) "sha256:")
+         (chars-ok? (substring x 7 71) (lambda (c) (or (char-numeric? c) (memv c (string->list "abcdef")))))))
+  (let ([at (split-on s #\@)])
+    (and (<= 1 (length at) 2) (or (null? (cdr at)) (digest? (cadr at)))
+         (let* ([parts (split-on (car at) #\/)]
+                [name+tag (split-on (list-ref parts (- (length parts) 1)) #\:)]
+                [path (list-head parts (- (length parts) 1))])
+           (and (<= 1 (length name+tag) 2) (or (null? (cdr name+tag)) (tag? (cadr name+tag)))
+                (component? (car name+tag))
+                (for-all component? (if (and (pair? path) (registry? (car path))) (cdr path) path)))))))
+
+;; Un passo di percorso: non vuoto, senza /, né . né ..
+(define (segment? s) (and (> (string-length s) 0) (not (memv #\/ (string->list s))) (not (member s '("." "..")))))
+
+(define prims `((%contains? 2 ,string-contains?) (%string=? 2 ,string=?)
+                (%image-ref? 1 ,image-ref?) (%segment? 1 ,segment?)))
 
 ;; Clausola a runtime: (pattern n corpo); pattern: (pvar livello) (pdot) (pcon c pattern...).
 (define (match-clauses cs args)
@@ -237,7 +274,9 @@
            [(and (not (privileged)) (char=? (string-ref (symbol->string e) 0) #\%)) (oops "~a è riservato al nucleo" e)]
            [(gget e) => (lambda (g) (values `(glob ,e) (g-type g)))]
            [(root-field e) => (lambda (n) (values `(glob ,n) (g-type (gget n))))]
+           [(path-literal? e) (values (path-term c e) (quote (vglob Abs ())))]
            [else (oops "nome sconosciuto: ~a" e)])]
+    [(let-form? e) (let-values ([(c body) (let-bind c e)]) (infer c body))]
     [(and (pair? e) (eq? (car e) '→))
      (let-values ([(t n) (elab-arrow c (cdr e))]) (values t `(vtype ,n)))]
     [(and (pair? e) (eq? (car e) 'Type) (nat? (cadr e))) (values `(type ,(cadr e)) `(vtype ,(+ 1 (cadr e))))]
@@ -308,13 +347,60 @@
           [else (oops "auto: la proposizione si riduce a ~s, non a vero" (show c ty))])))
 
 (define (check c e ty)
-  (if (eq? e 'auto) (auto c ty) (check-inferred c e ty)))
+  (let ([want (force ty)])
+    (cond [(eq? e 'auto) (auto c ty)]
+          [(let-form? e) (let-values ([(c body) (let-bind c e)]) (check c body ty))]
+          [(and (pair? e) (eq? (car e) '%br) (eq? (car want) 'vglob) (eq? (cadr want) 'List))
+           (let ([a (car (car (caddr want)))] [l (ctx-l c)])  ; ogni elemento riceve il tipo atteso
+             (fold-right (lambda (x acc) `(app (app (app (glob ::) ,(reify l a) i) ,(check c x a) e) ,acc e))
+                         `(app (glob vuota) ,(reify l a) i) (cdr e)))]
+          [else (check-inferred c e ty)])))
 
 (define (check-inferred c e ty)
   (let*-values ([(t ty2) (infer c e)] [(t ty2) (insert c t ty2)])
-    (guard (x [(unify-failure? x) (oops "~s: atteso ~s, trovato ~s" e (show c ty) (show c ty2))])
-      (unify (ctx-l c) ty2 ty))
-    t))
+    (or (guard (x [(unify-failure? x) #f]) (unify (ctx-l c) ty2 ty) t)
+        (coerce c e t ty2 ty)
+        (oops "~s: atteso ~s, trovato ~s" e (show c ty) (show c ty2)))))
+
+;; Il letterale resta, il tipo cambia: se T ha un costruttore il cui primo campo accoglie il
+;; valore e i campi restanti sono proposizioni, il valore diventa (k valore auto …). Così
+;; "golang:1.25-alpine" atteso come Image è la coppia Σ (image "golang:1.25-alpine" prova).
+(define (coerce c e t ty2 ty)
+  (let ([want (force ty)])
+    (and (eq? (car want) 'vglob) (null? (caddr want))
+         (let ([g (gget (cadr want))])
+           (and (eq? (g-kind g) 'data)
+                (exists (lambda (k) (coerce-with c e t ty2 k (cadr want))) (g-info g)))))))
+
+(define (coerce-with c e t ty2 k tname)
+  (let ([kt (force (g-type (gget k)))])
+    (and (eq? (car kt) 'vpi) (eq? (caddr kt) 'e)
+         (guard (x [(unify-failure? x) #f]) (unify (ctx-l c) ty2 (pi-dom kt)) #t)
+         (let loop ([tm `(app (glob ,k) ,t e)] [kt (force (pi-cod kt (ev (ctx-env c) t)))])
+           (if (not (eq? (car kt) 'vpi))
+               tm
+               (let ([p (force (pi-dom kt))])
+                 (cond [(not (and (eq? (car p) 'vglob) (memq (cadr p) '(⊤ ≡ ⊥)))) #f]
+                       [(eq? (cadr p) '⊥) (oops "«~a» non è un ~a valido" (if (string? e) e (show c (ev (ctx-env c) t))) tname)]
+                       [else (let ([pf (auto c p)]) (loop `(app ,tm ,pf e) (force (pi-cod kt (ev (ctx-env c) pf)))))])))))))
+
+;; (let [x e, y e2] corpo): legami in sequenza; x è un nome definito, il suo valore si sostituisce.
+(define (let-form? e) (and (pair? e) (eq? (car e) 'let) (= (length e) 3) (pair? (cadr e)) (eq? (car (cadr e)) '%br)))
+(define (let-bind c e)                                  ; → (values contesto corpo)
+  (let loop ([c c] [bs (cdr (cadr e))])
+    (cond [(null? bs) (values c (caddr e))]
+          [(or (null? (cdr bs)) (not (symbol? (car bs)))) (oops "let: legami malformati in ~s" e)]
+          [else (let-values ([(t ty) (infer c (cadr bs))])
+                  (loop (define-name c (car bs) (ev (ctx-env c) t) ty) (cddr bs)))])))
+
+;; /out, /go/pkg/mod: un simbolo che inizia con / è un punto, (/ (/ root "go") "pkg") …
+;; Il termine si costruisce direttamente: un let che lega root non cattura il letterale.
+(define (path-literal? e)
+  (and (symbol? e) (let ([s (symbol->string e)]) (and (> (string-length s) 1) (char=? (string-ref s 0) #\/)))))
+(define (path-term c e)
+  (fold-left (lambda (acc seg) `(app (app (glob /) ,acc e) ,(check c seg '(vglob Segment ())) e))
+             '(glob root)
+             (filter (lambda (s) (not (string=? s ""))) (split-on (symbol->string e) #\/))))
 
 (define (check-type c e)                                ; → (values termine livello)
   (let-values ([(t ty) (infer c e)])
@@ -338,7 +424,12 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (pair? (qualified e)) (memq e '(→ Type _ %br pipe))) (set! acc (cons e acc)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (pair? (qualified e)) (path-literal? e) (memq e '(→ Type _ %br pipe let))) (set! acc (cons e acc)))]
+        [(let-form? e)                                   ; let lega in sequenza
+         (let loop ([bs (cdr (cadr e))] [bound bound])
+           (if (and (pair? bs) (pair? (cdr bs)))
+               (begin (walk (cadr bs) bound) (loop (cddr bs) (cons (car bs) bound)))
+               (walk (caddr e) bound)))]
         [(and (pair? e) (eq? (car e) '→))
          (let loop ([as (cdr e)] [bound bound])
            (cond [(null? as) (void)]
@@ -448,6 +539,7 @@
               [(comment) (write-char c p) (loop (cdr cs) (if (char=? c #\newline) 'code mode))]
               [else (cond [(char=? c #\[) (display "(%br " p)]
                           [(char=? c #\]) (write-char #\) p)]
+                          [(char=? c #\,) (write-char #\space p)] ; le virgole sono spazi, come in Clojure
                           [else (write-char c p)])
                     (loop (cdr cs) (case c [(#\") 'string] [(#\;) 'comment] [else mode]))])))))))
 

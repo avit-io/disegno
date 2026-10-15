@@ -73,7 +73,17 @@
           [(and (eq? (car v) 'vglob) (eq? (cadr v) 'vuota)) '()]
           [(and (eq? (car v) 'vglob) (eq? (cadr v) '::))
            (let* ([xs (explicit (caddr v))] [x (gql-arg (car xs) resolve)]) (cons x (gql-arg (cadr xs) resolve)))]
+          [(and (eq? (car v) 'vglob) (memq (cadr v) '(root /))) (abs-string v resolve)]
+          ;; un valore raffinato (Image, Segment, Arg…) va al motore con il suo primo campo
+          [(and (eq? (car v) 'vglob) (eq? (g-kind (gget (cadr v))) 'con) (pair? (explicit (caddr v))))
+           (gql-arg (car (explicit (caddr v))) resolve)]
           [else (oops "argomento non statico: ~s" (sexp '() (reify 0 v)))])))
+
+(define (abs-string v resolve)                           ; (/ (/ root "go") "pkg") → "/go/pkg"
+  (let loop ([v (force v)] [acc '()])
+    (cond [(eq? (cadr v) 'root) (if (null? acc) "/" (apply string-append (map (lambda (s) (string-append "/" s)) acc)))]
+          [(eq? (cadr v) '/) (let ([xs (explicit (caddr v))]) (loop (force (car xs)) (cons (gql-arg (cadr xs) resolve) acc)))]
+          [else (oops "percorso non statico: ~s" (sexp '() (reify 0 v)))])))
 
 ;; main : (→ [x (Host "p")] ... (Export Dir)) → catena che termina con export.
 (define (plan resolve . entry)

@@ -1,23 +1,23 @@
 ; L'esempio release del documento: si pubblica solo se i test passano, altrimenti si scrive un report.
 
 (def test : (→ Dir Container)
-  [src] (pipe (container) (from "alpine") (with-dir "/src" src) (with-workdir "/src")
+  [src] (pipe (container) (from "alpine") (with-dir /src src) (with-workdir /src)
               (try-exec ["sh" "-c" "test -f LEGGIMI"])))
 
 (def build : (→ Dir Dir)
-  [src] (pipe (container) (from "alpine") (with-dir "/src" src)
+  [src] (pipe (container) (from "alpine") (with-dir /src src)
               (with-exec ["sh" "-c" "mkdir -p /dist && cp -r /src/. /dist"])
-              (dir-of "/dist")))
+              (dir-of /dist)))
 
-(def image : (→ Dir Container)
-  [src] (pipe (container) (from "alpine") (with-dir "/app" (build src))))
+(def app-image : (→ Dir Container)
+  [src] (pipe (container) (from "alpine") (with-dir /app (build src))))
 
 (def report : (→ Dir Dir)
-  [src] (with-file empty "report.txt" "i test non passano\n"))
+  [src] (with-file empty /report.txt "i test non passano\n"))
 
 (def release : (→ Dir (Export Dir))
   [src] (branch (passes? (test src))
-          (publish (image src) "registry.example.com/app:1")
+          (publish (app-image src) "registry.example.com/app:1")
           (overlay "reports" (report src))))
 
 (def main : (→ [src (Host ".")] (Export Dir))

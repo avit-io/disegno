@@ -48,15 +48,15 @@
 (define dir (format "~a/disegno-prova" (or (getenv "TMPDIR") "/tmp")))
 (check-string (format "
   (def gen-config : (→ Dir Dir)
-    [src] (with-file src \"config/app.toml\" \"porta = 8080\\n\"))
+    [src] (with-file src /config/app.toml \"porta = 8080\\n\"))
 
   (def main : (→ [src (Host ~s)] (Export Dir))
-    [src] (replace ~s (put (with-file empty \"LEGGIMI\" \"ciao\\n\") \"cfg\" (gen-config src))))"
+    [src] (replace ~s (put (with-file empty /LEGGIMI \"ciao\\n\") /cfg (gen-config src))))"
   (string-append dir "/in") (string-append dir "/out")))
 
 (define secco (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))))))
-(assert (contiene? secco "directory { withNewFile(path: \"LEGGIMI\", contents: \"ciao\\n\") { withDirectory(path: \"cfg\", source: \"<host { directory(path:"))
-(assert (contiene? secco "withNewFile(path: \\\"config/app.toml\\\""))
+(assert (contiene? secco "directory { withNewFile(path: \"/LEGGIMI\", contents: \"ciao\\n\") { withDirectory(path: \"/cfg\", source: \"<host { directory(path:"))
+(assert (contiene? secco "withNewFile(path: \\\"/config/app.toml\\\""))
 (assert (contiene? secco "} }>\") { export(path:"))
 (assert (contiene? secco "wipe: true"))
 
@@ -66,21 +66,21 @@
     [src] (replace ~s
             (pipe (container)
                   (from \"alpine\")
-                  (with-dir \"/w\" src)
-                  (with-workdir \"/w\")
+                  (with-dir /w src)
+                  (with-workdir /w)
                   (with-exec [\"sh\" \"-c\" \"cat dati.txt dati.txt > doppio.txt\"])
-                  (dir-of \"/w\"))))"
+                  (dir-of /w))))"
   (string-append dir "/in") (string-append dir "/out2")))
 (define secco2 (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))) 'costruisci)))
 (assert (contiene? secco2 "container { from(address: \"alpine\") { withDirectory(path: \"/w\", source: \"<host"))
 (assert (contiene? secco2 "withExec(args: [\"sh\", \"-c\", \"cat dati.txt dati.txt > doppio.txt\"]) { directory(path: \"/w\")"))
 (rifiuta "(def mista : (List String) [\"a\" 1])" "atteso")
 (rifiuta "(def pipe : Dir empty)" "parola riservata")
-(check-string "(def immagini : (≡ (images (pipe (container) (from \"a\") (with-dir \"/w\" (dir-of (from container \"b\") \"/\"))))
+(check-string "(def immagini : (≡ (images (pipe (container) (from \"a\") (with-dir /w (dir-of (from container \"b\") root))))
                                   [\"a\" \"b\"])
                  auto)")
 (rifiuta "(def dev-pinnate : (All pinned? (images (from container \"alpine\"))) auto)" "si riduce a ⊥")
-(rifiuta "(def falso-branch : (All pinned? (images (branch (Directory.exists empty \"x\") (from container \"a@sha256:1\") (from container \"b\")))) auto)" "si riduce a ⊥")
+(rifiuta "(def falso-branch : (All pinned? (images (branch (Directory.exists empty /x) (from container \"a@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1\") (from container \"b\")))) auto)" "si riduce a ⊥")
 (rifiuta "(def sotto : Service (service \"api\" prod 2 auto))" "auto: la proposizione si riduce a ⊥")
 (rifiuta "(def falso-auto : (≡ (+ 1 1) 3) auto)" "atteso")
 (check-string "(def nome-api : (≡ (Service.name api) \"api\") auto)")
@@ -90,14 +90,14 @@
 ;; branch: la condizione è un test nel container; i due rami sono entrambi nel piano.
 (check-string (format "
   (def prova-in : (→ Dir String Container)
-    [src file] (pipe (container) (from \"alpine\") (with-dir \"/w\" src) (try-exec [\"test\" \"-f\" file])))
+    [src file] (pipe (container) (from \"alpine\") (with-dir /w src) (try-exec [\"test\" \"-f\" file])))
 
   (def esito : (→ (Remote Bool) Dir)
-    [c] (branch c (with-file empty \"esito\" \"passa\\n\") (with-file empty \"esito\" \"fallisce\\n\")))
+    [c] (branch c (with-file empty /esito \"passa\\n\") (with-file empty /esito \"fallisce\\n\")))
 
   (def verifica : (→ [src (Host ~s)] (Export Dir))
     [src] (replace ~s (put (esito (passes? (prova-in src \"/w/dati.txt\")))
-                           \"manca\" (esito (exists? src \"manca.txt\")))))"
+                           /manca (esito (exists? src /manca.txt)))))"
   (string-append dir "/in") (string-append dir "/out3")))
 (define piani (all-plans 'verifica))
 (assert (= (length piani) 4))
@@ -111,22 +111,22 @@
 (check-string "
   (def servizio : (→ [src (Host \"/x\")] (Export Dir))
     [src] (overlay \"out\" (pipe (Query.git \"https://example.com/r.git\") (GitRepository.branch \"main\") GitRef.tree
-                              (put \"porta\" (dir-of (Container.with-exposed-port (container) 8080) \"/\")))))")
+                              (put /porta (dir-of (Container.with-exposed-port (container) 8080) root)))))")
 (define secco3 (plan->graphql (plan resolve-dry 'servizio)))
 (assert (contiene? secco3 "git(url: \"https://example.com/r.git\") { branch(name: \"main\") { tree {"))
 (assert (contiene? secco3 "withExposedPort(port: 8080)"))
 
 ;; Proprietà d'ordine: valgono per ogni input, perché effects non scende nelle directory.
 (check-string "
-  (def img : (→ Dir Container) [src] (pipe (container) (from \"alpine\") (with-dir \"/app\" src)))
+  (def img : (→ Dir Container) [src] (pipe (container) (from \"alpine\") (with-dir /app src)))
   (def protetto : (→ Dir (Export Dir))
     [src] (branch (passes? (try-exec (from container \"alpine\") [\"true\"]))
-            (branch (exists? src \"VERSION\") (publish (img src) \"r/app:1\") (overlay \"o\" src))
+            (branch (exists? src /VERSION) (publish (img src) \"r/app:1\") (overlay \"o\" src))
             (overlay \"o\" src)))
   (def ordine-ok : (→ [src Dir] (Before test? publish? (protetto src))) [src] auto)")
 (rifiuta "(def scoperto : (→ [src Dir] (Before test? publish? (publish (img src) \"r/app:1\"))) [src] auto)"
          "si riduce a ⊥")
-(rifiuta "(def finto-test : (→ [src Dir] (Before test? publish? (branch (exists? src \"x\") (publish (img src) \"r\") (overlay \"o\" src)))) [src] auto)"
+(rifiuta "(def finto-test : (→ [src Dir] (Before test? publish? (branch (exists? src /x) (publish (img src) \"r\") (overlay \"o\" src)))) [src] auto)"
          "si riduce a ⊥")
 (rifiuta "(def nel-ramo-sbagliato : (→ [src Dir] (Before test? publish? (branch (passes? (img src)) (overlay \"o\" src) (publish (img src) \"r\")))) [src] auto)"
          "si riduce a ⊥")
@@ -134,14 +134,25 @@
 ;; Nomi corti: il tipo del primo argomento sceglie il metodo; senza metodo è un campo radice.
 (check-string "
   (def corto : (→ [src (Host \"/x\")] (Export Dir))
-    [src] (overlay \"out\" (pipe (container) (from \"alpine\") (with-mounted-cache \"/c\" (cache-volume \"k\"))
-                                 (directory \"/\") (with-new-file \"a\" \"b\") (directory \"sub\"))))")
+    [src] (overlay \"out\" (pipe (container) (from \"alpine\") (with-mounted-cache /c (cache-volume \"k\"))
+                                 (directory root) (with-new-file /a \"b\") (directory /sub))))")
 (define secco4 (plan->graphql (plan resolve-dry 'corto)))
-(assert (contiene? secco4 "withMountedCache(path: \"/c\", cache: \"<cacheVolume(key: \\\"k\\\")>\") { directory(path: \"/\") { withNewFile(path: \"a\", contents: \"b\") { directory(path: \"sub\")"))
+(assert (contiene? secco4 "withMountedCache(path: \"/c\", cache: \"<cacheVolume(key: \\\"k\\\")>\") { directory(path: \"/\") { withNewFile(path: \"/a\", contents: \"b\") { directory(path: \"/sub\")"))
 (rifiuta "(def sbagliato : Dir (with-exec empty [\"x\"]))" "with-exec non esiste per")
 (rifiuta "(def pinna : Dir (Query.cache-volume \"k\"))" "nome sconosciuto")
 
+;; Valori raffinati e percorsi: il letterale resta, il tipo cambia; i punti non si sommano.
+(rifiuta "(def c1 : Container (from container \"Golang:1.25\"))" "«Golang:1.25» non è un Image valido")
+(rifiuta "(def c2 : Container (from container \"golang:1.25@sha256:abc\"))" "non è un Image valido")
+(rifiuta "(def c3 : Dir (with-file empty /a/../b \"x\"))" "«..» non è un Segment valido")
+(rifiuta "(def c4 : Abs (/ /out /bin))" "atteso Segment, trovato Abs")
+(rifiuta "(def c5 : (⊑ /out /out/bin) auto)" "si riduce a ⊥")
+(check-string "(def c6 : Container (from container \"ghcr.io/dagger/engine:v0.21.10\"))
+               (def c7 : (⊑ (/ /out \"hello\") /out) auto)
+               (def c8 : (≡ (let [o /out, b (/ o \"x\")] b) /out/x) auto)")
+
 ;; --- dal vivo ---
+
 
 
 

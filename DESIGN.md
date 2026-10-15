@@ -45,9 +45,10 @@ Il linguaggio appare come un linguaggio a sé: dal codice non si vede l'ospite n
 - I letterali `0, 1, 2…` sono zucchero per `zero`, `add1`; le stringhe `"…"` sono letterali di tipo `String`.
 - **Le quadre sono sintassi**: in una firma `[x T]` è un binder, `(x T)` un'applicazione; in un termine `["a" "b"]` è una lista; nelle definizioni `[…]` raccoglie i pattern di una clausola o i campi di un costruttore.
 - **`pipe`**: `(pipe x (f a) g)` è `(g (f x a))`. Il valore passa come primo argomento esplicito, come l'oggetto di un metodo GraphQL.
+- **Letterali secondo il tipo**: `"golang:1.25-alpine"` è un `Image`, `/out` è un punto (vedi I punti non si sommano).
 - **Nomi dello schema senza prefisso**: lo schema non affiora nel programma. `(with-mounted-cache c …)` si risolve in `Container.with-mounted-cache` perché `c` è un `Container`: le collisioni tra tipi le risolve il checker, non il programmatore. Un nome senza metodo adatto è un campo radice, cioè una funzione di primo livello: `(container)`, `(cache-volume "go-mod")`. Il primo argomento si elabora una volta sola, quindi dentro `pipe` la risoluzione resta lineare.
 - **`auto`**: prova per calcolo (vedi Curry-Howard).
-- Parole riservate: `→ Type _ pipe auto`.
+- Parole riservate: `→ Type _ pipe auto let`.
 - Programmi e prove si scrivono nello stesso modo: cambia solo il tipo.
 
 ```
@@ -116,6 +117,35 @@ Confine con l'host. Il programma dichiara cosa riceve, `(Host "percorso")` nella
 (def main : (→ [src (Host ".")] (Export Dir))
   [src] (overlay "." (gen-config src)))
 ```
+
+## I punti non si sommano: valori raffinati e percorsi
+
+Nel codice di CI quasi tutto è una stringa. Disegno tiene i letterali familiari, ma è il **tipo atteso** a decidere come leggerli.
+
+- **Tipo raffinato = coppia Σ.** `(record Image [raw : String] [ok : (So (image-ref? raw))])`. Un costruttore il cui primo campo accoglie il valore e i cui campi restanti sono proposizioni fa da coercizione: `"golang:1.25-alpine"` atteso come `Image` diventa `(image "golang:1.25-alpine" auto)`. Un letterale malformato è un errore di tipo (`«Golang:1.25» non è un Image valido`), non un fallimento nel container.
+- **Percorsi come punti.** `(data Abs [root] [/ Abs Segment])`; `Segment` è a sua volta raffinato (niente `/`, `.`, `..`). Un simbolo che inizia con `/` è un letterale di punto: `/go/pkg/mod`. `(/ out "hello")` è punto più passo; `(/ /out /bin)`, punto più punto, è un errore di tipo. Dagger accetta i percorsi assoluti anche dentro una `Directory` (relativi alla sua radice), quindi nel piano un percorso è sempre un punto.
+- **Contenimento.** `(⊑ p q)`: p sta dentro q. Su punti concreti lo prova `auto`.
+- **La riga di comando resta lo scalpello.** Gli argomenti di `with-exec` sono `(List Arg)`, con `Arg` che accoglie stringhe e punti: si tipano i valori interpolati, non la sintassi dello strumento.
+- **Dal generatore:** gli argomenti `path` sono `Abs`, `address` è `Image`, `args` è `(List Arg)`.
+- **`let`** con legami in sequenza; le virgole sono spazi. I letterali di punto non sono catturabili da un `let` che lega `root`.
+
+```
+(def go-build : (→ Dir Dir)
+  [src] (let [root /src, out /out, bin (/ out "hello")]
+          (pipe (container)
+                (from "golang:1.25-alpine")
+                (with-mounted-cache /go/pkg/mod (cache-volume "go-mod"))
+                (with-env "CGO_ENABLED" "0")
+                (with-dir root src)
+                (with-workdir root)
+                (with-exec ["go" "build" "-o" bin "."])
+                (dir-of out))))
+
+(def binario-dentro-out : (⊑ (/ /out "hello") /out)
+  auto)
+```
+
+La validità dei letterali la decidono primitive pure del nucleo (`image-ref?`, `segment?`, `string=?`), verificate con i test.
 
 ## Due tempi, due condizionali
 
@@ -243,7 +273,7 @@ In cambio della purezza e della semplicità:
 - [ ] Export o Changeset per scrivere. Oggi export classico (`overlay`, `replace` con `wipe`).
 - [ ] Il Changeset rappresenta anche le cancellazioni? Deciderebbe se servono ancora due costruttori di export.
 - [x] Quali osservazioni ammettere e come tiparle: elenco chiuso, `(Obj Kind.bool)`. Resta da tipare osservazioni non booleane, con un `Kind` indicizzato.
-- [ ] Tipi raffinati per CIDR, porte, tag e digest delle immagini.
+- [x] Tipi raffinati per immagini (tag e digest) e percorsi. Restano CIDR, porte, tempo, e la struttura affine generale (vedi la discussione su `Affine`).
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.

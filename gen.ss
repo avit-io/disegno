@@ -38,7 +38,15 @@
   (let ([d (find (lambda (d) (equal? (get d "name") "expectedType")) (get a "directives"))])
     (and d (json-read (get (car (get d "args")) "value")))))
 
+;; Tipi raffinati per nome d'argomento: lo schema dice String, il disegno sa di più.
+;; ponytail: regola per nome, basta per Dagger; se un nome cambia senso servirà una tabella per campo.
+(define refined '(("path" String Abs) ("address" String Image) ("args" (List String) (List Arg))))
+
 (define (arg-type a)
+  (let ([t (base-type a)] [r (assoc (get a "name") refined)])
+    (if (and r (equal? t (cadr r))) (caddr r) t)))
+
+(define (base-type a)
   (let loop ([t (get a "type")])
     (let ([k (get t "kind")] [n (get t "name")])
       (cond [(equal? k "NON_NULL") (loop (get t "ofType"))]
@@ -78,12 +86,12 @@
 ;; Snodi del nucleo: costruttori anch'essi, ma li realizza il runner (plan.ss).
 (define nucleo
   `((%host-dir ((path String)) ,(obj "directory"))
-    (try-exec ((self ,(obj "container")) (args (List String))) ,(obj "container"))
+    (try-exec ((self ,(obj "container")) (args (List Arg))) ,(obj "container"))
     (passes? ((self ,(obj "container"))) ,(obj "bool"))
     (branch ((cond ,(obj "bool")) (then (Obj k)) (else (Obj k))) (Obj k))
     (overlay ((path String) (dir ,(obj "directory"))) ,(obj "export"))
     (replace ((path String) (dir ,(obj "directory"))) ,(obj "export"))
-    (publish ((self ,(obj "container")) (address String)) ,(obj "export"))
+    (publish ((self ,(obj "container")) (address Image)) ,(obj "export"))
     ;; L'unico stato che persiste tra un'esecuzione e l'altra, non indirizzato per contenuto:
     ;; per questo è uno snodo dichiarato e non un campo generato.
     (cache-volume ((key String)) ,(obj "cache-volume"))))
