@@ -40,7 +40,7 @@
 
 ;; Tipi raffinati per nome d'argomento: lo schema dice String, il disegno sa di più.
 ;; ponytail: regola per nome, basta per Dagger; se un nome cambia senso servirà una tabella per campo.
-(define refined '(("path" String Abs) ("address" String Image) ("args" (List String) (List Arg))))
+(define refined '(("path" String Abs) ("address" String Image) ("args" (List String) (List Arg)) ("port" Nat Port)))
 
 (define (arg-type a)
   (let ([t (base-type a)] [r (assoc (get a "name") refined)])

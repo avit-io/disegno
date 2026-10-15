@@ -88,3 +88,49 @@
 
 (def zero-non-è-uno : (¬ (≡ 0 1))
   [()])
+
+; --- naturali e accelerazione: la legge vale anche sui numeri grandi, calcolati nativamente ---
+
+(def legge-naturali : (≡ (+ 1000000 (∸ 4294967296 1000000)) 4294967296)
+  auto)
+
+; --- tempo: istanti e durate ---
+
+(def inizio : Instant "2026-10-15T00:00:00Z")
+(def fine   : Instant "2026-10-16T00:00:00Z")
+
+(def un-giorno-dopo : (≡ (⊕ inizio "1d") fine)
+  auto)
+
+(def durata : (≡ (⊖ fine inizio auto) "24h")
+  auto)
+
+(def finestre-separate : (Apart (window inizio "1h") (window fine "1h"))
+  auto)
+
+(def finestre-sovrapposte : (¬ (Apart (window inizio "2h") (window (⊕ inizio "1h") "1h")))
+  auto)
+
+; --- indirizzi: punti raffinati e blocchi CIDR come regioni ---
+
+(def gateway : Ip "10.0.0.1")
+
+(def indirizzo-dopo : (≡ (⊕ gateway 1 auto) "10.0.0.2")
+  auto)
+
+(def dentro-il-blocco : (So (in? "10.0.0.5" "10.0.0.0/24"))
+  auto)
+
+(def subnet-disgiunte : (Disjoint-subnets ["10.0.0.0/24" "10.0.1.0/24" "10.1.0.0/16"])
+  auto)
+
+(def subnet-annidate : (¬ (Disjoint-subnets ["10.0.0.0/8" "10.1.0.0/16"]))
+  auto)
+
+; --- porte: nessuna porta allocata due volte ---
+
+(def porte-distinte : (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 9090)))
+  auto)
+
+(def porte-doppie : (¬ (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 8080))))
+  auto)

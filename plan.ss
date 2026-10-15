@@ -66,6 +66,7 @@
 (define (gql-arg v resolve)                              ; stringa, naturale, booleano, lista o oggetto (per ID)
   (let ([v (pick v resolve)])
     (cond [(node v) (resolve (chain v resolve))]
+          [(eq? (car v) 'vnum) (cadr v)]
           [(eq? (car v) 'vstr) (cadr v)]
           [(and (eq? (car v) 'vglob) (memq (cadr v) '(true false))) (eq? (cadr v) 'true)]
           [(and (eq? (car v) 'vglob) (eq? (cadr v) 'zero)) 0]

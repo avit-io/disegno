@@ -151,7 +151,7 @@ Confine con l'host. Il programma dichiara cosa riceve, `(Host "percorso")` nella
   [law : (→ [p P] [q P] [h (≤ p q)] (≡ (+ q (- p q h)) p))])
 ```
 
-Le leggi, come `law`, sono teoremi dimostrati una volta nella libreria standard: chi scrive un disegno le eredita. Gli operatori restano propri di ciascun dominio (`/` e `⊕`, `⊖` per i percorsi); `Affine` serve a enunciare e dimostrare che un dominio è un'istanza, senza bisogno di type class nel linguaggio.
+Le leggi, come `law`, sono teoremi dimostrati una volta nella libreria standard: chi scrive un disegno le eredita. Gli operatori si chiamano `Abs.⊕`, `Instant.⊕`, `Ip.⊕`…, e la risoluzione guidata dal tipo sceglie quello giusto dal primo argomento: `(⊕ /out "bin")` è un percorso, `(⊕ inizio "1h")` un istante. `Affine` serve a enunciare e dimostrare che un dominio è un'istanza, senza bisogno di type class nel linguaggio.
 
 **I percorsi, implementati.**
 
@@ -182,9 +182,9 @@ Il contenimento è una relazione **induttiva**, non un test booleano. Così la d
 | Dominio | Punti | Spostamenti | Regioni | Stato |
 |---|---|---|---|---|
 | Percorsi | `/out` | `"hello"` | sottoalberi | fatto, regioni comprese |
-| Tempo | istanti | durate | finestre | da fare |
-| Indirizzi IP | `10.0.0.5` | offset | blocchi CIDR | da fare |
-| Porte | `8080` | — | intervalli | da fare (solo regioni) |
+| Tempo | `"2026-10-15T10:00:00Z"` | `"1h30m"` | finestre | fatto: `(Affine Instant Duration ≥t)`, finestre come intervalli |
+| Indirizzi IP | `"10.0.0.5"` | offset (`Nat`) | blocchi CIDR `"10.0.0.0/24"` | fatto: `Ip.⊕` con overflow escluso, subnet disgiunte |
+| Porte | `8080` | — | intervalli | fatto: raffinate, porte non allocate due volte |
 | Immagini | — | — | — | fatto, solo raffinamento |
 
 **Precisazioni matematiche.** I percorsi non sono uno spazio affine in senso stretto: senza `..` gli spostamenti formano un monoide, non un gruppo, e per questo la differenza esiste solo se un punto contiene l'altro. Tempo e indirizzi sono invece gruppi veri, ma gli indirizzi vivono modulo 2³², quindi l'overflow va escluso con un raffinamento. Le porte hanno regioni ma non spostamenti. Le immagini non sono affini: hanno solo il raffinamento; la distinzione tra tag e digest è quella tra un punto mobile e un punto fisso, e `pinned?` significa esattamente "fisso".
@@ -237,6 +237,8 @@ La parte sporca è piccola, chiusa e scritta da chi progetta il linguaggio.
 - **Snodi**: elenco chiuso di costruttori del nucleo che il runner realizza in modo speciale: `%host-dir`, `try-exec`, `passes?`, `branch`, `overlay`, `replace`, `publish`, `cache-volume`. Il cache volume è l'unico stato che persiste tra un'esecuzione e l'altra e non è indirizzato per contenuto: finché si usa come cache non tocca il disegno, ma è dichiarato qui invece di restare implicito tra i campi generati.
 - **`extern`** è rimasto solo per i tipi opachi e le primitive pure: `String` e `contains?`, che calcola sui letterali. Un extern non mente: restituisce un tipo opaco o calcola; mai una proposizione, mai un dato del mondo.
 - **Runner**: l'unico posto dove si ammette il non determinismo. Realizza `branch`, `Host` ed `Export`.
+- **Numerali nativi** (come in Lean): nella logica `Nat` è `zero`/`add1`, nel valutatore un numero è un intero; `+`, `∸`, `*`, `≤?`, `<?`, `nat=?`, `pow2` si calcolano nativamente sui numeri. È una scorciatoia fidata: `test.ss` verifica che coincida con le clausole unarie, e una mutazione viene presa.
+- **Copertura**: un caso che nessuna clausola prende è coperto se una sua variabile, divisa, dà solo casi impossibili (l'assurdo implicito).
 - **Base fidata** complessiva: kernel, unificazione dei pattern (il kernel non ricontrolla come sono tipati), runner, generatore. Si verifica con i test; tutto il resto lo verifica il type checker.
 
 Precedente e costo noto: Elm 0.19 ha riservato il codice nativo ai pacchetti ufficiali, garantendo la purezza dell'ecosistema a prezzo dell'estensibilità.
@@ -300,6 +302,16 @@ Una pubblicazione scoperta, protetta da un'osservazione che non è un test (`exi
 
 Il checker verifica `()` dopo aver unificato tutti i pattern della clausola: ogni costruttore deve essere in conflitto con gli indici, altrimenti `() non è assurdo`. Su proposizioni chiuse `auto` trova da solo l'albero degli assurdi e lo fa verificare come definizione ausiliaria: `(def annidati-non-disgiunti : (¬ (⋔ /src /src/cache)) auto)`. Così `checks.disegno` contiene anche le garanzie negative (immagine non pinnata, montaggi sovrapposti), e una mutazione che rende `⋔` troppo permissiva viene presa da un teorema. In `test.ss` restano i rifiuti del checker stesso: nomi riservati, errori di tipo, e il fatto che `()` non sia una scappatoia (`(¬ (≡ 0 0))` con `[()]` è rifiutato).
 
+**Tempo, indirizzi, porte.** Tutte e tre le istanze poggiano sui naturali, la cui legge `q + (p ∸ q) = p` è dimostrata una volta per induzione sull'ordine induttivo `≤`. Il tempo è un'istanza `Affine` vera, con l'ordine decidibile `(So (≤? q p))`: sugli istanti, miliardi di secondi, una prova induttiva sarebbe lunga quanto il numero, e il lemma di riflessione `≤-from` collega le due forme. Le regioni su una retta sono intervalli semiaperti: finestre di tempo, blocchi CIDR, intervalli di porte. I letterali li leggono lettori del nucleo (`"1h30m"`, `"2026-10-15T10:00:00Z"`, `"10.0.0.0/24"`); un blocco CIDR non allineato, un'ora 25 o la porta 70000 sono errori di tipo.
+
+```
+(def subnet-disgiunte : (Disjoint-subnets ["10.0.0.0/24" "10.0.1.0/24" "10.1.0.0/16"])
+  auto)
+
+(def porte-doppie : (¬ (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 8080))))
+  auto)
+```
+
 **Cosa resta empirico**
 : che i test passino o che il binario funzioni sono osservazioni, non proposizioni. Gli unit test del codice dentro i container restano e li esegue Dagger.
 
@@ -359,7 +371,8 @@ In cambio della purezza e della semplicità:
 - [x] Quali osservazioni ammettere e come tiparle: elenco chiuso, `(Obj Kind.bool)`. Resta da tipare osservazioni non booleane, con un `Kind` indicizzato.
 - [x] Tipi raffinati per immagini (tag e digest) e percorsi; struttura `Affine` con la legge dimostrata per i percorsi.
 - [x] Regioni dei percorsi: contenimento, disgiunzione, montaggi disgiunti come teorema sul piano.
-- [ ] Le altre istanze: tempo, indirizzi IP (modulo 2³², overflow escluso con un raffinamento), porte; subnet disgiunte, porte non allocate due volte.
+- [x] Le altre istanze: naturali (`(Affine Nat Nat ≥N)`), tempo, indirizzi IP con blocchi CIDR, porte; regioni come intervalli.
+- [ ] La legge affine degli indirizzi: `Ip.⊕` chiede la prova di non overflow, quindi non è il + totale del record `Affine`; la legge segue da quella dei naturali più l'irrilevanza delle prove di `So`.
 - [x] Negazione nei teoremi: `¬`, pattern assurdi `()`, refutazione con `auto`.
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.

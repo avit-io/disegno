@@ -51,6 +51,58 @@
 (def ≥ : (→ Nat Nat Type)
   [m n] (So (≤? n m)))
 
+; Le definizioni sono unarie e sono la verità logica; il valutatore calcola +, ∸, *, ≤?, <?,
+; nat=? e pow2 nativamente sui numeri (types.ss, fast), e test.ss verifica che coincidano.
+
+(def ∸ : (→ Nat Nat Nat)                 ; sottrazione troncata
+  [p        zero]     p
+  [zero     (add1 _)] zero
+  [(add1 p) (add1 q)] (∸ p q))
+
+(def * : (→ Nat Nat Nat)
+  [zero     _] zero
+  [(add1 k) m] (+ m (* k m)))
+
+(def <? : (→ Nat Nat Bool)
+  [m n] (≤? (add1 m) n))
+
+(def nat=? : (→ Nat Nat Bool)
+  [zero     zero]     true
+  [zero     (add1 _)] false
+  [(add1 _) zero]     false
+  [(add1 m) (add1 n)] (nat=? m n))
+
+(def pow2 : (→ Nat Nat)
+  [zero]     1
+  [(add1 k)] (+ (pow2 k) (pow2 k)))
+
+(def not : (→ Bool Bool)
+  [true]  false
+  [false] true)
+
+(def and : (→ Bool Bool Bool)
+  [true  b] b
+  [false _] false)
+
+(def or : (→ Bool Bool Bool)
+  [true  _] true
+  [false b] b)
+
+; L'ordine come relazione induttiva: la differenza si calcola sulla prova, come per i percorsi.
+(data ≤ : (→ Nat Nat Type)
+  [≤-zero : (≤ zero n)]
+  [≤-succ : (→ (≤ m n) (≤ (add1 m) (add1 n)))])
+
+; Riflessione: dal test booleano alla relazione induttiva.
+(def ≤-from : (→ [m Nat] [n Nat] (So (≤? m n)) (≤ m n))
+  [zero     n        _] ≤-zero
+  [(add1 m) (add1 n) h] (≤-succ (≤-from m n h)))
+
+; La legge dei naturali: q + (p ∸ q) = p se q ≤ p. Serve al tempo e agli indirizzi.
+(def +-∸ : (→ [p Nat] [q Nat] [h (≤ q p)] (≡ (+ q (∸ p q)) p))
+  [p        zero     ≤-zero]     refl
+  [(add1 p) (add1 q) (≤-succ h)] (cong add1 (+-∸ p q h)))
+
 ; --- liste: ["a" "b"] è zucchero per (:: "a" (:: "b" vuota)) ---
 
 (data List : (→ Type Type)
@@ -72,6 +124,10 @@
 (def all : (→ (→ A Bool) (List A) Bool)
   [p vuota]     true
   [p (:: x xs)] (if (p x) (all p xs) false))
+
+(def map : (→ (→ A B) (List A) (List B))
+  [f vuota]     []
+  [f (:: x xs)] (:: (f x) (map f xs)))
 
 (def All : (→ (→ A Bool) (List A) Type)
   [p xs] (So (all p xs)))
@@ -130,11 +186,11 @@
   [⊑-refl : (⊑ p p)]
   [⊑-step : (→ (⊑ p q) (⊑ (/ p s) q))])
 
-(def ⊕ : (→ Abs Rel Abs)
+(def Abs.⊕ : (→ Abs Rel Abs)
   [p here]       p
   [p (step v s)] (/ (⊕ p v) s))
 
-(def ⊖ : (→ [p Abs] [q Abs] (⊑ p q) Rel)
+(def Abs.⊖ : (→ [p Abs] [q Abs] (⊑ p q) Rel)
   [p       q ⊑-refl]     here
   [(/ p s) q (⊑-step h)] (step (⊖ p q h) s))
 
@@ -153,7 +209,7 @@
   [law : (→ [p P] [q P] [h (≤ p q)] (≡ (+ q (- p q h)) p))])
 
 (def percorsi : (Affine Abs Rel ⊑)
-  (affine ⊕ ⊖ ⊕-⊖))
+  (affine Abs.⊕ Abs.⊖ ⊕-⊖))
 
 ; Regioni: il sottoalbero di un punto. (⋔ p q): i sottoalberi di p e q sono disgiunti, perché i
 ; due percorsi si separano a un passo. Induttivo come ⊑; auto trova il punto di separazione.
@@ -165,6 +221,103 @@
   [⋔-here  : (→ (≠ s t) (⋔ (/ p s) (/ p t)))]
   [⋔-left  : (→ (⋔ p q) (⋔ (/ p s) q))]
   [⋔-right : (→ (⋔ p q) (⋔ p (/ q s)))])
+
+; --- naturali: l'istanza da cui discendono tempo e indirizzi ---
+
+(def ≥N : (→ Nat Nat Type)                ; (≥N p q): la differenza p ∸ q è esatta
+  [p q] (≤ q p))
+
+(def Nat.⊖ : (→ [p Nat] [q Nat] (≥N p q) Nat)
+  [p q _] (∸ p q))
+
+(def naturali : (Affine Nat Nat ≥N)
+  (affine + Nat.⊖ +-∸))
+
+; --- regioni su una retta: intervalli semiaperti [lo, hi) ---
+; Le finestre di tempo, i blocchi CIDR e gli intervalli di porte sono intervalli; le proposizioni
+; naturali sono il contenimento e la disgiunzione.
+
+(record Interval
+  [lo : Nat]
+  [hi : Nat])
+
+(def apart? : (→ Interval Interval Bool)
+  [a b] (or (≤? (Interval.hi a) (Interval.lo b)) (≤? (Interval.hi b) (Interval.lo a))))
+
+(def Apart : (→ Interval Interval Type)
+  [a b] (So (apart? a b)))
+
+(def within? : (→ Interval Interval Bool)  ; a sta dentro b
+  [a b] (and (≤? (Interval.lo b) (Interval.lo a)) (≤? (Interval.hi a) (Interval.hi b))))
+
+(def Within : (→ Interval Interval Type)
+  [a b] (So (within? a b)))
+
+; --- tempo: istanti e durate, in secondi. "2026-10-15T10:00:00Z" è un istante, "1h30m" una durata ---
+
+(data Instant
+  [at Nat])
+
+(data Duration
+  [secs Nat])
+
+(def Instant.⊕ : (→ Instant Duration Instant)
+  [(at a) (secs d)] (at (+ a d)))
+
+; Sugli istanti (miliardi di secondi) l'ordine è il test decidibile, che auto calcola; la legge
+; passa per la relazione induttiva con il lemma di riflessione ≤-from.
+(def ≥t : (→ Instant Instant Type)        ; (≥t p q): p non viene prima di q
+  [(at p) (at q)] (So (≤? q p)))
+
+(def Instant.⊖ : (→ [p Instant] [q Instant] (≥t p q) Duration)
+  [(at a) (at b) _] (secs (∸ a b)))
+
+(def Instant.⊕-⊖ : (→ [p Instant] [q Instant] [h (≥t p q)] (≡ (Instant.⊕ q (Instant.⊖ p q h)) p))
+  [(at a) (at b) h] (cong at (+-∸ a b (≤-from b a h))))
+
+(def tempo : (Affine Instant Duration ≥t)
+  (affine Instant.⊕ Instant.⊖ Instant.⊕-⊖))
+
+(def window : (→ Instant Duration Interval) ; una finestra: dall'istante, per la durata
+  [(at a) (secs d)] (interval a (+ a d)))
+
+; --- indirizzi IPv4: punti in [0, 2³²). "10.0.0.5" è un Ip, "10.0.0.0/24" un blocco Cidr ---
+; Il gruppo vero è modulo 2³²; Disegno esclude l'overflow: Ip.⊕ chiede la prova che si resti
+; nello spazio, quindi non è il + totale del record Affine.
+
+(record Ip
+  [n  : Nat]
+  [ok : (So (<? n 4294967296))])
+
+(def Ip.⊕ : (→ [p Ip] [o Nat] (So (<? (+ (Ip.n p) o) 4294967296)) Ip)
+  [p o h] (ip (+ (Ip.n p) o) h))
+
+(record Cidr                               ; il blocco prefisso·2^(32−len) … di lunghezza 2^(32−len)
+  [prefix : Nat]
+  [len    : Nat]
+  [ok     : (So (and (≤? len 32) (<? prefix (pow2 len))))])
+
+(def cidr-range : (→ Cidr Interval)
+  [c] (let [size (pow2 (∸ 32 (Cidr.len c))), lo (* (Cidr.prefix c) size)]
+        (interval lo (+ lo size))))
+
+(def in? : (→ Ip Cidr Bool)
+  [a c] (within? (interval (Ip.n a) (add1 (Ip.n a))) (cidr-range c)))
+
+(def Disjoint-subnets : (→ (List Cidr) Type)
+  [cs] (Pairwise Apart (map cidr-range cs)))
+
+; --- porte: punti su [0, 65535], senza spostamenti; le regioni sono intervalli ---
+
+(record Port
+  [n  : Nat]
+  [ok : (So (≤? n 65535))])
+
+(def port-range : (→ Port Port Interval)  ; [a, b] come intervallo semiaperto
+  [a b] (interval (Port.n a) (add1 (Port.n b))))
+
+(def port≠ : (→ Port Port Type)
+  [a b] (So (not (nat=? (Port.n a) (Port.n b)))))
 
 ; La riga di comando resta lo scalpello: si tipano i valori che vi si interpolano, non la sintassi.
 
@@ -284,3 +437,15 @@
 
 (def Disjoint-mounts : (→ (Obj k) Type)
   [p] (Pairwise ⋔ (mounts p)))
+
+; Porte esposte lungo la catena di un container: nessuna porta allocata due volte.
+
+(def port-of : (→ Any (List Port))
+  [(any (Container.with-exposed-port _ p))] [p]
+  [_]                                       [])
+
+(def ports : (→ (Obj k) (List Port))
+  [p] (concat-map port-of (chain p)))
+
+(def Distinct-ports : (→ (Obj k) Type)
+  [p] (Pairwise port≠ (ports p)))

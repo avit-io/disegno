@@ -49,6 +49,7 @@
     [(pi) `(vpi ,(cadr t) ,(caddr t) ,(ev env (cadddr t)) ,env ,(list-ref t 4))]
     [(type) `(vtype ,(cadr t))]
     [(str) `(vstr ,(cadr t))]
+    [(num) `(vnum ,(cadr t))]
     [(meta) (meta-val (cadr t))]
     [(imeta) (fold-left (lambda (f v) (vapp f v 'e)) (meta-val (cadr t)) (reverse env))]))
 
@@ -64,14 +65,24 @@
 (define (force v)
   (case (car v)
     [(vflex) (let ([s (meta-sol (cadr v))]) (if s (force (vapp-sp s (caddr v))) v))]
-    [(vglob) (let ([r (try-reduce (cadr v) (caddr v))]) (if r (force r) v))]
+    [(vglob) (let ([r (try-reduce (cadr v) (caddr v))]) (if r (force r) (numeral v)))]
     [else v]))
+
+;; Numerali nativi: nella logica Nat è zero/add1, nel valutatore un numero è un intero di Scheme
+;; (come in Lean). zero e add1 di un numero diventano numeri; un pattern add1 sottrae 1.
+(define (numeral v)
+  (let ([sp (caddr v)])
+    (cond [(and (eq? (cadr v) 'zero) (null? sp)) '(vnum 0)]
+          [(and (eq? (cadr v) 'add1) (= (length sp) 1))
+           (let ([x (force (caar sp))]) (if (eq? (car x) 'vnum) `(vnum ,(+ 1 (cadr x))) v))]
+          [else v])))
 
 ;; Una def si riduce quando ha tutti gli argomenti e una clausola combacia; altrimenti resta bloccata.
 (define (reduce n sp) (or (try-reduce n sp) `(vglob ,n ,sp)))
 (define (try-reduce n sp)
   (let* ([g (gget n)] [info (and (eq? (g-kind g) 'def) (g-info g))])
-    (cond [info (and (>= (length sp) (car info))
+    (cond [(and info (accelerate) (let ([f (assq n fast)]) (and f (fast-apply f sp))))]   ; prima: numeri nativi
+          [info (and (>= (length sp) (car info))
                      (let ([r (match-clauses (cdr info) (list-head sp (car info)))])
                        (and r (vapp-sp r (list-tail sp (car info))))))]
           [(and (eq? (g-kind g) 'extern) (assq (car (car (g-info g))) prims))
@@ -80,6 +91,19 @@
                   (and (= (length args) (cadr p)) (for-all (lambda (a) (eq? (car a) 'vstr)) args)
                        `(vglob ,(if (apply (caddr p) (map cadr args)) 'true 'false) ()))))]
           [else #f])))
+
+;; Accelerazione (fidata, come in Lean): queste def della libreria standard, su argomenti numerici,
+;; si calcolano in Scheme invece che per clausole. Nella logica restano le definizioni unarie;
+;; test.ss verifica che i due calcoli coincidano. accelerate si spegne per quel confronto.
+(define accelerate (make-parameter #t))
+(define fast `((+ 2 ,+) (∸ 2 ,(lambda (a b) (max 0 (- a b)))) (* 2 ,*)
+               (≤? 2 ,<=) (<? 2 ,<) (nat=? 2 ,=) (pow2 1 ,(lambda (k) (expt 2 k)))))
+(define (fast-apply f sp)
+  (and (= (length sp) (cadr f))
+       (let ([args (map (lambda (a) (force (car a))) sp)])
+         (and (for-all (lambda (a) (eq? (car a) 'vnum)) args)
+              (let ([r (apply (caddr f) (map cadr args))])
+                (cond [(number? r) `(vnum ,r)] [r '(vglob true ())] [else '(vglob false ())]))))))
 
 ;; Primitive pure sulle stringhe (elenco chiuso del nucleo): nome → (arità procedura-booleana).
 (define (string-contains? s sub)
@@ -118,6 +142,54 @@
                 (component? (car name+tag))
                 (for-all component? (if (and (pair? path) (registry? (car path))) (cdr path) path)))))))
 
+;; Lettori di letterali (nucleo): stringa → espressione Disegno, o #f se malformata.
+(define (digits->nat s)
+  (and (> (string-length s) 0) (for-all char-numeric? (string->list s)) (string->number s)))
+
+(define (read-duration s)                                ; "90s", "5m", "1h30m", "2d" → (secs n)
+  (let loop ([cs (string->list s)] [num '()] [total 0] [any #f])
+    (cond [(null? cs) (and any (null? num) `(secs ,total))]
+          [(char-numeric? (car cs)) (loop (cdr cs) (cons (car cs) num) total any)]
+          [(and (pair? num) (assv (car cs) '((#\d . 86400) (#\h . 3600) (#\m . 60) (#\s . 1))))
+           => (lambda (u) (loop (cdr cs) '() (+ total (* (cdr u) (string->number (list->string (reverse num))))) #t))]
+          [else #f])))
+
+(define (days-from-civil y m d)                          ; H. Hinnant: giorni dal 1970-01-01
+  (let* ([y (if (<= m 2) (- y 1) y)] [era (floor (/ y 400))] [yoe (- y (* era 400))]
+         [doy (+ (quotient (+ (* 153 (+ m (if (> m 2) -3 9))) 2) 5) (- d 1))]
+         [doe (+ (* yoe 365) (quotient yoe 4) (- (quotient yoe 100)) doy)])
+    (+ (* era 146097) doe -719468)))
+
+(define (read-instant s)                                 ; "2026-10-15" o "2026-10-15T10:00:00Z" → (at secondi)
+  (let ([n (string-length s)])
+    (and (or (= n 10) (and (= n 20) (char=? (string-ref s 10) #\T) (char=? (string-ref s 19) #\Z)
+                           (char=? (string-ref s 13) #\:) (char=? (string-ref s 16) #\:)))
+         (char=? (string-ref s 4) #\-) (char=? (string-ref s 7) #\-)
+         (let ([y (digits->nat (substring s 0 4))] [mo (digits->nat (substring s 5 7))] [d (digits->nat (substring s 8 10))]
+               [h (if (= n 20) (digits->nat (substring s 11 13)) 0)] [mi (if (= n 20) (digits->nat (substring s 14 16)) 0)]
+               [se (if (= n 20) (digits->nat (substring s 17 19)) 0)])
+           (and y mo d h mi se (<= 1 mo 12) (<= 1 d 31) (< h 24) (< mi 60) (< se 60) (>= y 1970)
+                `(at ,(+ (* 86400 (days-from-civil y mo d)) (* 3600 h) (* 60 mi) se)))))))
+
+(define (ip->nat s)                                      ; "10.0.0.5" → 167772165
+  (let ([parts (split-on s #\.)])
+    (and (= (length parts) 4)
+         (let ([os (map digits->nat parts)])
+           (and (for-all (lambda (o) (and o (<= o 255))) os)
+                (fold-left (lambda (acc o) (+ (* acc 256) o)) 0 os))))))
+
+(define (read-ip s) (let ([n (ip->nat s)]) (and n `(ip ,n auto))))
+
+(define (read-cidr s)                                    ; "10.0.0.0/8": il blocco è (prefisso, lunghezza)
+  (let ([parts (split-on s #\/)])
+    (and (= (length parts) 2)
+         (let ([base (ip->nat (car parts))] [len (digits->nat (cadr parts))])
+           (and base len (<= len 32)
+                (let ([size (expt 2 (- 32 len))])
+                  (and (= 0 (remainder base size)) `(cidr ,(quotient base size) ,len auto))))))))
+
+(define readers `((Duration . ,read-duration) (Instant . ,read-instant) (Ip . ,read-ip) (Cidr . ,read-cidr)))
+
 ;; Un passo di percorso: non vuoto, senza /, né . né ..
 (define (segment? s) (and (> (string-length s) 0) (not (memv #\/ (string->list s))) (not (member s '("." "..")))))
 
@@ -141,7 +213,11 @@
     [(pvar) (vector-set! env (cadr p) v) 'yes]
     [(pdot) 'yes]
     [(pcon) (let ([v (force v)])
-              (cond [(not (and (eq? (car v) 'vglob) (con? (cadr v)))) 'stuck]
+              (cond [(eq? (car v) 'vnum)
+                     (cond [(and (eq? (cadr p) 'zero) (= (cadr v) 0)) 'yes]
+                           [(and (eq? (cadr p) 'add1) (> (cadr v) 0)) (match (car (caddr p)) `(vnum ,(- (cadr v) 1)) env)]
+                           [else 'no])]
+                    [(not (and (eq? (car v) 'vglob) (con? (cadr v)))) 'stuck]
                     [(eq? (cadr v) (cadr p)) (match-all (caddr p) (map car (caddr v)) env)]
                     [else 'no]))]))
 
@@ -155,7 +231,8 @@
       [(vlam) `(lam ,(cadr v) ,(caddr v) ,(reify (+ l 1) (vapp v (vvar l) (caddr v))))]
       [(vpi) `(pi ,(cadr v) ,(caddr v) ,(reify l (pi-dom v)) ,(reify (+ l 1) (pi-cod v (vvar l))))]
       [(vtype) `(type ,(cadr v))]
-      [(vstr) `(str ,(cadr v))])))
+      [(vstr) `(str ,(cadr v))]
+      [(vnum) `(num ,(cadr v))])))
 
 ;; --- unificazione (senza metavariabili è la conversione del kernel) ---
 
@@ -184,7 +261,16 @@
       [(and (is? a 'vflex) (is? b 'vflex) (< (length (caddr a)) (length (caddr b)))) (solve l (cadr b) (caddr b) a)]
       [(is? a 'vflex) (solve l (cadr a) (caddr a) b)]
       [(is? b 'vflex) (solve l (cadr b) (caddr b) a)]
+      [(and (is? a 'vnum) (is? b 'vnum)) (unless (= (cadr a) (cadr b)) (ufail 'conflict))]
+      [(is? a 'vnum) (unify-num l (cadr a) b)]
+      [(is? b 'vnum) (unify-num l (cadr b) a)]
       [else (ufail 'mismatch)])))
+
+(define (unify-num l n b)                               ; un numero contro add1 x, zero o altro
+  (cond [(and (eq? (car b) 'vglob) (eq? (cadr b) 'add1) (= (length (caddr b)) 1))
+         (if (= n 0) (ufail 'conflict) (unify l `(vnum ,(- n 1)) (caar (caddr b))))]
+        [(and (eq? (car b) 'vglob) (con? (cadr b))) (ufail 'conflict)]
+        [else (ufail 'mismatch)]))
 
 (define (unify-sp l s1 s2)
   (unless (= (length s1) (length s2)) (ufail 'mismatch))
@@ -214,7 +300,8 @@
       [(vlam) `(lam ,(cadr v) ,(caddr v) ,(under (lambda (x) (vapp v x (caddr v)))))]
       [(vpi) `(pi ,(cadr v) ,(caddr v) ,(rename-v m dom cod ren (pi-dom v)) ,(under (lambda (x) (pi-cod v x))))]
       [(vtype) `(type ,(cadr v))]
-      [(vstr) `(str ,(cadr v))])))
+      [(vstr) `(str ,(cadr v))]
+      [(vnum) `(num ,(cadr v))])))
 
 ;; --- kernel: l'unica parte fidata del controllo ---
 
@@ -224,6 +311,7 @@
     [(glob) (let ([g (gget (cadr t))]) (if g (g-type g) (oops "kernel: ~a non esiste" (cadr t))))]
     [(type) `(vtype ,(+ (cadr t) 1))]                   ; Type n : Type n+1, mai Type : Type
     [(str) (string-type)]
+    [(num) '(vglob Nat ())]
     [(pi) (let ([la (k-level (k-infer env tys l (cadddr t)))])
             `(vtype ,(max la (k-level (k-infer (cons (vvar l) env) (cons (ev env (cadddr t)) tys) (+ l 1) (list-ref t 4))))))]
     [(app) (let ([tf (force (k-infer env tys l (cadr t)))])
@@ -267,7 +355,7 @@
     [(eq? e 'Type) (values '(type 0) '(vtype 1))]
     [(string? e) (values `(str ,e) (string-type))]
     [(eq? e '_) (oops "_ non è un termine")]
-    [(nat? e) (unless (gget 'Nat) (oops "i letterali richiedono Nat")) (values (nat e) '(vglob Nat ()))]
+    [(nat? e) (unless (gget 'Nat) (oops "i letterali richiedono Nat")) (values `(num ,e) '(vglob Nat ()))]
     [(symbol? e)
      (cond [(index-of e (ctx-names c)) => (lambda (i) (values `(var ,i) (list-ref (ctx-tys c) i)))]
            [(assq e (ctx-defs c)) => (lambda (d) (values (reify (ctx-l c) (cadr d)) (caddr d)))]
@@ -426,6 +514,10 @@
   (let ([want (force ty)])
     (cond [(eq? e 'auto) (auto c ty)]
           [(let-form? e) (let-values ([(c body) (let-bind c e)]) (check c body ty))]
+          [(and (string? e) (eq? (car want) 'vglob) (assq (cadr want) readers))
+           => (lambda (r) (let ([x ((cdr r) e)])           ; letterale letto secondo il tipo, nel contesto
+                            (unless x (oops "«~a» non è un ~a valido" e (cadr want)))   ; vuoto: nessuna cattura
+                            (check ctx0 x want)))]
           [(and (string? e) (eq? (car want) 'vglob) (eq? (cadr want) 'Rel))   ; "bin/hello" è un vettore
            (fold-left (lambda (acc seg) `(app (app (glob step) ,acc e) ,(check c seg '(vglob Segment ())) e))
                       '(glob here)
@@ -504,7 +596,7 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (pair? (qualified e)) (path-literal? e) (memq e '(→ Type _ %br pipe let auto))) (set! acc (cons e acc)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ %br pipe let auto))) (set! acc (cons e acc)))]
         [(let-form? e)                                   ; let lega in sequenza
          (let loop ([bs (cdr (cadr e))] [bound bound])
            (if (and (pair? bs) (pair? (cdr bs)))
@@ -516,6 +608,8 @@
                  [(and (pair? (cdr as)) (binder? (car as)))
                   (walk (caddar as) bound) (loop (cdr as) (cons (cadar as) bound))]
                  [else (walk (car as) bound) (loop (cdr as) bound)]))]
+        [(and (pair? e) (symbol? (car e)) (not (memq (car e) bound)) (not (gget (car e))) (pair? (qualified (car e))))
+         (for-each (lambda (x) (walk x bound)) (cdr e))]   ; nome corto in testa: si risolve dal tipo
         [(pair? e) (for-each (lambda (x) (walk x bound)) e)]))
     (reverse acc)))
 
@@ -859,10 +953,29 @@
                       [(unify-failure? x) (oops "~a: non so decidere se il caso ~s è possibile" f cand)])
               (call-with-values (lambda () (check-pats ty cand)) (lambda _ #t)))
             (let ([r (exists (lambda (q) (let ([r (match-syn* q cand)]) (and (not (eq? r 'no)) r))) pats)])
-              (cond [(not r) (oops "~a: manca il caso ~s" f cand)]
+              (cond [(and (not r) (empty-split? f ty cand)) (loop todo)]
+                    [(not r) (oops "~a: manca il caso ~s" f cand)]
                     [(eq? r 'yes) (loop todo)]
                     [else (loop (append (split f r cand) todo))]))
             (loop todo))))))                            ; caso impossibile: gli indici non si unificano
+
+;; Un caso che nessuna clausola prende è comunque coperto se una sua variabile, divisa per
+;; costruttori, dà solo casi impossibili: il tipo di quella variabile è vuoto (l'() implicito).
+(define (empty-split? f ty cand)
+  (define (vars t) (cond [(and (symbol? t) (char=? (string-ref (symbol->string t) 0) #\?)) (list t)]
+                         [(pair? t) (apply append (map vars t))]
+                         [else '()]))
+  (define (impossible? c)
+    (set! pmetas '())
+    (guard (e [(and (unify-failure? e) (eq? (unify-failure-kind e) 'conflict)) #t] [(unify-failure? e) #f])
+      (call-with-values (lambda () (check-pats ty c)) (lambda _ #f))))
+  (exists (lambda (x)
+            (set! pmetas '())
+            (call-with-values (lambda () (check-pats ty cand)) (lambda _ #t))
+            (let* ([m (find (lambda (m) (eq? (meta-name m) x)) pmetas)] [t (and m (force (meta-type m)))])
+              (and t (eq? (car t) 'vglob) (eq? (g-kind (gget (cadr t))) 'data)
+                   (for-all impossible? (split f x cand)))))
+          (vars cand)))
 
 (define (match-syn q c)                                 ; → yes | no | variabile del candidato da dividere
   (cond [(or (symbol? q) (null? q)) 'yes]                ; () copre: la posizione è vuota (verificato)
@@ -957,6 +1070,7 @@
     [(var) (if (< (cadr t) (length names)) (list-ref names (cadr t)) t)]
     [(glob) (cadr t)]
     [(str) (cadr t)]
+    [(num) (cadr t)]
     [(type) (if (zero? (cadr t)) 'Type `(Type ,(cadr t)))]
     [(meta imeta) (string->symbol (format "?~a" (cadr t)))]
     [(lam) `(λ ,(cadr t) ,(sexp (cons (cadr t) names) (cadddr t)))]

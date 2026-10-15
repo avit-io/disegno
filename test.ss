@@ -20,6 +20,21 @@
 ;; --- type checker ---
 
 (parameterize ([privileged #t]) (check-file "std.disegno"))
+;; L'accelerazione è fidata: su numeri piccoli deve coincidere con le clausole unarie.
+(for-each
+  (lambda (f)
+    (for-each
+      (lambda (a)
+        (for-each
+          (lambda (b)
+            (let* ([t (fold-left (lambda (acc x) `(app ,acc (num ,x) e)) `(glob ,(car f)) (list-head (list a b) (cadr f)))]
+                   [on (reify 0 (ev '() t))]
+                   [off (parameterize ([accelerate #f]) (reify 0 (ev '() t)))])
+              (unless (equal? on off) (error 'prova (format "accelerazione di ~a su ~a ~a: ~s invece di ~s" (car f) a b on off)))))
+          (iota 7)))
+      (iota 7)))
+  fast)
+
 (check-file "examples.disegno")
 (check-file "checks.disegno")                           ; le leggi e le garanzie, come teoremi
 
@@ -175,7 +190,18 @@
 (rifiuta "(def falso-diretto : ⊥ [()])" "troppi pattern")
 (rifiuta "(def vero-negato : (¬ (⊑ /out/x /out)) auto)" "auto: nessuna refutazione di (⊑ /out/x /out)")
 
+;; Letterali di tempo, indirizzi e porte: malformati o fuori spazio sono errori di tipo.
+(rifiuta "(def t1 : Instant \"2026-13-01\")" "«2026-13-01» non è un Instant valido")
+(rifiuta "(def t2 : Duration \"5x\")" "«5x» non è un Duration valido")
+(rifiuta "(def t3 : Ip \"10.0.0.256\")" "«10.0.0.256» non è un Ip valido")
+(rifiuta "(def t4 : Cidr \"10.0.0.1/24\")" "«10.0.0.1/24» non è un Cidr valido")
+(rifiuta "(def t5 : Container (with-exposed-port (container) 70000))" "«70000» non è un Port valido")
+(rifiuta "(def t6 : Instant (⊕ inizio fine))" "atteso Duration, trovato Instant")
+(check-string "(def ultimo : Ip \"255.255.255.255\")")
+(rifiuta "(def oltre : Ip (⊕ ultimo 1 auto))" "si riduce a ⊥")      ; l'overflow è escluso
+
 ;; --- dal vivo ---
+
 
 
 
