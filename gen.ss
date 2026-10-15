@@ -64,7 +64,7 @@
          [args (filter required? (get f "args"))]
          [ats (map arg-type args)]
          [res (result-type (get f "type"))])
-    (and res (not (get f "isDeprecated")) (for-all values ats)
+    (and res (not (get f "isDeprecated")) (for-all values ats) (not (and (equal? type "Query") (member n excluded)))
          (string=? (camel (kebab n)) n)                  ; il runner deve poter risalire al campo
          (list (string->symbol (format "~a.~a" type (kebab n)))
                (append (if (equal? type "Query") '() (list (list 'self (obj type))))
@@ -83,7 +83,12 @@
     (branch ((cond ,(obj "bool")) (then (Obj k)) (else (Obj k))) (Obj k))
     (overlay ((path String) (dir ,(obj "directory"))) ,(obj "export"))
     (replace ((path String) (dir ,(obj "directory"))) ,(obj "export"))
-    (publish ((self ,(obj "container")) (address String)) ,(obj "export"))))
+    (publish ((self ,(obj "container")) (address String)) ,(obj "export"))
+    ;; L'unico stato che persiste tra un'esecuzione e l'altra, non indirizzato per contenuto:
+    ;; per questo è uno snodo dichiarato e non un campo generato.
+    (cache-volume ((key String)) ,(obj "cache-volume"))))
+
+(define excluded '("cacheVolume"))                      ; campi radice resi snodi del nucleo
 
 (define all (append nucleo (apply append (map constructors (cons "Query" allowed)))))
 

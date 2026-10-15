@@ -122,21 +122,11 @@
   [d path] (Directory.exists d path))
 
 ; --- container: with-exec dichiara un comando, non lo esegue ---
-
-(def container : Container
-  Query.container)
-
-(def from : (→ Container String Container)
-  [c address] (Container.from c address))
-
-(def with-exec : (→ Container (List String) Container)
-  [c args] (Container.with-exec c args))
+; I campi dello schema si scrivono senza prefisso: (from c "alpine") è Container.from perché c è
+; un Container, (container) è il campo radice Query.container. Qui solo i nomi curati.
 
 (def with-dir : (→ Container String Dir Container)
   [c path source] (Container.with-directory c path source))
-
-(def with-workdir : (→ Container String Container)
-  [c path] (Container.with-workdir c path))
 
 (def with-env : (→ Container String String Container)
   [c name value] (Container.with-env-variable c name value))

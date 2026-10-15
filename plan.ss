@@ -55,6 +55,7 @@
       (case c
         [(%host-dir) (list '(host) (field 'directory names args))]
         [(try-exec) (method 'withExec '(expect ANY))]
+        [(cache-volume) (list (field 'cacheVolume names args))]
         [(passes?) (method 'exitCode)]
         [(overlay replace publish) (oops "un'uscita (Export) può stare solo in cima al piano")]
         [else (let ([segs (split-dots (symbol->string c))])

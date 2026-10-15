@@ -236,6 +236,7 @@
            [(assq e (ctx-defs c)) => (lambda (d) (values (reify (ctx-l c) (cadr d)) (caddr d)))]
            [(and (not (privileged)) (char=? (string-ref (symbol->string e) 0) #\%)) (oops "~a è riservato al nucleo" e)]
            [(gget e) => (lambda (g) (values `(glob ,e) (g-type g)))]
+           [(root-field e) => (lambda (n) (values `(glob ,n) (g-type (gget n))))]
            [else (oops "nome sconosciuto: ~a" e)])]
     [(and (pair? e) (eq? (car e) '→))
      (let-values ([(t n) (elab-arrow c (cdr e))]) (values t `(vtype ,n)))]
@@ -246,15 +247,50 @@
                          (cadr e) (cddr e)))]
     [(and (pair? e) (eq? (car e) '%br))                ; ["a" "b"] = (:: "a" (:: "b" vuota))
      (infer c (fold-right (lambda (x acc) (list ':: x acc)) 'vuota (cdr e)))]
+    [(and (pair? e) (symbol? (car e)) (not (known? c (car e))) (pair? (cdr e)) (pair? (qualified (car e))))
+     ;; nome corto con argomenti: il tipo del primo argomento sceglie il metodo (with-exec su un
+     ;; Container è Container.with-exec); altrimenti è un campo radice. Il primo argomento si
+     ;; elabora una volta sola: dentro pipe le catene sono annidate.
+     (let*-values ([(t1 ty1) (infer c (cadr e))] [(t1 ty1) (insert c t1 ty1)])
+       (let* ([self (reify (ctx-l c) ty1)]
+              [n (or (find (lambda (n) (equal? (self-type n) self)) (qualified (car e)))
+                     (root-field (car e))
+                     (oops "~a non esiste per ~s" (car e) (show c ty1)))])
+         (apply-args c e `(glob ,n) (g-type (gget n)) (cdr e) (cons t1 ty1))))]
     [(pair? e)
-     (let-values ([(t ty) (infer c (car e))])
-       (let loop ([t t] [ty ty] [args (cdr e)])
-         (if (null? args) (values t ty)
-             (let-values ([(t ty) (insert c t ty)])
-               (unless (and (eq? (car ty) 'vpi) (eq? (caddr ty) 'e)) (oops "troppi argomenti in ~s" e))
-               (let ([u (check c (car args) (pi-dom ty))])
-                 (loop `(app ,t ,u e) (pi-cod ty (ev (ctx-env c) u)) (cdr args)))))))]
+     (let-values ([(t ty) (infer c (car e))]) (apply-args c e t ty (cdr e) #f))]
     [else (oops "espressione non valida: ~s" e)]))
+
+;; pre: il primo argomento già elaborato, (termine . tipo), oppure #f.
+(define (apply-args c e t ty args pre)
+  (if (null? args) (values t ty)
+      (let-values ([(t ty) (insert c t ty)])
+        (unless (and (eq? (car ty) 'vpi) (eq? (caddr ty) 'e)) (oops "troppi argomenti in ~s" e))
+        (let ([u (if pre
+                     (begin (guard (x [(unify-failure? x) (oops "~s: atteso ~s, trovato ~s" (car args) (show c (pi-dom ty)) (show c (cdr pre)))])
+                              (unify (ctx-l c) (cdr pre) (pi-dom ty)))
+                            (car pre))
+                     (check c (car args) (pi-dom ty)))])
+          (apply-args c e `(app ,t ,u e) (pi-cod ty (ev (ctx-env c) u)) (cdr args) #f)))))
+
+;; --- nomi corti per lo schema: Tipo.campo si scrive campo ---
+
+(define (known? c e) (or (index-of e (ctx-names c)) (assq e (ctx-defs c)) (gget e)))
+
+(define (qualified s)                                   ; i globali Tipo.s, in ordine
+  (let* ([suffix (string-append "." (symbol->string s))] [k (string-length suffix)])
+    (sort (lambda (a b) (string<? (symbol->string a) (symbol->string b)))
+          (filter (lambda (n) (let ([str (symbol->string n)])
+                                (and (> (string-length str) k) (string=? (substring str (- (string-length str) k) (string-length str)) suffix))))
+                  (vector->list (hashtable-keys globals))))))
+
+(define (root-field s)                                  ; un campo di Query è una funzione di primo livello
+  (let ([n (string->symbol (format "Query.~a" s))]) (and (gget n) n)))
+
+(define (self-type n)                                   ; tipo del primo argomento esplicito, reificato
+  (let loop ([t (force (g-type (gget n)))] [l 0])
+    (and (eq? (car t) 'vpi)
+         (if (eq? (caddr t) 'i) (loop (force (pi-cod t (vvar l))) (+ l 1)) (reify l (pi-dom t))))))
 
 (define (insert c t ty)                                 ; applica gli impliciti in testa con metavariabili
   (let ([ty (force ty)])
@@ -302,7 +338,7 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (memq e '(→ Type _ %br pipe))) (set! acc (cons e acc)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (pair? (qualified e)) (memq e '(→ Type _ %br pipe))) (set! acc (cons e acc)))]
         [(and (pair? e) (eq? (car e) '→))
          (let loop ([as (cdr e)] [bound bound])
            (cond [(null? as) (void)]
@@ -656,6 +692,19 @@
 
 (define (show c v) (sexp (ctx-names c) (reify (ctx-l c) v)))
 (define (sexp names t)
+  (case (and (equal? (car t) 'app) (equal? (cadr t) '(glob Obj)) (equal? (car (caddr t)) 'glob) 'obj)
+    [(obj) (kind-alias (cadr (caddr t)))]                ; (Obj Kind.cache-volume) si legge CacheVolume
+    [else (sexp1 names t)]))
+
+(define (kind-alias k)
+  (let ([s (symbol->string k)])
+    (string->symbol
+      (let loop ([cs (string->list (substring s 5 (string-length s)))] [up #t])
+        (cond [(null? cs) ""]
+              [(char=? (car cs) #\-) (loop (cdr cs) #t)]
+              [else (string-append (string (if up (char-upcase (car cs)) (car cs))) (loop (cdr cs) #f))])))))
+
+(define (sexp1 names t)
   (case (car t)
     [(var) (if (< (cadr t) (length names)) (list-ref names (cadr t)) t)]
     [(glob) (cadr t)]

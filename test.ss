@@ -131,7 +131,18 @@
 (rifiuta "(def nel-ramo-sbagliato : (→ [src Dir] (Before test? publish? (branch (passes? (img src)) (overlay \"o\" src) (publish (img src) \"r\")))) [src] auto)"
          "si riduce a ⊥")
 
+;; Nomi corti: il tipo del primo argomento sceglie il metodo; senza metodo è un campo radice.
+(check-string "
+  (def corto : (→ [src (Host \"/x\")] (Export Dir))
+    [src] (overlay \"out\" (pipe (container) (from \"alpine\") (with-mounted-cache \"/c\" (cache-volume \"k\"))
+                                 (directory \"/\") (with-new-file \"a\" \"b\") (directory \"sub\"))))")
+(define secco4 (plan->graphql (plan resolve-dry 'corto)))
+(assert (contiene? secco4 "withMountedCache(path: \"/c\", cache: \"<cacheVolume(key: \\\"k\\\")>\") { directory(path: \"/\") { withNewFile(path: \"a\", contents: \"b\") { directory(path: \"sub\")"))
+(rifiuta "(def sbagliato : Dir (with-exec empty [\"x\"]))" "with-exec non esiste per")
+(rifiuta "(def pinna : Dir (Query.cache-volume \"k\"))" "nome sconosciuto")
+
 ;; --- dal vivo ---
+
 
 
 

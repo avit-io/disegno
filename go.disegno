@@ -3,7 +3,7 @@
 (def go-build : (→ Dir Dir)
   [src] (pipe (container)
               (from "golang:1.25-alpine")
-              (Container.with-mounted-cache "/go/pkg/mod" (Query.cache-volume "go-mod"))
+              (with-mounted-cache "/go/pkg/mod" (cache-volume "go-mod"))
               (with-env "CGO_ENABLED" "0")
               (with-dir "/src" src)
               (with-workdir "/src")

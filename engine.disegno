@@ -18,7 +18,7 @@
   [overlay : (→ [path String] [dir (Obj Kind.directory)] (Obj Kind.export))]
   [replace : (→ [path String] [dir (Obj Kind.directory)] (Obj Kind.export))]
   [publish : (→ [self (Obj Kind.container)] [address String] (Obj Kind.export))]
-  [Query.cache-volume : (→ [key String] (Obj Kind.cache-volume))]
+  [cache-volume : (→ [key String] (Obj Kind.cache-volume))]
   [Query.container : (Obj Kind.container)]
   [Query.directory : (Obj Kind.directory)]
   [Query.file : (→ [name String] [contents String] (Obj Kind.file))]
@@ -135,7 +135,7 @@
   [(overlay x0 x1)] (:: (any (overlay x0 x1)) (++ (nodes x1) vuota))
   [(replace x0 x1)] (:: (any (replace x0 x1)) (++ (nodes x1) vuota))
   [(publish x0 x1)] (:: (any (publish x0 x1)) (++ (nodes x0) vuota))
-  [(Query.cache-volume x0)] (:: (any (Query.cache-volume x0)) vuota)
+  [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)
   [Query.directory] (:: (any Query.directory) vuota)
   [(Query.file x0 x1)] (:: (any (Query.file x0 x1)) vuota)

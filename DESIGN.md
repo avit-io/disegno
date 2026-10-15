@@ -45,6 +45,7 @@ Il linguaggio appare come un linguaggio a sé: dal codice non si vede l'ospite n
 - I letterali `0, 1, 2…` sono zucchero per `zero`, `add1`; le stringhe `"…"` sono letterali di tipo `String`.
 - **Le quadre sono sintassi**: in una firma `[x T]` è un binder, `(x T)` un'applicazione; in un termine `["a" "b"]` è una lista; nelle definizioni `[…]` raccoglie i pattern di una clausola o i campi di un costruttore.
 - **`pipe`**: `(pipe x (f a) g)` è `(g (f x a))`. Il valore passa come primo argomento esplicito, come l'oggetto di un metodo GraphQL.
+- **Nomi dello schema senza prefisso**: lo schema non affiora nel programma. `(with-mounted-cache c …)` si risolve in `Container.with-mounted-cache` perché `c` è un `Container`: le collisioni tra tipi le risolve il checker, non il programmatore. Un nome senza metodo adatto è un campo radice, cioè una funzione di primo livello: `(container)`, `(cache-volume "go-mod")`. Il primo argomento si elabora una volta sola, quindi dentro `pipe` la risoluzione resta lineare.
 - **`auto`**: prova per calcolo (vedi Curry-Howard).
 - Parole riservate: `→ Type _ pipe auto`.
 - Programmi e prove si scrivono nello stesso modo: cambia solo il tipo.
@@ -94,7 +95,7 @@ Il linguaggio non ha primitive di IO. Le operazioni del motore sono **costruttor
 - **Una famiglia sola, indicizzata dal tipo GraphQL**: `Container`, `Directory`, `File` si richiamano a vicenda; con un indice non servono data mutuamente ricorsivi, e positività, copertura e universi funzionano senza casi speciali.
 - **Il nome del costruttore è il campo**: `Container.with-exec` è `withExec` su `Container`; `Query.git` è un campo radice. I nomi dei binder espliciti sono gli argomenti GraphQL; `self` è l'oggetto su cui si chiama il metodo.
 - **Generazione** (`gen.ss`): introspezione sulla sessione; solo i tipi in un elenco consentito (per non invadere lo spazio dei nomi dell'utente), solo gli argomenti obbligatori. Gli argomenti oggetto sono `ID` generici nello schema: il tipo vero si legge dalla direttiva `@expectedType`. `Int` diventa `Nat`, `Boolean` diventa `Bool` negli argomenti e un'osservazione `(Obj Kind.bool)` nei risultati. Il file generato, `engine.disegno`, si committa: il type checking non richiede una sessione.
-- **Nomi corti**: `std.disegno` definisce `with-file`, `from`, `with-exec`, `put`, … come semplici `def` sopra i costruttori.
+- **Nomi curati**: i campi si scrivono senza prefisso (vedi Superficie); `std.disegno` aggiunge solo i nomi che rinominano davvero, come `with-file` (`withNewFile`), `with-dir`, `dir-of`, `put`, `exists?`.
 - **Attraversamento generato**: `nodes : (→ (Obj k) (List Any))` elenca tutti i sotto-piani per ricorsione strutturale, un caso per costruttore. Sopra di esso le proprietà si scrivono in poche righe, senza ricorsione annidata:
 
 ```
@@ -139,7 +140,7 @@ Il runner realizza `branch` chiedendo la condizione e sottomettendo il ramo scel
 La parte sporca è piccola, chiusa e scritta da chi progetta il linguaggio.
 
 - **Kernel** (fidato): ricontrolla ogni termine prodotto dall'elaboratore, con `Type n : Type n+1`, mai `Type : Type`. L'elaboratore (nomi, impliciti, metavariabili, pattern) può sbagliare; il kernel no.
-- **Snodi**: elenco chiuso di costruttori del nucleo che il runner realizza in modo speciale: `%host-dir`, `try-exec`, `passes?`, `branch`, `overlay`, `replace`, `publish`.
+- **Snodi**: elenco chiuso di costruttori del nucleo che il runner realizza in modo speciale: `%host-dir`, `try-exec`, `passes?`, `branch`, `overlay`, `replace`, `publish`, `cache-volume`. Il cache volume è l'unico stato che persiste tra un'esecuzione e l'altra e non è indirizzato per contenuto: finché si usa come cache non tocca il disegno, ma è dichiarato qui invece di restare implicito tra i campi generati.
 - **`extern`** è rimasto solo per i tipi opachi e le primitive pure: `String` e `contains?`, che calcola sui letterali. Un extern non mente: restituisce un tipo opaco o calcola; mai una proposizione, mai un dato del mondo.
 - **Runner**: l'unico posto dove si ammette il non determinismo. Realizza `branch`, `Host` ed `Export`.
 - **Base fidata** complessiva: kernel, unificazione dei pattern (il kernel non ricontrolla come sono tipati), runner, generatore. Si verifica con i test; tutto il resto lo verifica il type checker.
