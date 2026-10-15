@@ -1,0 +1,128 @@
+; Capitolo 5 — Tipi che dipendono da valori
+;
+; Il primo elemento di una lista: che cosa restituire se la lista è vuota? Con le liste della
+; libreria standard non c'è risposta. Questa definizione
+;
+;   (def primo : (→ (List A) A)
+;     [(:: a _)] a)
+;
+; viene rifiutata: «primo: manca il caso ((vuota))». È di nuovo l'armonia del capitolo 2:
+; un'eliminazione deve rispondere a ogni introduzione, e vuota è un'introduzione di List. Il
+; rimedio non è un valore d'errore. È un tipo che sa quanti elementi ci sono.
+;
+;   disegno check book/05-dependent-types.disegno
+
+; --- una famiglia di tipi ---
+; (Vec A n) è il tipo dei vettori di n elementi di tipo A. Non è un tipo solo: è una famiglia,
+; un tipo per ogni n. Le introduzioni dicono quale membro della famiglia costruiscono: vnil sta
+; in (Vec A zero), e vcons, da un vettore di n elementi, ne fa uno di (add1 n).
+
+(data Vec : (→ Type Nat Type)
+  [vnil  : (Vec A zero)]
+  [vcons : (→ A (Vec A n) (Vec A (add1 n)))])
+
+(def tre-lettere : (Vec String 3)
+  (vcons "a" (vcons "b" (vcons "c" vnil))))
+
+; La lunghezza fa parte del tipo, e il checker la controlla. Scrivendo
+;
+;   (def due : (Vec Nat 2)
+;     (vcons 1 vnil))
+;
+; si ottiene «vnil: atteso (Vec Nat 1), trovato (Vec Nat 0)»: vcons vuole un vettore di un
+; elemento in meno, e vnil non lo è.
+
+; --- un'eliminazione che sa di più ---
+; Ora il primo elemento si può chiedere solo a un vettore di (add1 n) elementi. Basta un caso:
+; vnil sta in (Vec A zero), e zero non è mai (add1 n). Il checker lo vede confrontando gli indici,
+; e non chiede la clausola. Se nel tipo si scrive (Vec A n), la chiede di nuovo: «testa: manca il
+; caso ((vnil))».
+
+(def testa : (→ (Vec A (add1 n)) A)
+  [(vcons a _)] a)
+
+(def la-a : (≡ (testa tre-lettere) "a")
+  auto)
+
+(def coda : (→ (Vec A (add1 n)) (Vec A n))
+  [(vcons _ resto)] resto)
+
+; Il principio di inversione si fa più fine. Eliminare un (Vec A (add1 n)) vuol dire rispondere
+; alle introduzioni che possono averlo prodotto, e vnil non può. L'indice non è un commento sul
+; valore: restringe le introduzioni possibili, e con esse i casi.
+
+; --- Π: il tipo del risultato dipende dall'argomento ---
+; ripeti prende un numero n e restituisce un vettore di n elementi. Il tipo del risultato nomina
+; l'argomento, [n Nat]: è un Π dipendente. Una freccia (→ A B) è il caso in cui B non nomina
+; niente. Il motivo di ind-Nat, nel capitolo 4, era già questo.
+
+(def ripeti : (→ {A Type} [n Nat] A (Vec A n))
+  [zero     _] vnil
+  [(add1 k) a] (vcons a (ripeti k a)))
+
+; Nella seconda clausola il checker si aspetta un (Vec A (add1 k)); vcons ne costruisce uno da
+; un (Vec A k), che è ciò che la chiamata ricorsiva restituisce. I tipi seguono la ricorsione.
+
+; --- il calcolo dentro i tipi ---
+; Accodare due vettori: la lunghezza del risultato è la somma. Il tipo contiene un calcolo.
+
+(def accoda : (→ (Vec A n) (Vec A m) (Vec A (+ n m)))
+  [vnil           ys] ys
+  [(vcons x resto) ys] (vcons x (accoda resto ys)))
+
+; Nella prima clausola n è zero, quindi il checker si aspetta (Vec A (+ zero m)), che si riduce
+; a (Vec A m): proprio il tipo di ys. Nella seconda si aspetta (Vec A (+ (add1 k) m)), che si
+; riduce a (Vec A (add1 (+ k m))). Il checker confronta i tipi calcolando: le deviazioni del
+; capitolo 2 si riducono anche dentro i tipi.
+;
+; Il calcolo però ha i suoi limiti. Scrivendo (Vec A (+ m n)), la prima clausola darebbe
+; «ys: atteso (Vec A (+ m 0)), trovato (Vec A m)». + elimina il primo argomento, m è ignoto, e
+; (+ m 0) resta com'è. Che (+ m 0) sia m è vero, ma va dimostrato: è +-zero del capitolo 4. Come
+; usare una prova per spostare un tipo nell'altro è il tema del capitolo 6.
+
+(def cinque : (≡ (accoda tre-lettere (ripeti 2 "z"))
+                 (vcons "a" (vcons "b" (vcons "c" (vcons "z" (vcons "z" vnil))))))
+  auto)
+
+; --- l'indice si può leggere ---
+; La lunghezza non serve calcolarla: è già nel tipo. Un argomento implicito {n Nat} la
+; recupera.
+
+(def lunghezza : (→ {A Type} {n Nat} (Vec A n) Nat)
+  [_] n)
+
+(def ancora-cinque : (≡ (lunghezza (accoda tre-lettere (ripeti 2 "z"))) 5)
+  auto)
+
+; --- due vettori della stessa lunghezza ---
+; Accoppiare due vettori elemento per elemento ha senso solo se sono lunghi uguale, e il tipo
+; lo esige. Due clausole bastano: un vnil e un vcons non possono avere lo stesso indice.
+
+(def accoppia : (→ (Vec A n) (Vec B n) (Vec (× A B) n))
+  [vnil         vnil]         vnil
+  [(vcons a as) (vcons b bs)] (vcons (pair a b) (accoppia as bs)))
+
+; --- esercizi ---
+;
+; 1. Applica una funzione a ogni elemento. Il tipo garantisce che la lunghezza non cambi.
+; (def mappa : (→ (→ A B) (Vec A n) (Vec B n))
+;   ___)
+;
+; 2. Dimentica la lunghezza.
+; (def in-lista : (→ (Vec A n) (List A))
+;   ___)
+;
+; 3. Il secondo elemento. Che tipo deve avere l'argomento? Bastano testa e coda.
+; (def secondo : (→ ___ A)
+;   [v] ___)
+; (def la-b : (≡ (secondo tre-lettere) "b") auto)
+;
+; 4. L'ultimo elemento. Viene voglia di scrivere la chiamata ricorsiva su (vcons b bs), ma è un
+;    vettore ricostruito, non un pezzo dell'argomento: il checker risponde «ricorsione non
+;    strutturale». Suggerimento: una funzione ausiliaria che si porta dietro l'ultimo elemento
+;    visto, e scende sul resto.
+; (def ultimo-da : (→ A (Vec A n) A)
+;   ___)
+; (def ultimo : (→ (Vec A (add1 n)) A)
+;   [(vcons a resto)] ___)
+; (def la-c : (≡ (ultimo tre-lettere) "c") auto)
