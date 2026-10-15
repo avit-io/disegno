@@ -8,10 +8,21 @@ Il linguaggio si chiama Disegno, perché il nome dice quello che fa: progetta, n
 
 Nella teoria dell'arte del Rinascimento, a partire da Vasari, il disegno è l'idea intellettuale dell'opera. Precede e governa la sua realizzazione nella materia: il colore, il marmo, la costruzione. Allo stesso modo un programma Disegno dichiara il progetto completo, tipato e totale, e lascia al motore la realizzazione.
 
-In italiano la parola ha anche un secondo senso, quello di proposito o intento, come in "avere un disegno" o "disegno di legge". È il principio del linguaggio: l'IO esiste solo come dichiarazione di intenti.
+Vasari lo definisce così, nel capitolo "Che cosa sia disegno" dell'introduzione alle *Vite* (1568): il disegno, "padre delle tre arti nostre, architettura, scultura e pittura, procedendo dall'intelletto, cava di molte cose un giudizio universale", e "altro non sia che una apparente espressione e dichiarazione del concetto che si ha nell'animo". *Dichiarazione* è la parola giusta: è il principio del linguaggio.
 
-- Il disegno è il piano puro: ciò che scrive l'utente e che il type checker verifica.
-- L'esecuzione è di Dagger, governata dal nucleo fidato.
+In italiano la parola ha anche un secondo senso, quello di proposito o intento, come in "avere un disegno" o "disegno di legge". L'IO esiste solo come dichiarazione di intenti.
+
+### Disegno interno, disegno esterno, opera
+
+Federico Zuccari, nell'*Idea de' pittori, scultori et architetti* (1607), sviluppa Vasari distinguendo due disegni: il **disegno interno**, l'idea formata nell'intelletto prima di ogni realizzazione, e il **disegno esterno**, la sua espressione sensibile, la forma tracciata sul foglio. Poi viene l'opera, nella materia. Disegno ha esattamente questi tre momenti, e sono tre usi dello stesso programma:
+
+| Momento | In Zuccari | In Disegno | Comando |
+|---|---|---|---|
+| Disegno interno | l'idea nell'intelletto | il programma tipato, con i suoi teoremi: ciò che il type checker verifica | `scheme --script disegno.ss checks.disegno` |
+| Disegno esterno | la forma visibile sul foglio | il piano stampato, un GraphQL per ogni esito dei `branch`, ispezionabile prima di eseguire | `scheme --script disegno.ss prog.disegno` |
+| Opera | la realizzazione nella materia | l'esecuzione su Dagger, governata dal nucleo fidato | `dagger run scheme --script disegno.ss prog.disegno` |
+
+La distinzione non è decorativa. Tutto ciò che si prova sta nel disegno interno: i teoremi parlano del piano come dato, non della sua esecuzione. Il disegno esterno è ciò che si rivede, come un diff o una pull request: è determinato per intero dal disegno interno, e a secco non tocca il motore. L'opera è l'unico momento in cui entra il mondo, con le osservazioni di `branch`, e l'unico in cui il non determinismo è ammesso. Si prova che il disegno è pulcro, non che lo scultore lo esegua esatto.
 
 ## Idea e principio
 
@@ -357,6 +368,9 @@ In cambio della purezza e della semplicità:
 - [ ] Passaggio a Dagger 1.0 quando il flake lo rende disponibile.
 
 ## Fonti
+
+- G. Vasari, *Le vite de' più eccellenti pittori, scultori e architettori*, 1568, Introduzione, Della pittura, cap. XV "Che cosa sia disegno" ([Wikisource](https://it.wikisource.org/wiki/Le_vite_de%27_pi%C3%B9_eccellenti_pittori,_scultori_e_architettori_(1568)/Capitolo_15))
+- F. Zuccari, *L'idea de' pittori, scultori et architetti*, Torino, 1607
 
 - Client libraries e GraphQL diretto, Dagger
 - Endpoint HTTP della sessione
