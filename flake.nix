@@ -25,9 +25,11 @@
         fi
       '';
 
-      # disegno [check|plan|run] programma.disegno; run apre da sé la sessione Dagger.
+      # disegno [check|plan|run] programma.disegno, disegno lsp: un solo binario.
+      # run apre da sé la sessione Dagger.
       disegno = pkgs.writeShellScriptBin "disegno" ''
         main=${self}/src/main.ss
+        export DISEGNO_SCHEME=${pkgs.chez}/bin/scheme      # per i controlli che lancia disegno lsp
         if [ "$1" = run ]; then
           if [ -z "$_EXPERIMENTAL_DAGGER_RUNNER_HOST" ]; then
             ${engine}

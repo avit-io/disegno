@@ -148,6 +148,32 @@
               (string->number (substring s j i)))]))
   (value))
 
+;; Scrittura (per l'LSP): una alist con chiavi stringa è un oggetto, un vettore è un array,
+;; 'null è null; stringhe, numeri e booleani come sono.
+(define (json-write v p)
+  (cond [(string? v) (display (json-string v) p)]
+        [(boolean? v) (display (if v "true" "false") p)]
+        [(eq? v 'null) (display "null" p)]
+        [(number? v) (display v p)]
+        [(vector? v) (display "[" p)
+                     (let loop ([i 0])
+                       (when (< i (vector-length v))
+                         (when (> i 0) (display "," p))
+                         (json-write (vector-ref v i) p)
+                         (loop (+ i 1))))
+                     (display "]" p)]
+        [(and (pair? v) (pair? (car v)) (string? (caar v)))
+         (display "{" p)
+         (let loop ([kv v] [first #t])
+           (unless (null? kv)
+             (unless first (display "," p))
+             (display (json-string (caar kv)) p) (display ":" p) (json-write (cdar kv) p)
+             (loop (cdr kv) #f)))
+         (display "}" p)]
+        [else (error 'json "valore non serializzabile" v)]))
+
+(define (json->string v) (call-with-string-output-port (lambda (p) (json-write v p))))
+
 ;; --- Sessione ---
 
 (define (query text)                                    ; documento GraphQL → risposta JSON (testo)

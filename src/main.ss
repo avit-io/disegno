@@ -2,6 +2,7 @@
 ;;   disegno check prog.disegno   disegno interno: tipi e teoremi
 ;;   disegno plan  prog.disegno   disegno esterno: il piano, un GraphQL per ogni esito dei branch
 ;;   disegno run   prog.disegno   opera: l'esecuzione su Dagger (il comando apre la sessione)
+;;   disegno lsp                  il server LSP per gli editor (diagnostica)
 ;; Senza sottocomando: check se il file non ha main, altrimenti plan (o run sotto dagger run).
 
 (define root (path-parent (path-parent (car (command-line)))))   ; <root>/src/main.ss
@@ -10,6 +11,11 @@
 (load (at-root "src/core.ss"))
 (load (at-root "src/types.ss"))
 (load (at-root "src/plan.ss"))
+
+(when (equal? (command-line-arguments) '("lsp"))         ; disegno lsp: il server per gli editor
+  (load (at-root "src/lsp.ss"))
+  (serve)
+  (exit 0))
 
 (define-values (mode file)
   (let ([args (command-line-arguments)])

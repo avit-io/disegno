@@ -224,7 +224,32 @@
 ;; Le posizioni: file:riga:colonna dell'espressione più vicina.
 (rifiuta "(def ok : Nat 1)\n(def male : Abs\n  (⊕ /out /bin))" "<stringa>:3:3: /bin: atteso Rel, trovato Abs")
 
+;; L'LSP: una sessione registrata (initialize, apertura con un errore, correzione, salvataggio,
+;; shutdown) letta dal server da stdin; la diagnostica compare e poi si svuota.
+(let* ([frame (lambda (v) (let ([b (string->utf8 (json->string v))])
+                            (string-append (format "Content-Length: ~a\r\n\r\n" (bytevector-length b)) (utf8->string b))))]
+       [uri "file:///tmp/prova-lsp.disegno"]
+       [in "/tmp/disegno-lsp-in"] [out "/tmp/disegno-lsp-out"]
+       [msg (lambda (method params . id) `(("jsonrpc" . "2.0") ,@(if (null? id) '() `(("id" . ,(car id)))) ("method" . ,method) ("params" . ,params)))])
+  (call-with-output-file in
+    (lambda (p)
+      (for-each (lambda (m) (put-string p (frame m)))
+        (list (msg "initialize" '(("capabilities" . (("x" . 1)))) 1)
+              (msg "textDocument/didOpen" `(("textDocument" . (("uri" . ,uri) ("text" . "(def male : Abs\n  (⊕ /out /bin))\n")))))
+              (msg "textDocument/didChange" `(("textDocument" . (("uri" . ,uri))) ("contentChanges" . ,(vector '(("text" . "(def bene : Abs (⊕ /out \"bin\"))\n"))))))
+              (msg "textDocument/didSave" `(("textDocument" . (("uri" . ,uri)))))
+              (msg "shutdown" '(("x" . 1)) 2)
+              (msg "exit" '(("x" . 1)))))) 'replace)
+  (system (format "scheme --script ~a lsp < ~a > ~a" (at-root "src/main.ss") in out))
+  (let ([r (call-with-input-file out get-string-all)])
+    (assert (contiene? r "\"capabilities\""))
+    (assert (contiene? r "\"range\":{\"start\":{\"line\":1,\"character\":2}"))
+    (assert (contiene? r "\"message\":\"/bin: atteso Rel, trovato Abs\""))
+    (assert (contiene? r "\"diagnostics\":[]"))
+    (assert (contiene? r "\"id\":2,\"result\":null"))))
+
 ;; --- dal vivo ---
+
 
 
 

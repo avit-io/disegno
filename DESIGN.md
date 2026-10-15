@@ -338,11 +338,12 @@ Precedente sul lato Dagger: Dang, il linguaggio nativo di Dagger 1.0, conferma c
 
 ```
 README.md  DESIGN.md  flake.nix
-src/       core.ss  types.ss  plan.ss  main.ss      il nucleo e il driver
+src/       core.ss  types.ss  plan.ss  main.ss  lsp.ss   il nucleo, il driver, il server LSP
 lib/       std.disegno  engine.disegno              la libreria standard (engine è generato)
 tools/     gen.ss                                    il generatore dallo schema
 tests/     test.ss  checks.disegno                   i test e i teoremi di controllo
 cookbook/  00-basics … 06-theorems  hello/            le ricette
+editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin per Neovim
 ```
 
 | File | Ruolo |
@@ -350,7 +351,9 @@ cookbook/  00-basics … 06-theorems  hello/            le ricette
 | `src/core.ss` | nucleo: stampa GraphQL, HTTP su socket, JSON, sessione |
 | `src/types.ss` | elaboratore e kernel: NbE, unificazione, pattern, copertura, terminazione, positività, `record`, `auto`, letterali, numerali nativi |
 | `src/plan.ss` | runner: dal piano (dato) al GraphQL, `branch`, esecuzione e piani a secco |
-| `src/main.ss` | driver: `check`, `plan`, `run`; trova la radice dalla propria posizione |
+| `src/main.ss` | driver: `check`, `plan`, `run`, `lsp`; trova la radice dalla propria posizione |
+| `src/lsp.ss` | il server LSP: JSON-RPC su stdin/stdout, diagnostica da un controllo in un processo a sé |
+| `editors/` | la grammatica tree-sitter con le query, e il plugin per Neovim (filetype, tree-sitter, LSP, `:make`) |
 | `lib/std.disegno` | libreria standard: uguaglianza, `Bool`, `Nat`, liste, spazi affini, regioni, nomi corti, `Host`, `Export`, proprietà del piano |
 | `lib/engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes`, `chain` |
 | `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger run`) |
@@ -359,7 +362,7 @@ cookbook/  00-basics … 06-theorems  hello/            le ricette
 | `cookbook/` | sette ricette numerate e commentate, verificate dai test (`check`, e `plan` se hanno un main); `hello/` è il sorgente Go degli esempi |
 | `flake.nix` | il pacchetto `disegno` (`nix run`), la shell, il motore dedicato con le CA dell'host |
 
-**Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`. `run` apre da sé la sessione con `dagger run`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, e `include` rispetto al file che lo contiene, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.
+**Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`; `disegno lsp` è il server per gli editor. nixpkgs è fissato a `nixos-25.11`. `run` apre da sé la sessione con `dagger run`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, e `include` rispetto al file che lo contiene, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.
 
 ## Limitazioni accettate
 
@@ -396,7 +399,7 @@ In cambio della purezza e della semplicità:
 
 ### Da fare
 
-- **Editor**: tree-sitter (grammatica, evidenziazione, filetype `.disegno` in Neovim), poi un LSP in Chez: diagnostica al salvataggio, hover con i tipi.
+- **Editor**: fatto tree-sitter (grammatica, evidenziazione) e l'LSP in Chez (`disegno lsp`, diagnostica all'apertura e al salvataggio), con il plugin `nvim-disegno`. Restano l'hover con i tipi, la diagnostica mentre si scrive e più errori per file.
 - **Pointless Disegno**: un testo per imparare i tipi dipendenti attraverso il linguaggio, dalle definizioni per casi alle prove per induzione, dai tipi indicizzati alle prove sul piano. Ogni capitolo è un file `.disegno` verificato dal checker, come il cookbook.
 - **I log su Dagger**: il problema pratico più sentito. L'output dei comandi è un'osservazione (`stdout`, `stderr`), e Dagger lo mostra in una TUI pensata per l'interazione; in CI servono log leggibili, raggruppati per passo e conservati. Da capire cosa si può dichiarare nel disegno (quali passi, quali flussi, dove finiscono) e cosa resta del runner.
 

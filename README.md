@@ -43,4 +43,17 @@ src/       il nucleo e il driver          lib/    la libreria standard (engine �
 tests/     test e teoremi di controllo    tools/  il generatore      cookbook/  gli esempi
 ```
 
+## Editor
+
+Un solo binario, `disegno`, fa anche da server LSP (`disegno lsp`: diagnostica all'apertura e al salvataggio). Per Neovim il flake dà il plugin `nvim-disegno`: filetype `.disegno`, evidenziazione con tree-sitter, LSP, e `:make` con la quickfix. Con home-manager:
+
+```nix
+# inputs.disegno.url = "github:avit-io/disegno";
+home.packages = [ inputs.disegno.packages.${pkgs.system}.default ];
+# un pacchetto di Neovim caricato all'avvio, anche con lazy.nvim
+xdg.dataFile."nvim/site/pack/disegno/start/disegno".source = inputs.disegno.packages.${pkgs.system}.nvim-disegno;
+```
+
+Con `programs.neovim` basta aggiungere `nvim-disegno` a `programs.neovim.plugins`. La grammatica sta in `editors/tree-sitter-disegno` (pacchetto `grammar`), per altri editor.
+
 Il progetto, le scelte e le questioni aperte sono in [DESIGN.md](DESIGN.md). È un esperimento: l'ospite è Chez Scheme, il motore Dagger 0.21.
