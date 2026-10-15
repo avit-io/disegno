@@ -114,15 +114,64 @@
 
 ;; --- esecuzione ---
 
-(define (resolve-live ch) (submit-leaf (append ch '((id)))))
+;; --- i log: con DISEGNO_LOGS, l'output di ogni with-exec, un gruppo per passo ---
+;; Dagger è pigro e ha la cache: chiedere stdout del prefisso che termina con un withExec esegue
+;; la catena fino a lì, e la richiesta finale non rifà niente. I log escono nell'ordine dei passi.
+;; ponytail: stdout e stderr si mostrano uno dopo l'altro, non intrecciati riga per riga.
+
+(define logged '())                                      ; prefissi già mostrati
+
+(define (log-steps ch)
+  (when (getenv "DISEGNO_LOGS")
+    (for-each (lambda (i)
+                (let ([pre (list-head ch i)])
+                  (when (and (eq? (car (list-ref ch (- i 1))) 'withExec) (not (member pre logged)))
+                    (set! logged (cons pre logged))
+                    (show-step pre))))
+              (cdr (iota (+ (length ch) 1))))))
+
+(define (show-args args)                                ; il comando, con le virgolette dove servono
+  (format "~{~a~^ ~}" (map (lambda (a) (if (memv #\space (string->list a)) (format "~s" a) a)) args)))
+
+(define (lines . ss)                                     ; testi uno dopo l'altro, ciascuno chiuso da un a capo
+  (apply string-append (map (lambda (s) (if (or (string=? s "") (char=? (string-ref s (- (string-length s) 1)) #\newline)) s (string-append s "\n"))) ss)))
+
+(define (show-step pre)
+  (let* ([title (show-args (cadr (assq 'args (cdr (list-ref pre (- (length pre) 1))))))]
+         [r (json-read (submit (append pre '((stdout)))))]
+         [errs (assoc "errors" r)]
+         [ext (and errs (pair? (cdr errs)) (assoc "extensions" (cadr errs)))]
+         [field (lambda (k) (cond [(assoc k (cdr ext)) => cdr] [else ""]))])
+    (cond
+      [(and ext (equal? (field "_type") "EXEC_ERROR"))
+       (log-group title (lines (field "stdout") (field "stderr")) #t)
+       (when (getenv "GITHUB_ACTIONS") (printf "::error::passo fallito (exit ~a): ~a\n" (field "exitCode") title))
+       (oops "passo fallito (exit ~a): ~a" (field "exitCode") title)]
+      [ext (oops "~a" (cdr (assoc "message" (cadr errs))))]
+      [else (log-group title (lines (submit-leaf (append pre '((stdout))))
+                                    (submit-leaf (append pre '((stderr))))))])))
+
+(define (log-group title body . failed)                 ; un passo fallito resta aperto, dove si può
+  (cond [(getenv "GITHUB_ACTIONS") (printf "::group::~a\n~a::endgroup::\n" title body)]
+        [(getenv "GITLAB_CI")
+         (let ([id (format "passo-~a" (length logged))] [t (time-second (current-time))])
+           (printf "\x1b;[0Ksection_start:~a:~a[collapsed=~a]\r\x1b;[0K~a\n~a\x1b;[0Ksection_end:~a:~a\r\x1b;[0K\n"
+                   t id (if (null? failed) "true" "false") title body t id))]
+        [else (printf "── ~a\n~a" title body)])
+  (flush-output-port))
+
+(define (resolve-live ch) (log-steps ch) (submit-leaf (append ch '((id)))))
 (define (resolve-dry ch) (format "<~a>" (plan->graphql ch)))
 
 ;; ponytail: un'osservazione booleana è un Boolean GraphQL o un exit code (vero se 0).
 (define (observe-live ch)
+  (log-steps ch)
   (let ([r (submit-leaf ch)])
     (cond [(boolean? r) r] [(number? r) (= r 0)] [else (oops "osservazione non booleana: ~s" r)])))
 
-(define (run entry) (parameterize ([observe observe-live]) (submit-leaf (plan resolve-live entry))))
+(define (run entry)
+  (parameterize ([observe observe-live])
+    (let ([p (plan resolve-live entry)]) (log-steps p) (submit-leaf p))))
 
 ;; A secco: un piano per ogni combinazione di esiti dei branch, in profondità.
 ;; → lista di ((catena-condizione . esito) ...) . catena

@@ -36,7 +36,9 @@
             export _EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-container://disegno-engine
           fi
           export DAGGER_NO_NAG=1
-          exec ${d}/bin/dagger run ${pkgs.chez}/bin/scheme --script "$main" "$@"
+          progress=""                                     # in CI, o senza terminale: niente TUI, log per passo
+          if [ -n "$CI" ] || [ ! -t 1 ]; then export DISEGNO_LOGS=1; progress=--silent; fi
+          exec ${d}/bin/dagger run $progress ${pkgs.chez}/bin/scheme --script "$main" "$@"
         fi
         exec ${pkgs.chez}/bin/scheme --script "$main" "$@"
       '';

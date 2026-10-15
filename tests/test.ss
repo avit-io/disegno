@@ -289,6 +289,18 @@
   (run 'verifica)
   (assert (string=? (call-with-input-file (string-append dir "/out3/esito") get-string-all) "passa\n"))
   (assert (string=? (call-with-input-file (string-append dir "/out3/manca/esito") get-string-all) "fallisce\n"))
+  ;; I log per passo (DISEGNO_LOGS, come in CI): un gruppo per with-exec; un passo fallito dice quale.
+  (putenv "DISEGNO_LOGS" "1")
+  (check-string "(def rotto : (→ (Export Dir))
+    (overlay \"rotto\" (pipe (container) (from \"alpine\")
+                             (with-exec [\"sh\" \"-c\" \"echo prima\"])
+                             (with-exec [\"sh\" \"-c\" \"echo male >&2; exit 3\"]) (dir-of /tmp))))")
+  (let* ([msg #f]
+         [out (with-output-to-string
+                (lambda () (set! msg (guard (e [(message-condition? e) (condition-message e)]) (run 'rotto) #f))))])
+    (assert (contiene? out "── sh -c \"echo prima\"\nprima\n"))
+    (assert (contiene? out "── sh -c \"echo male >&2; exit 3\"\nmale\n"))
+    (assert (and msg (contiene? msg "passo fallito (exit 3)"))))
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

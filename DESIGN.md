@@ -401,7 +401,7 @@ In cambio della purezza e della semplicità:
 
 - **Editor**: fatti tree-sitter (grammatica, evidenziazione) e l'LSP in Chez (`disegno lsp`: diagnostica all'apertura e al salvataggio, hover con il tipo dei nomi globali e le varianti dei nomi corti), con il plugin `nvim-disegno`. Restano l'hover sulle variabili locali, la diagnostica mentre si scrive e più errori per file.
 - **Pointless Disegno** (`book/`): un libricino per imparare i tipi dipendenti, sul filo di Gentzen, Dummett e Prawitz (il significato nelle introduzioni, l'eliminazione in armonia). Scritti i nove capitoli, dalle introduzioni alle prove come programmi, al livello di Pie (λ, `the`, impliciti, Σ, `Either`, `transport`). Le soluzioni degli esercizi sono in `book/solutions/`, verificate dai test.
-- **I log su Dagger**: il problema pratico più sentito. L'output dei comandi è un'osservazione (`stdout`, `stderr`), e Dagger lo mostra in una TUI pensata per l'interazione; in CI servono log leggibili, raggruppati per passo e conservati. Da capire cosa si può dichiarare nel disegno (quali passi, quali flussi, dove finiscono) e cosa resta del runner.
+- **I log su Dagger**: fatto il primo passo. In CI, o senza terminale, `disegno run` lancia `dagger run --silent` e il runner stampa l'output di ogni `with-exec`, un gruppo per passo, con i marcatori di GitHub Actions e GitLab; un passo fallito dice quale comando e con che exit code. Dagger è pigro e ha la cache, quindi chiedere `stdout` di ogni prefisso non rifà il lavoro. Restano: stdout e stderr intrecciati riga per riga (oggi uno dopo l'altro), i log in streaming dei passi lunghi (oggi escono a passo finito), la posizione nel sorgente del passo fallito, e i log conservati come dato del piano (una cartella esportata).
 
 ## Fonti
 
