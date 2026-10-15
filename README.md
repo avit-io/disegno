@@ -36,7 +36,7 @@ nix run github:avit-io/disegno -- plan  prog.disegno   # disegno esterno: il pia
 nix run github:avit-io/disegno -- run   prog.disegno   # opera: l'esecuzione su Dagger
 ```
 
-Per vedere il linguaggio in azione c'è il [cookbook](cookbook/README.md): sette ricette brevi, dalle basi alla rete come dato. Dal repository, `nix run . -- run cookbook/02-go-build.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger run scheme --script tests/test.ss`).
+Per imparare il linguaggio c'è [Pointless Disegno](book/README.md), un libricino sui tipi dipendenti. Per vederlo in azione c'è il [cookbook](cookbook/README.md): sette ricette brevi, dalle basi alla rete come dato. Dal repository, `nix run . -- run cookbook/02-go-build.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger run scheme --script tests/test.ss`).
 
 ```
 src/       il nucleo e il driver          lib/    la libreria standard (engine è generata dallo schema)

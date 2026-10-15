@@ -205,14 +205,19 @@
 
 ;; Il cookbook: ogni ricetta è un programma a sé, verificato in un processo separato con
 ;; check (tipi e teoremi) e, se ha un main, plan (il piano a secco). Mai run: la 03 pubblica.
+;; Anche i capitoli del libro (book/) sono programmi verificati: tutto ciò che vi è scritto è vero.
 (for-each
   (lambda (r)
-    (let* ([path (at-root (string-append "cookbook/" r))]
+    (let* ([path (at-root r)]
            [mode (if (contiene? (call-with-input-file path get-string-all) "(def main ") "plan" "check")])
       (unless (zero? (system (format "scheme --script ~a ~a ~a >/dev/null" (at-root "src/main.ss") mode path)))
-        (error 'prova (format "la ricetta ~a non passa (~a)" r mode)))))
-  (sort string<? (filter (lambda (f) (let ([n (string-length f)]) (and (> n 8) (string=? (substring f (- n 8) n) ".disegno"))))
-                         (directory-list (at-root "cookbook")))))
+        (error 'prova (format "~a non passa (~a)" r mode)))))
+  (apply append
+         (map (lambda (dir)
+                (map (lambda (f) (string-append dir "/" f))
+                     (sort string<? (filter (lambda (f) (let ([n (string-length f)]) (and (> n 8) (string=? (substring f (- n 8) n) ".disegno"))))
+                                            (directory-list (at-root dir))))))
+              '("cookbook" "book"))))
 
 ;; Quando auto fallisce su una congiunzione, il messaggio indica la parte che non vale.
 (rifiuta "(def subnet-sovrapposte : (Disjoint-subnets [\"10.0.1.0/24\" \"10.0.2.0/24\" \"10.0.1.128/25\"]) auto)"

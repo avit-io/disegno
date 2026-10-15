@@ -1,0 +1,90 @@
+; Capitolo 1 — Il significato è nelle introduzioni
+;
+; Che cos'è un numero naturale? Si potrebbe rispondere con una proprietà, o con un insieme.
+; Questo libro risponde in un altro modo: un numero naturale è ciò che si costruisce con zero e
+; con add1, il successore. Non c'è altro da sapere per sapere che cos'è un Nat; tutto il resto si
+; deduce da qui.
+;
+; Gentzen, nel 1935, osservava che le regole di introduzione dei connettivi logici sono, per così
+; dire, le loro definizioni. Dummett e Prawitz hanno preso sul serio l'osservazione: il significato
+; di un'espressione sta nel modo in cui si giustifica ciò che la introduce. In Disegno l'idea non è
+; una metafora: un tipo si dichiara elencando le sue introduzioni.
+;
+;   disegno check book/01-introductions.disegno
+
+; --- un tipo nuovo ---
+; `data` dichiara un tipo e le sue introduzioni, i costruttori. Le stagioni sono quattro e non ce
+; ne sono altre: questa dichiarazione dice esattamente questo, e niente di più.
+
+(data Stagione
+  [primavera]
+  [estate]
+  [autunno]
+  [inverno])
+
+; --- il giudizio ---
+; `def` afferma un giudizio: «adesso è un elemento di Stagione». Si legge `adesso : Stagione`.
+; Il checker lo accetta perché primavera è una delle introduzioni di Stagione.
+
+(def adesso : Stagione
+  primavera)
+
+; --- i naturali, nella libreria standard ---
+; Nat è dichiarato così, in lib/std.disegno:
+;
+;   (data Nat
+;     [zero]
+;     [add1 Nat])
+;
+; Una introduzione senza argomenti (zero) e una che prende un naturale già costruito (add1). I
+; letterali 0, 1, 2… sono abbreviazioni: 2 è (add1 (add1 zero)).
+
+(def tre : Nat
+  (add1 (add1 (add1 zero))))
+
+; --- forme canoniche ---
+; Un'espressione chiusa di tipo Nat può essere scritta in molti modi, ma calcolando arriva sempre a
+; una forma canonica: zero, oppure add1 di qualcosa. (+ 1 2) non è una forma canonica, ma vi si
+; riduce. Il giudizio qui sotto dice che le due espressioni hanno la stessa forma canonica; `auto`
+; lo verifica calcolando. (L'uguaglianza ≡ ha un capitolo tutto suo, il sesto.)
+
+(def tre-è-uno-più-due : (≡ tre (+ 1 2))
+  auto)
+
+; --- introduzioni con argomenti ---
+; Un albero binario è una foglia, oppure un nodo con due alberi già costruiti. Le introduzioni
+; possono prendere elementi del tipo stesso: è così che un tipo induttivo descrive cose
+; arbitrariamente grandi con un numero finito di regole.
+
+(data Albero
+  [foglia]
+  [nodo Albero Albero])
+
+(def piccolo : Albero
+  (nodo foglia (nodo foglia foglia)))
+
+; --- il tipo senza introduzioni ---
+; Se il significato di un tipo sta nelle sue introduzioni, che cosa significa un tipo che non ne
+; ha? Che nulla vale come suo elemento. La libreria standard lo chiama ⊥:
+;
+;   (data ⊥ : Type)
+;
+; Non si può scrivere (def qualcosa : ⊥ …): non c'è niente da mettere al posto dei puntini. Nel
+; capitolo 8 vedremo che ⊥ è il falso, e che proprio per questo è utile.
+
+; --- esercizi ---
+; Togli il ; davanti alle righe, completa i ___ e verifica il file.
+;
+; 1. Dichiara il tipo dei semafori, con tre introduzioni.
+; (data Semaforo
+;   [___]
+;   [___]
+;   [___])
+;
+; 2. Un albero con tre nodi.
+; (def tre-nodi : Albero
+;   ___)
+;
+; 3. Scrivi 4 senza usare letterali, e verifica che sia 4.
+; (def quattro : Nat ___)
+; (def quattro-è-4 : (≡ quattro 4) auto)

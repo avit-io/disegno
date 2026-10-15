@@ -1,0 +1,84 @@
+; Capitolo 2 — Eliminare con armonia
+;
+; Sappiamo costruire una stagione. Come la si usa? Per usare un elemento di un tipo bisogna
+; prepararsi a ogni modo in cui potrebbe essere stato costruito: questo è eliminarlo. Prawitz l'ha
+; chiamato principio di inversione: ciò che si ottiene eliminando un elemento si poteva già
+; ottenere da ciò che serviva a introdurlo. L'eliminazione non aggiunge niente alle introduzioni,
+; le smonta.
+;
+;   disegno check book/02-eliminations.disegno
+
+(data Stagione
+  [primavera]
+  [estate]
+  [autunno]
+  [inverno])
+
+; --- eliminare per casi ---
+; Una definizione per casi elenca le introduzioni e dice che cosa fare con ciascuna. Ogni
+; clausola è [pattern] corpo.
+
+(def successiva : (→ Stagione Stagione)
+  [primavera] estate
+  [estate]    autunno
+  [autunno]   inverno
+  [inverno]   primavera)
+
+; --- armonia ---
+; Che cosa succede se si dimentica un caso? Togli la clausola [inverno] e verifica: il checker
+; risponde «successiva: manca il caso ((inverno))». È il controllo dell'armonia di Dummett:
+; un'eliminazione deve rispondere a ogni introduzione, altrimenti pretenderebbe di usare un
+; elemento senza sapere come è fatto.
+
+; --- deviazioni ---
+; Un'introduzione seguita subito da un'eliminazione è una deviazione, nel senso di Prawitz: si
+; costruisce primavera per poi smontarla. Il calcolo la elimina, ed è questo che vuol dire
+; calcolare: (successiva primavera) si riduce a estate.
+
+(def dopo-la-primavera : (≡ (successiva primavera) estate)
+  auto)
+
+; --- eliminare un naturale ---
+; Le introduzioni di Nat sono zero e add1; eliminarne uno vuol dire rispondere a entrambe. Il
+; pattern (add1 n) dà un nome, n, a ciò che add1 aveva preso: il predecessore.
+
+(def pred : (→ Nat Nat)
+  [zero]     zero
+  [(add1 n)] n)
+
+(def pred-di-tre : (≡ (pred 3) 2)
+  auto)
+
+; Un caso può usare il risultato sui pezzi più piccoli: è la ricorsione. Qui la somma, come la
+; definisce la libreria standard (si chiama +, la riscriviamo per vederla).
+
+(def somma : (→ Nat Nat Nat)
+  [zero     m] m
+  [(add1 k) m] (add1 (somma k m)))
+
+(def due-più-due : (≡ (somma 2 2) 4)
+  auto)
+
+; --- eliminare il nulla ---
+; ⊥ non ha introduzioni. Eliminarlo vuol dire rispondere a ogni sua introduzione: a nessuna.
+; Il pattern assurdo () lo dice al checker, e la clausola non ha corpo. Da ⊥ segue qualunque
+; cosa, perché non c'è niente da cui partire: ex falso quodlibet, qui un'eliminazione vuota.
+
+(def da-niente : (→ ⊥ Stagione)
+  [()])
+
+; --- esercizi ---
+;
+; 1. La stagione precedente, e la prova che precedente e successiva si annullano su estate.
+; (def precedente : (→ Stagione Stagione)
+;   ___)
+; (def avanti-e-indietro : (≡ (precedente (successiva estate)) estate) auto)
+;
+; 2. È inverno? Usa Bool, dalla libreria standard: (data Bool [true] [false]).
+; (def inverno? : (→ Stagione Bool)
+;   ___)
+;
+; 3. Il prodotto, usando somma. Suggerimento: (* (add1 k) m) è m più (* k m).
+; (def prodotto : (→ Nat Nat Nat)
+;   [zero     m] ___
+;   [(add1 k) m] ___)

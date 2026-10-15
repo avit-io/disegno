@@ -1,0 +1,70 @@
+; Capitolo 3 — Funzioni
+;
+; Anche le funzioni sono un tipo con un'introduzione e un'eliminazione. (→ A B) si introduce con
+; λ: «dammi un A, e ti costruisco un B». Si elimina applicandola a un A. Applicare una λ appena
+; costruita è la solita deviazione, e il calcolo la elimina: ((λ [x] corpo) a) si riduce al corpo
+; con a al posto di x. Si chiama β-riduzione.
+;
+;   disegno check book/03-functions.disegno
+
+; --- introduzione: λ ---
+; Una λ si controlla contro il tipo che si aspetta: qui (→ Nat Nat), quindi x è un Nat.
+
+(def successore : (→ Nat Nat)
+  (λ [n] (add1 n)))
+
+; Le clausole dei capitoli precedenti erano già λ con un nome: queste due definizioni sono la
+; stessa funzione.
+
+(def successore-bis : (→ Nat Nat)
+  [n] (add1 n))
+
+; --- eliminazione: l'applicazione ---
+
+(def quattro : (≡ (successore 3) 4)
+  auto)
+
+; Una λ senza un tipo atteso non si può controllare: che cos'è x in (λ [x] (add1 x))? `the`
+; dichiara il tipo sul posto. Qui la deviazione è esplicita: una λ costruita e subito applicata.
+
+(def deviazione : (≡ ((the (→ Nat Nat) (λ [n] (add1 n))) 1) 2)
+  auto)
+
+; --- funzioni che prendono funzioni ---
+
+(def due-volte : (→ (→ Nat Nat) Nat Nat)
+  [f n] (f (f n)))
+
+(def più-due : (≡ (due-volte successore 0) 2)
+  auto)
+
+; --- argomenti impliciti: il polimorfismo ---
+; L'identità funziona per ogni tipo. Il tipo è un argomento come gli altri, ma il checker sa
+; dedurlo dall'uso: lo si dichiara tra graffe, {A Type}, e non lo si passa.
+
+(def identità : (→ {A Type} A A)
+  (λ [x] x))
+
+(def composizione : (→ {A Type} {B Type} {C Type} (→ B C) (→ A B) A C)
+  [g f x] (g (f x)))
+
+(def comporre : (≡ (composizione successore successore 1) 3)
+  auto)
+
+; Un nome scritto nella firma e mai dichiarato diventa implicito da solo: (→ A A) vuol dire
+; (→ {A Type} A A). Qui A e B sono impliciti senza averli scritti tra graffe.
+
+(def costante : (→ A B A)
+  [a _] a)
+
+; --- esercizi ---
+;
+; 1. Applica una funzione n volte.
+; (def iterata : (→ {A Type} Nat (→ A A) A A)
+;   [zero     f a] ___
+;   [(add1 k) f a] ___)
+; (def otto : (≡ (iterata 3 (λ [n] (+ n n)) 1) 8) auto)
+;
+; 2. Scambia l'ordine degli argomenti di una funzione.
+; (def scambia : (→ {A Type} {B Type} {C Type} (→ A B C) B A C)
+;   ___)
