@@ -129,8 +129,10 @@
   [f vuota]     []
   [f (:: x xs)] (:: (f x) (map f xs)))
 
-(def All : (→ (→ A Bool) (List A) Type)
-  [p xs] (So (all p xs)))
+; (Holds p x): p vale su x. È un dato e non (So (p x)), così se auto fallisce dice su quale x.
+(data Holds : (→ (→ A Bool) A Type)
+  [holds : (→ [p (→ A Bool)] [x A] (So (p x)) (Holds p x))])
+
 
 ; Proposizioni su liste: Every p xs (ogni elemento soddisfa p), Pairwise r xs (ogni coppia è in r).
 
@@ -144,6 +146,9 @@
 (def Pairwise : (→ (→ A A Type) (List A) Type)
   [r vuota]     ⊤
   [r (:: x xs)] (× (Every (r x) xs) (Pairwise r xs)))
+
+(def All : (→ (→ A Bool) (List A) Type)
+  [p xs] (Every (Holds p) xs))
 
 ; --- stringhe: opache, ma con primitive pure calcolate sui letterali ---
 
@@ -247,8 +252,8 @@
 (def apart? : (→ Interval Interval Bool)
   [a b] (or (≤? (Interval.hi a) (Interval.lo b)) (≤? (Interval.hi b) (Interval.lo a))))
 
-(def Apart : (→ Interval Interval Type)
-  [a b] (So (apart? a b)))
+(data Apart : (→ Interval Interval Type)
+  [apart : (→ [a Interval] [b Interval] (So (apart? a b)) (Apart a b))])
 
 (def within? : (→ Interval Interval Bool)  ; a sta dentro b
   [a b] (and (≤? (Interval.lo b) (Interval.lo a)) (≤? (Interval.hi a) (Interval.hi b))))
@@ -313,8 +318,11 @@
 (def in? : (→ Ip Cidr Bool)
   [a c] (within? (interval (Ip.n a) (add1 (Ip.n a))) (cidr-range c)))
 
+(data Cidr-apart : (→ Cidr Cidr Type)
+  [cidr-apart : (→ [a Cidr] [b Cidr] (So (apart? (cidr-range a) (cidr-range b))) (Cidr-apart a b))])
+
 (def Disjoint-subnets : (→ (List Cidr) Type)
-  [cs] (Pairwise Apart (map cidr-range cs)))
+  [cs] (Pairwise Cidr-apart cs))
 
 ; --- porte: punti su [0, 65535], senza spostamenti; le regioni sono intervalli ---
 
@@ -325,8 +333,8 @@
 (def port-range : (→ Port Port Interval)  ; [a, b] come intervallo semiaperto
   [a b] (interval (Port.n a) (add1 (Port.n b))))
 
-(def port≠ : (→ Port Port Type)
-  [a b] (So (not (nat=? (Port.n a) (Port.n b)))))
+(data port≠ : (→ Port Port Type)
+  [port-distinct : (→ [a Port] [b Port] (So (not (nat=? (Port.n a) (Port.n b)))) (port≠ a b))])
 
 ; La riga di comando resta lo scalpello: si tipano i valori che vi si interpolano, non la sintassi.
 

@@ -312,6 +312,12 @@ Il checker verifica `()` dopo aver unificato tutti i pattern della clausola: ogn
   auto)
 ```
 
+**Quando una prova non c'è.** Gli errori portano la posizione, `file:riga:colonna`, dell'espressione più vicina: il reader conserva le posizioni (la trasformazione delle quadre non cambia le lunghezze), e il driver li stampa su stderr nel formato dei compilatori. Quando `auto` fallisce su una congiunzione dice quale parte non vale: per questo i predicati che si compongono (`Holds`, `Apart`, `Cidr-apart`, `port≠`) sono induttivi e non `(So …)`, che si ridurrebbe subito a `⊥` perdendo i suoi argomenti.
+
+```
+cookbook/05-network.disegno:25:1: auto: nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")
+```
+
 **Cosa resta empirico**
 : che i test passino o che il binario funzioni sono osservazioni, non proposizioni. Gli unit test del codice dentro i container restano e li esegue Dagger.
 
@@ -385,8 +391,14 @@ In cambio della purezza e della semplicità:
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
-- [ ] Messaggi di `auto` che mostrino la proposizione originale, non solo la sua riduzione.
+- [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
 - [ ] Passaggio a Dagger 1.0 quando il flake lo rende disponibile.
+
+### Da fare
+
+- **Editor**: tree-sitter (grammatica, evidenziazione, filetype `.disegno` in Neovim), poi un LSP in Chez: diagnostica al salvataggio, hover con i tipi.
+- **Pointless Disegno**: un testo per imparare i tipi dipendenti attraverso il linguaggio, dalle definizioni per casi alle prove per induzione, dai tipi indicizzati alle prove sul piano. Ogni capitolo è un file `.disegno` verificato dal checker, come il cookbook.
+- **I log su Dagger**: il problema pratico più sentito. L'output dei comandi è un'osservazione (`stdout`, `stderr`), e Dagger lo mostra in una TUI pensata per l'interazione; in CI servono log leggibili, raggruppati per passo e conservati. Da capire cosa si può dichiarare nel disegno (quali passi, quali flussi, dove finiscono) e cosa resta del runner.
 
 ## Fonti
 

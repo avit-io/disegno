@@ -98,8 +98,8 @@
 (check-string "(def immagini : (≡ (images (pipe (container) (from \"a\") (with-dir /w (dir-of (from container \"b\") root))))
                                   [\"a\" \"b\"])
                  auto)")
-(rifiuta "(def dev-pinnate : (All pinned? (images (from container \"alpine\"))) auto)" "si riduce a ⊥")
-(rifiuta "(def falso-branch : (All pinned? (images (branch (Directory.exists empty /x) (from container \"a@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1\") (from container \"b\")))) auto)" "si riduce a ⊥")
+(rifiuta "(def dev-pinnate : (All pinned? (images (from container \"alpine\"))) auto)" "auto: nessuna prova di (Holds pinned? \"alpine\")")
+(rifiuta "(def falso-branch : (All pinned? (images (branch (Directory.exists empty /x) (from container \"a@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1\") (from container \"b\")))) auto)" "auto: nessuna prova di")
 (rifiuta "(def sotto : Service (service \"api\" prod 2 auto))" "auto: la proposizione si riduce a ⊥")
 (rifiuta "(def falso-auto : (≡ (+ 1 1) 3) auto)" "atteso")
 (check-string "(def nome-api : (≡ (Service.name api) \"api\") auto)")
@@ -214,7 +214,18 @@
   (sort string<? (filter (lambda (f) (let ([n (string-length f)]) (and (> n 8) (string=? (substring f (- n 8) n) ".disegno"))))
                          (directory-list (at-root "cookbook")))))
 
+;; Quando auto fallisce su una congiunzione, il messaggio indica la parte che non vale.
+(rifiuta "(def subnet-sovrapposte : (Disjoint-subnets [\"10.0.1.0/24\" \"10.0.2.0/24\" \"10.0.1.128/25\"]) auto)"
+         "auto: nessuna prova di (Cidr-apart \"10.0.1.0/24\" \"10.0.1.128/25\")")
+(rifiuta "(def porte-ripetute : (Distinct-ports (pipe (container) (with-exposed-port 80) (with-exposed-port 443) (with-exposed-port 80))) auto)"
+         "auto: nessuna prova di (port≠ 80 80)")
+(rifiuta "(def montaggi-annidati : (Disjoint-mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /src/cache (cache-volume \"c\")))) auto)"
+         "auto: nessuna prova di (⋔ /src/cache /src)")
+;; Le posizioni: file:riga:colonna dell'espressione più vicina.
+(rifiuta "(def ok : Nat 1)\n(def male : Abs\n  (⊕ /out /bin))" "<stringa>:3:3: /bin: atteso Rel, trovato Abs")
+
 ;; --- dal vivo ---
+
 
 
 

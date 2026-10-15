@@ -7,7 +7,10 @@
 ;; Valori:  (vlam x i env b) (vpi x i a env b) (vtype n) (vrigid l sp) (vflex m sp) (vglob n sp) (vstr s)
 ;; Visibilità i ∈ {e, i}. Spine: lista di (valore . visibilità) in ordine di applicazione.
 
-(define (oops fmt . args) (error 'disegno (apply format fmt args)))
+(define here (make-parameter #f))                        ; la posizione più vicina a ciò che si elabora
+(define (oops fmt . args)
+  (let ([msg (apply format fmt args)])
+    (error (quote disegno) (if (here) (string-append (pos->string (here)) ": " msg) msg))))
 
 ;; --- globali e metavariabili ---
 
@@ -357,7 +360,8 @@
 (define (binder? e) (and (pair? e) (memq (car e) '(%br %imp)) (= (length e) 3) (symbol? (cadr e))))  ; %imp: implicito, solo interno
 (define (unbracket e) (if (and (pair? e) (eq? (car e) '%br)) (cdr e) e))
 
-(define (infer c e)                                     ; → (values termine tipo)
+(define (infer c e) (with-pos e (lambda () (infer* c e))))   ; → (values termine tipo)
+(define (infer* c e)
   (cond
     [(eq? e 'Type) (values '(type 0) '(vtype 1))]
     [(string? e) (values `(str ,e) (string-type))]
@@ -442,8 +446,11 @@
           [(and (eq? (car v) 'vglob) (eq? (cadr v) '≡)) (check c 'refl ty)]
           [(and (eq? (car v) 'vglob) (eq? (cadr v) '⊥)) (oops "auto: la proposizione si riduce a ⊥, non a vero")]
           [(neg-dom v) => (lambda (a) (refutation c v a))]
-          [(search c v 32)]
-          [else (oops "auto: nessuna prova di ~s" (show c ty))])))
+          [else (let ([b (box #f)])
+                  (or (parameterize ([blame b]) (search c v 32))
+                      (if (unbox b)
+                          (oops "auto: nessuna prova di ~s" (show c (unbox b)))
+                          (oops "auto: nessuna prova di ~s" (show c ty)))))])))
 
 ;; Negazioni: (¬ A) è (→ A ⊥). auto cerca l'albero dei pattern assurdi che copre A e lo fa
 ;; verificare come definizione ausiliaria: copertura e assurdi li controlla il checker.
@@ -493,17 +500,23 @@
 ;; ponytail: ricerca in profondità limitata, primo costruttore che riesce; basta per relazioni
 ;; strutturali come ⊑. Solo su obiettivi senza metavariabili, così i tentativi falliti
 ;; toccano soltanto metavariabili nuove.
-(define (search c goal depth)
-  (let ([g (force goal)])
-    (and (> depth 0) (eq? (car g) 'vglob) (not (has-meta? (reify (ctx-l c) g)))
-         (case (cadr g)
-           [(⊤) '(glob tt)]
-           [(≡) (guard (x [#t #f]) (check c 'refl g))]
-           [else (let ([d (gget (cadr g))])
-                   (and (eq? (g-kind d) 'data)
-                        (exists (lambda (k) (try-constructor c k g depth)) (g-info d))))]))))
+;; blame: il primo obiettivo fallito sotto una congiunzione (×), per dire quale parte non vale.
+(define blame (make-parameter #f))
 
-(define (try-constructor c k goal depth)
+(define (search c goal depth . conj)
+  (let ([g (force goal)] [conj (or (null? conj) (car conj))])
+    (and (> depth 0) (eq? (car g) 'vglob) (not (has-meta? (reify (ctx-l c) g)))
+         (or (case (cadr g)
+               [(⊤) '(glob tt)]
+               [(≡) (guard (x [#t #f]) (check c 'refl g))]
+               [else (let ([d (gget (cadr g))])
+                       (and (eq? (g-kind d) 'data)
+                            (exists (lambda (k) (try-constructor c k g depth conj)) (g-info d))))])
+             (begin (when (and conj (blame) (not (unbox (blame))) (not (memq (cadr g) '(× ⊤ ⊥))))
+                      (set-box! (blame) g))
+                    #f)))))
+
+(define (try-constructor c k goal depth conj)
   (let loop ([t `(glob ,k)] [kt (g-type (gget k))] [holes '()])
     (let ([kt (force kt)])
       (if (eq? (car kt) 'vpi)
@@ -512,12 +525,14 @@
                   (if (eq? (caddr kt) 'e) (cons (cons mv (pi-dom kt)) holes) holes)))
           (and (guard (x [(unify-failure? x) #f]) (unify (ctx-l c) kt goal) #t)
                (for-all (lambda (h)
-                          (let ([u (search c (cdr h) (- depth 1))])
-                            (and u (guard (x [(unify-failure? x) #f]) (unify (ctx-l c) (car h) (ev (ctx-env c) u)) #t))))
+                          (or (not (eq? (car (force (car h))) 'vflex))   ; già determinato dagli indici
+                              (let ([u (search c (cdr h) (- depth 1) (and conj (eq? k 'pair)))])
+                                (and u (guard (x [(unify-failure? x) #f]) (unify (ctx-l c) (car h) (ev (ctx-env c) u)) #t)))))
                         (reverse holes))
                t)))))
 
-(define (check c e ty)
+(define (check c e ty) (with-pos e (lambda () (check* c e ty))))
+(define (check* c e ty)
   (let ([want (force ty)])
     (cond [(eq? e 'auto) (auto c ty)]
           [(let-form? e) (let-values ([(c body) (let-bind c e)]) (check c body ty))]
@@ -716,35 +731,76 @@
             (hashtable-set! globals name (make-g 'extern (ev '() t) (cons spec (reverse names)))))))))
 
 ;; Il reader di Chez non distingue [..] da (..): prima di leggere, [ diventa (%br  fuori da stringhe e commenti.
+;; Il reader di Chez non distingue [..] da (..): prima di leggere, [ diventa ( e se ne annota la
+;; posizione; le virgole diventano spazi. La trasformazione conserva le lunghezze, quindi gli
+;; offset del testo letto sono quelli del file. → (values testo posizioni-delle-quadre)
 (define (brackets s)
-  (call-with-string-output-port
-    (lambda (p)
-      (let loop ([cs (string->list s)] [mode 'code])
-        (unless (null? cs)
-          (let ([c (car cs)])
-            (case mode
-              [(string) (write-char c p)
-                        (cond [(and (char=? c #\\) (pair? (cdr cs))) (write-char (cadr cs) p) (loop (cddr cs) mode)]
-                              [else (loop (cdr cs) (if (char=? c #\") 'code mode))])]
-              [(comment) (write-char c p) (loop (cdr cs) (if (char=? c #\newline) 'code mode))]
-              [else (cond [(char=? c #\[) (display "(%br " p)]
-                          [(char=? c #\]) (write-char #\) p)]
-                          [(char=? c #\,) (write-char #\space p)] ; le virgole sono spazi, come in Clojure
-                          [else (write-char c p)])
-                    (loop (cdr cs) (case c [(#\") 'string] [(#\;) 'comment] [else mode]))])))))))
+  (let ([out (string-copy s)] [opens (make-eqv-hashtable)])
+    (let loop ([i 0] [mode 'code])
+      (when (< i (string-length s))
+        (let ([c (string-ref s i)])
+          (case mode
+            [(string) (cond [(char=? c #\\) (loop (+ i 2) mode)]
+                            [else (loop (+ i 1) (if (char=? c #\") 'code mode))])]
+            [(comment) (loop (+ i 1) (if (char=? c #\newline) 'code mode))]
+            [else (case c
+                    [(#\[) (string-set! out i #\() (hashtable-set! opens i #t)]
+                    [(#\]) (string-set! out i #\))]
+                    [(#\,) (string-set! out i #\space)])         ; le virgole sono spazi, come in Clojure
+                  (loop (+ i 1) (case c [(#\") 'string] [(#\;) 'comment] [else mode]))]))))
+    (values out opens)))
 
-(define (check-port p)
-  (let ([p (open-string-input-port (brackets (get-string-all p)))])
-    (let loop () (let ([d (read p)]) (unless (eof-object? d) (check-decl d) (loop))))))
+;; --- posizioni: ogni lista del sorgente ricorda file e offset; gli errori li riportano ---
+
+(define pos-of (make-eq-hashtable))                     ; lista → (file . offset)
+(define file-texts (make-hashtable string-hash string=?))
+
+(define (with-pos e thunk)
+  (let ([p (and (pair? e) (hashtable-ref pos-of e #f))]) (if p (parameterize ([here p]) (thunk)) (thunk))))
+
+(define (pos->string p)                                  ; → "file:riga:colonna"
+  (let ([text (hashtable-ref file-texts (car p) "")])
+    (let loop ([i 0] [line 1] [col 1])
+      (if (or (>= i (cdr p)) (>= i (string-length text)))
+          (format "~a:~a:~a" (car p) line col)
+          (if (char=? (string-ref text i) #\newline) (loop (+ i 1) (+ line 1) 1) (loop (+ i 1) line (+ col 1)))))))
+
+;; Da annotazione a s-espressione: le liste aperte da [ diventano (%br …), e ogni lista ricorda
+;; dove sta nel file.
+(define (strip file opens a)
+  (if (not (annotation? a))
+      a
+      (let* ([e (annotation-expression a)] [at (source-object-bfp (annotation-source a))]
+             [br (hashtable-ref opens at #f)])
+        (if (or (pair? e) (and (null? e) br))
+            (let* ([items (let loop ([e e]) (cond [(pair? e) (cons (strip file opens (car e)) (loop (cdr e)))]
+                                                  [(null? e) '()]
+                                                  [else (strip file opens e)]))]
+                   [d (if br (cons '%br items) items)])
+              (when (pair? d) (hashtable-set! pos-of d (cons file at)))
+              d)
+            e))))
+
+(define (check-text name text)
+  (hashtable-set! file-texts name text)
+  (let-values ([(t opens) (brackets text)])
+    (let ([sfd (make-source-file-descriptor name (open-bytevector-input-port (string->utf8 t)))]
+          [p (open-string-input-port t)])
+      (let loop ([bfp 0])
+        (let-values ([(a next) (get-datum/annotations p sfd bfp)])
+          (unless (eof-object? a)
+            (let ([d (strip name opens a)]) (with-pos d (lambda () (check-decl d))))
+            (loop next)))))))
+
 ;; I percorsi relativi si risolvono rispetto alla cartella del file che li nomina.
 (define current-dir (make-parameter ""))
 (define (in-dir dir p) (if (or (string=? dir "") (path-absolute? p)) p (string-append dir "/" p)))
 
 (define (check-file path)
   (parameterize ([current-dir (path-parent path)])
-    (call-with-port (open-file-input-port path (file-options) (buffer-mode block) (make-transcoder (utf-8-codec)))
-      check-port)))
-(define (check-string s) (check-port (open-string-input-port s)))
+    (check-text path (call-with-port (open-file-input-port path (file-options) (buffer-mode block) (make-transcoder (utf-8-codec)))
+                       get-string-all))))
+(define (check-string s) (check-text "<stringa>" s))
 
 ;; (data Nat [zero] [add1 Nat])  oppure  (data Vec : (→ Type Nat Type) [nil : (Vec A 0)] ...)
 (define (check-data d)
@@ -1048,6 +1104,17 @@
         [(literal-of t) => values]                       ; punti e segmenti come si scrivono: /out/bin, "bin"
         [else (sexp1 names t)]))
 
+;; Valori raffinati stampati come si scrivono: (image "alpine" tt) → "alpine", (cidr 2561 24 tt) →
+;; "10.0.1.0/24", (ip n tt) → "10.0.0.5", (port 8080 tt) → 8080.
+(define (refined t)
+  (let-values ([(h args) (spine-of t)])
+    (define (num i) (and (> (length args) i) (eq? (car (list-ref args i)) 'num) (cadr (list-ref args i))))
+    (cond [(and (equal? h '(glob image)) (pair? args) (eq? (car (car args)) 'str)) (cadr (car args))]
+          [(and (equal? h '(glob cidr)) (num 0) (num 1)) (format "~a/~a" (nat->ip (* (num 0) (expt 2 (- 32 (num 1))))) (num 1))]
+          [(and (equal? h '(glob ip)) (num 0)) (nat->ip (num 0))]
+          [(and (equal? h '(glob port)) (num 0)) (num 0)]
+          [else #f])))
+
 (define (literal-of t)
   (define (seg t)                                        ; (segment "x" prova) → "x"
     (let-values ([(h args) (spine-of t)])
@@ -1066,6 +1133,7 @@
             [else #f])))
   (cond [(abs t) => (lambda (ss) (string->symbol (apply string-append "/" (let loop ([ss ss]) (if (or (null? ss) (null? (cdr ss))) ss (cons* (car ss) "/" (loop (cdr ss))))))))]
         [(seg t) => values]
+        [(refined t) => values]
         [(rel t) => (lambda (ss) (if (null? ss) "" (fold-left (lambda (a s) (string-append a "/" s)) (car ss) (cdr ss))))]
         [else #f]))
 
