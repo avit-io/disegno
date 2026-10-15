@@ -1,0 +1,54 @@
+; Soluzioni del capitolo 9 — Le prove come programmi
+;
+;   disegno check book/solutions/09-proofs-as-programs.disegno
+
+(def Decidibile : (→ Type Type)
+  [A] (Either A (¬ A)))
+
+; 1. Induzione su n: ≤-zero per zero, ≤-succ per il passo.
+
+(def ≤-add1 : (→ [n Nat] (≤ n (add1 n)))
+  [zero]     ≤-zero
+  [(add1 k)] (≤-succ (≤-add1 k)))
+
+; 2. Come decidi-≤. Due casi si refutano subito con il pattern assurdo; nel passo, una
+;    refutazione di (≡ j k) diventa una di (≡ (add1 j) (add1 k)) grazie all'iniettività.
+
+(def add1-iniettivo : (→ (≡ (add1 n) (add1 m)) (≡ n m))
+  [refl] refl)
+
+(def zero-non-è-add1 : (¬ (≡ zero (add1 n)))
+  [()])
+
+(def add1-non-è-zero : (¬ (≡ (add1 n) zero))
+  [()])
+
+(def un-passo-≡ : (→ (Decidibile (≡ m n)) (Decidibile (≡ (add1 m) (add1 n))))
+  [(left p)]   (left (cong add1 p))
+  [(right np)] (right (λ [q] (np (add1-iniettivo q)))))
+
+(def decidi-≡ : (→ [m Nat] [n Nat] (Decidibile (≡ m n)))
+  [zero     zero]     (left refl)
+  [zero     (add1 _)] (right zero-non-è-add1)
+  [(add1 _) zero]     (right add1-non-è-zero)
+  [(add1 j) (add1 k)] (un-passo-≡ (decidi-≡ j k)))
+
+; 3. Induzione sulla prova. Per ≤-zero, (≤? zero n) si riduce a true e (So true) a ⊤. Per
+;    ≤-succ, (≤? (add1 m) (add1 n)) si riduce a (≤? m n): è l'ipotesi induttiva.
+
+(def ≤?-completo : (→ (≤ m n) (So (≤? m n)))
+  [≤-zero]     tt
+  [(≤-succ p)] (≤?-completo p))
+
+; 4. Una politica, e il teorema che il piano la rispetta.
+
+(def golang? : (→ Image Bool)
+  [i] (contains? (Image.raw i) "golang"))
+
+(def build : Container
+  (pipe (container)
+        (from "golang:1.25-alpine")
+        (with-exec ["go" "build" "./..."])))
+
+(def tutto-golang : (All golang? (images build))
+  auto)

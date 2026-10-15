@@ -205,7 +205,7 @@
 
 ;; Il cookbook: ogni ricetta è un programma a sé, verificato in un processo separato con
 ;; check (tipi e teoremi) e, se ha un main, plan (il piano a secco). Mai run: la 03 pubblica.
-;; Anche i capitoli del libro (book/) sono programmi verificati: tutto ciò che vi è scritto è vero.
+;; Anche i capitoli del libro (book/) e le soluzioni degli esercizi (book/solutions/) sono programmi verificati.
 (for-each
   (lambda (r)
     (let* ([path (at-root r)]
@@ -217,7 +217,7 @@
                 (map (lambda (f) (string-append dir "/" f))
                      (sort string<? (filter (lambda (f) (let ([n (string-length f)]) (and (> n 8) (string=? (substring f (- n 8) n) ".disegno"))))
                                             (directory-list (at-root dir))))))
-              '("cookbook" "book"))))
+              '("cookbook" "book" "book/solutions"))))
 
 ;; Quando auto fallisce su una congiunzione, il messaggio indica la parte che non vale.
 (rifiuta "(def subnet-sovrapposte : (Disjoint-subnets [\"10.0.1.0/24\" \"10.0.2.0/24\" \"10.0.1.128/25\"]) auto)"

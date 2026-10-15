@@ -1,0 +1,27 @@
+; Soluzioni del capitolo 1 — Il significato è nelle introduzioni
+;
+;   disegno check book/solutions/01-introductions.disegno
+
+(data Albero
+  [foglia]
+  [nodo Albero Albero])
+
+; 1. Tre introduzioni, nessun argomento: un tipo finito, come Stagione.
+
+(data Semaforo
+  [rosso]
+  [giallo]
+  [verde])
+
+; 2. Ogni nodo prende due alberi già costruiti. Questo ne ha tre; non è l'unico possibile.
+
+(def tre-nodi : Albero
+  (nodo (nodo foglia foglia) (nodo foglia foglia)))
+
+; 3. Quattro add1 su zero: la forma canonica di 4.
+
+(def quattro : Nat
+  (add1 (add1 (add1 (add1 zero)))))
+
+(def quattro-è-4 : (≡ quattro 4)
+  auto)

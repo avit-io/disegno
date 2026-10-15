@@ -1,0 +1,29 @@
+; Soluzioni del capitolo 7 — Esiste
+;
+;   disegno check book/solutions/07-exists.disegno
+
+(data Vec : (→ Type Nat Type)
+  [vnil  : (Vec A zero)]
+  [vcons : (→ A (Vec A n) (Vec A (add1 n)))])
+
+; 1. Il testimone è 2; (+ 3 2) si riduce a 5, e refl basta.
+
+(def tre-più : (Σ Nat (λ [n] (≡ (+ 3 n) 5)))
+  (pair 2 refl))
+
+; 2. Una funzione che, per ogni n, produce il testimone (add1 n).
+
+(def successore-esiste : (→ [n Nat] (Σ Nat (λ [m] (≡ m (add1 n)))))
+  [n] (pair (add1 n) refl))
+
+; 3. Come tieni nel capitolo, ma senza scartare niente: la lunghezza cresce a ogni ::.
+
+(def da-lista : (→ (List A) (Σ Nat (λ [k] (Vec A k))))
+  [vuota]     (pair 0 vnil)
+  [(:: x xs)] (let [r (da-lista xs)]
+                (pair (add1 (fst r)) (vcons x (snd r)))))
+
+; 4. Si smonta la coppia, si trasforma la prima componente, si ricompone.
+
+(def a-sinistra : (→ (→ A B) (× A C) (× B C))
+  [f (pair a c)] (pair (f a) c))

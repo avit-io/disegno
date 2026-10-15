@@ -23,7 +23,7 @@ Ogni capitolo è un file `.disegno`: il testo sta nei commenti, il codice è cod
 disegno check book/01-introductions.disegno
 ```
 
-Se il capitolo passa, tutto ciò che vi è scritto è vero: tipi e teoremi compresi. Gli esercizi stanno in fondo ai capitoli, commentati: togli il `;`, completali, e verifica di nuovo.
+Se il capitolo passa, tutto ciò che vi è scritto è vero: tipi e teoremi compresi. Gli esercizi stanno in fondo ai capitoli, commentati: togli il `;`, completali, e verifica di nuovo. Le soluzioni, commentate e verificate come i capitoli, sono in [solutions/](solutions/): una per capitolo, con lo stesso nome.
 
 ## Indice
 

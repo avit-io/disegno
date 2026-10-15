@@ -1,0 +1,36 @@
+; Soluzioni del capitolo 6 — L'uguaglianza
+;
+;   disegno check book/solutions/06-equality.disegno
+
+(def +-add1 : (→ [n Nat] [m Nat] (≡ (+ n (add1 m)) (add1 (+ n m))))
+  [zero     m] refl
+  [(add1 k) m] (cong add1 (+-add1 k m)))
+
+; 1. Due pattern refl: dopo il primo x e y coincidono, dopo il secondo anche z.
+
+(def transitività : (→ (≡ x y) (≡ y z) (≡ x z))
+  [refl refl] refl)
+
+; 2. Come cong, con due prove da eliminare.
+
+(def cong2 : (→ [f (→ A B C)] (≡ a a2) (≡ b b2) (≡ (f a b) (f a2 b2)))
+  [f refl refl] refl)
+
+; 3. Nel caso (add1 k): (doppio (add1 k)) si riduce a (add1 (add1 (doppio k))), e
+;    (+ (add1 k) (add1 k)) a (add1 (+ k (add1 k))). Tolto un add1 con cong, resta
+;      (add1 (doppio k))  ≡  (add1 (+ k k))       per ipotesi induttiva
+;                         ≡  (+ k (add1 k))       per +-add1, rovesciato.
+
+(def doppio : (→ Nat Nat)
+  [zero]     zero
+  [(add1 k)] (add1 (add1 (doppio k))))
+
+(def doppio-è-somma : (→ [n Nat] (≡ (doppio n) (+ n n)))
+  [zero]     refl
+  [(add1 k)] (cong add1 (trans (cong add1 (doppio-è-somma k))
+                               (sym (+-add1 k k)))))
+
+; 4. Il motivo (λ [z] (≡ z x)) vale per z = x con refl; transport lo sposta a z = y.
+
+(def sym-bis : (→ {A Type} {x A} {y A} (≡ x y) (≡ y x))
+  [e] (transport e (λ [z] (≡ z x)) refl))
