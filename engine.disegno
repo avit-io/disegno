@@ -1,117 +1,221 @@
 ; Generato da gen.ss dallo schema di Dagger: non modificare a mano.
 
-(extern Container : Type Container)
-(extern Directory : Type Directory)
-(extern File : Type File)
-(extern CacheVolume : Type CacheVolume)
-(extern GitRepository : Type GitRepository)
-(extern GitRef : Type GitRef)
+(data Kind
+  [Kind.container]
+  [Kind.directory]
+  [Kind.file]
+  [Kind.cache-volume]
+  [Kind.git-repository]
+  [Kind.git-ref]
+  [Kind.bool]
+  [Kind.export])
 
-; --- Query ---
+(data Obj : (→ Kind Type)
+  [%host-dir : (→ [path String] (Obj Kind.directory))]
+  [try-exec : (→ [self (Obj Kind.container)] [args (List String)] (Obj Kind.container))]
+  [passes? : (→ [self (Obj Kind.container)] (Obj Kind.bool))]
+  [branch : (→ [cond (Obj Kind.bool)] [then (Obj k)] [else (Obj k)] (Obj k))]
+  [overlay : (→ [path String] [dir (Obj Kind.directory)] (Obj Kind.export))]
+  [replace : (→ [path String] [dir (Obj Kind.directory)] (Obj Kind.export))]
+  [Query.cache-volume : (→ [key String] (Obj Kind.cache-volume))]
+  [Query.container : (Obj Kind.container)]
+  [Query.directory : (Obj Kind.directory)]
+  [Query.file : (→ [name String] [contents String] (Obj Kind.file))]
+  [Query.git : (→ [url String] (Obj Kind.git-repository))]
+  [Query.http : (→ [url String] (Obj Kind.file))]
+  [Container.as-tarball : (→ [self (Obj Kind.container)] (Obj Kind.file))]
+  [Container.directory : (→ [self (Obj Kind.container)] [path String] (Obj Kind.directory))]
+  [Container.exists : (→ [self (Obj Kind.container)] [path String] (Obj Kind.bool))]
+  [Container.file : (→ [self (Obj Kind.container)] [path String] (Obj Kind.file))]
+  [Container.from : (→ [self (Obj Kind.container)] [address String] (Obj Kind.container))]
+  [Container.import : (→ [self (Obj Kind.container)] [source (Obj Kind.file)] (Obj Kind.container))]
+  [Container.rootfs : (→ [self (Obj Kind.container)] (Obj Kind.directory))]
+  [Container.terminal : (→ [self (Obj Kind.container)] (Obj Kind.container))]
+  [Container.with-annotation : (→ [self (Obj Kind.container)] [name String] [value String] (Obj Kind.container))]
+  [Container.with-default-args : (→ [self (Obj Kind.container)] [args (List String)] (Obj Kind.container))]
+  [Container.with-default-terminal-cmd : (→ [self (Obj Kind.container)] [args (List String)] (Obj Kind.container))]
+  [Container.with-directory : (→ [self (Obj Kind.container)] [path String] [source (Obj Kind.directory)] (Obj Kind.container))]
+  [Container.with-docker-healthcheck : (→ [self (Obj Kind.container)] [args (List String)] (Obj Kind.container))]
+  [Container.with-entrypoint : (→ [self (Obj Kind.container)] [args (List String)] (Obj Kind.container))]
+  [Container.with-env-variable : (→ [self (Obj Kind.container)] [name String] [value String] (Obj Kind.container))]
+  [Container.with-error : (→ [self (Obj Kind.container)] [err String] (Obj Kind.container))]
+  [Container.with-exec : (→ [self (Obj Kind.container)] [args (List String)] (Obj Kind.container))]
+  [Container.with-exposed-port : (→ [self (Obj Kind.container)] [port Nat] (Obj Kind.container))]
+  [Container.with-file : (→ [self (Obj Kind.container)] [path String] [source (Obj Kind.file)] (Obj Kind.container))]
+  [Container.with-label : (→ [self (Obj Kind.container)] [name String] [value String] (Obj Kind.container))]
+  [Container.with-mounted-cache : (→ [self (Obj Kind.container)] [path String] [cache (Obj Kind.cache-volume)] (Obj Kind.container))]
+  [Container.with-mounted-directory : (→ [self (Obj Kind.container)] [path String] [source (Obj Kind.directory)] (Obj Kind.container))]
+  [Container.with-mounted-file : (→ [self (Obj Kind.container)] [path String] [source (Obj Kind.file)] (Obj Kind.container))]
+  [Container.with-mounted-temp : (→ [self (Obj Kind.container)] [path String] (Obj Kind.container))]
+  [Container.with-new-file : (→ [self (Obj Kind.container)] [path String] [contents String] (Obj Kind.container))]
+  [Container.with-rootfs : (→ [self (Obj Kind.container)] [directory (Obj Kind.directory)] (Obj Kind.container))]
+  [Container.with-symlink : (→ [self (Obj Kind.container)] [target String] [linkName String] (Obj Kind.container))]
+  [Container.with-user : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
+  [Container.with-volatile-variable : (→ [self (Obj Kind.container)] [name String] [value String] (Obj Kind.container))]
+  [Container.with-workdir : (→ [self (Obj Kind.container)] [path String] (Obj Kind.container))]
+  [Container.without-annotation : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
+  [Container.without-default-args : (→ [self (Obj Kind.container)] (Obj Kind.container))]
+  [Container.without-directory : (→ [self (Obj Kind.container)] [path String] (Obj Kind.container))]
+  [Container.without-docker-healthcheck : (→ [self (Obj Kind.container)] (Obj Kind.container))]
+  [Container.without-entrypoint : (→ [self (Obj Kind.container)] (Obj Kind.container))]
+  [Container.without-env-variable : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
+  [Container.without-exposed-port : (→ [self (Obj Kind.container)] [port Nat] (Obj Kind.container))]
+  [Container.without-file : (→ [self (Obj Kind.container)] [path String] (Obj Kind.container))]
+  [Container.without-files : (→ [self (Obj Kind.container)] [paths (List String)] (Obj Kind.container))]
+  [Container.without-label : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
+  [Container.without-mount : (→ [self (Obj Kind.container)] [path String] (Obj Kind.container))]
+  [Container.without-registry-auth : (→ [self (Obj Kind.container)] [address String] (Obj Kind.container))]
+  [Container.without-secret-variable : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
+  [Container.without-unix-socket : (→ [self (Obj Kind.container)] [path String] (Obj Kind.container))]
+  [Container.without-user : (→ [self (Obj Kind.container)] (Obj Kind.container))]
+  [Container.without-volatile-variable : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
+  [Container.without-workdir : (→ [self (Obj Kind.container)] (Obj Kind.container))]
+  [Directory.as-git : (→ [self (Obj Kind.directory)] (Obj Kind.git-repository))]
+  [Directory.chown : (→ [self (Obj Kind.directory)] [path String] [owner String] (Obj Kind.directory))]
+  [Directory.diff : (→ [self (Obj Kind.directory)] [other (Obj Kind.directory)] (Obj Kind.directory))]
+  [Directory.directory : (→ [self (Obj Kind.directory)] [path String] (Obj Kind.directory))]
+  [Directory.docker-build : (→ [self (Obj Kind.directory)] (Obj Kind.container))]
+  [Directory.exists : (→ [self (Obj Kind.directory)] [path String] (Obj Kind.bool))]
+  [Directory.file : (→ [self (Obj Kind.directory)] [path String] (Obj Kind.file))]
+  [Directory.filter : (→ [self (Obj Kind.directory)] (Obj Kind.directory))]
+  [Directory.terminal : (→ [self (Obj Kind.directory)] (Obj Kind.directory))]
+  [Directory.with-directory : (→ [self (Obj Kind.directory)] [path String] [source (Obj Kind.directory)] (Obj Kind.directory))]
+  [Directory.with-error : (→ [self (Obj Kind.directory)] [err String] (Obj Kind.directory))]
+  [Directory.with-file : (→ [self (Obj Kind.directory)] [path String] [source (Obj Kind.file)] (Obj Kind.directory))]
+  [Directory.with-new-directory : (→ [self (Obj Kind.directory)] [path String] (Obj Kind.directory))]
+  [Directory.with-new-file : (→ [self (Obj Kind.directory)] [path String] [contents String] (Obj Kind.directory))]
+  [Directory.with-patch : (→ [self (Obj Kind.directory)] [patch String] (Obj Kind.directory))]
+  [Directory.with-patch-file : (→ [self (Obj Kind.directory)] [patch (Obj Kind.file)] (Obj Kind.directory))]
+  [Directory.with-symlink : (→ [self (Obj Kind.directory)] [target String] [linkName String] (Obj Kind.directory))]
+  [Directory.with-timestamps : (→ [self (Obj Kind.directory)] [timestamp Nat] (Obj Kind.directory))]
+  [Directory.without-directory : (→ [self (Obj Kind.directory)] [path String] (Obj Kind.directory))]
+  [Directory.without-file : (→ [self (Obj Kind.directory)] [path String] (Obj Kind.directory))]
+  [Directory.without-files : (→ [self (Obj Kind.directory)] [paths (List String)] (Obj Kind.directory))]
+  [File.chown : (→ [self (Obj Kind.file)] [owner String] (Obj Kind.file))]
+  [File.with-name : (→ [self (Obj Kind.file)] [name String] (Obj Kind.file))]
+  [File.with-replaced : (→ [self (Obj Kind.file)] [search String] [replacement String] (Obj Kind.file))]
+  [File.with-timestamps : (→ [self (Obj Kind.file)] [timestamp Nat] (Obj Kind.file))]
+  [GitRepository.branch : (→ [self (Obj Kind.git-repository)] [name String] (Obj Kind.git-ref))]
+  [GitRepository.commit : (→ [self (Obj Kind.git-repository)] [id String] (Obj Kind.git-ref))]
+  [GitRepository.head : (→ [self (Obj Kind.git-repository)] (Obj Kind.git-ref))]
+  [GitRepository.latest-version : (→ [self (Obj Kind.git-repository)] (Obj Kind.git-ref))]
+  [GitRepository.ref : (→ [self (Obj Kind.git-repository)] [name String] (Obj Kind.git-ref))]
+  [GitRepository.tag : (→ [self (Obj Kind.git-repository)] [name String] (Obj Kind.git-ref))]
+  [GitRef.common-ancestor : (→ [self (Obj Kind.git-ref)] [other (Obj Kind.git-ref)] (Obj Kind.git-ref))]
+  [GitRef.tree : (→ [self (Obj Kind.git-ref)] (Obj Kind.directory))])
 
-(extern Query.cache-volume : (→ [key String] CacheVolume) cacheVolume)
-(extern Query.container : Container container)
-(extern Query.directory : Directory directory)
-(extern Query.file : (→ [name String] [contents String] File) file)
-(extern Query.git : (→ [url String] GitRepository) git)
-(extern Query.http : (→ [url String] File) http)
+(def Container : Type
+  (Obj Kind.container))
 
-; --- Container ---
+(def Directory : Type
+  (Obj Kind.directory))
 
-(extern Container.as-tarball : (→ [self Container] File) Container.asTarball)
-(extern Container.directory : (→ [self Container] [path String] Directory) Container.directory)
-(extern Container.exists : (→ [self Container] [path String] (Remote Bool)) Container.exists)
-(extern Container.experimental-with-all-gpus : (→ [self Container] Container) Container.experimentalWithAllGPUs)
-(extern Container.experimental-with-gpu : (→ [self Container] [devices (List String)] Container) Container.experimentalWithGPU)
-(extern Container.file : (→ [self Container] [path String] File) Container.file)
-(extern Container.from : (→ [self Container] [address String] Container) Container.from)
-(extern Container.import : (→ [self Container] [source File] Container) Container.import)
-(extern Container.rootfs : (→ [self Container] Directory) Container.rootfs)
-(extern Container.terminal : (→ [self Container] Container) Container.terminal)
-(extern Container.with-annotation : (→ [self Container] [name String] [value String] Container) Container.withAnnotation)
-(extern Container.with-default-args : (→ [self Container] [args (List String)] Container) Container.withDefaultArgs)
-(extern Container.with-default-terminal-cmd : (→ [self Container] [args (List String)] Container) Container.withDefaultTerminalCmd)
-(extern Container.with-directory : (→ [self Container] [path String] [source Directory] Container) Container.withDirectory)
-(extern Container.with-docker-healthcheck : (→ [self Container] [args (List String)] Container) Container.withDockerHealthcheck)
-(extern Container.with-entrypoint : (→ [self Container] [args (List String)] Container) Container.withEntrypoint)
-(extern Container.with-env-variable : (→ [self Container] [name String] [value String] Container) Container.withEnvVariable)
-(extern Container.with-error : (→ [self Container] [err String] Container) Container.withError)
-(extern Container.with-exec : (→ [self Container] [args (List String)] Container) Container.withExec)
-(extern Container.with-exposed-port : (→ [self Container] [port Nat] Container) Container.withExposedPort)
-(extern Container.with-file : (→ [self Container] [path String] [source File] Container) Container.withFile)
-(extern Container.with-label : (→ [self Container] [name String] [value String] Container) Container.withLabel)
-(extern Container.with-mounted-cache : (→ [self Container] [path String] [cache CacheVolume] Container) Container.withMountedCache)
-(extern Container.with-mounted-directory : (→ [self Container] [path String] [source Directory] Container) Container.withMountedDirectory)
-(extern Container.with-mounted-file : (→ [self Container] [path String] [source File] Container) Container.withMountedFile)
-(extern Container.with-mounted-temp : (→ [self Container] [path String] Container) Container.withMountedTemp)
-(extern Container.with-new-file : (→ [self Container] [path String] [contents String] Container) Container.withNewFile)
-(extern Container.with-rootfs : (→ [self Container] [directory Directory] Container) Container.withRootfs)
-(extern Container.with-symlink : (→ [self Container] [target String] [linkName String] Container) Container.withSymlink)
-(extern Container.with-user : (→ [self Container] [name String] Container) Container.withUser)
-(extern Container.with-volatile-variable : (→ [self Container] [name String] [value String] Container) Container.withVolatileVariable)
-(extern Container.with-workdir : (→ [self Container] [path String] Container) Container.withWorkdir)
-(extern Container.without-annotation : (→ [self Container] [name String] Container) Container.withoutAnnotation)
-(extern Container.without-default-args : (→ [self Container] Container) Container.withoutDefaultArgs)
-(extern Container.without-directory : (→ [self Container] [path String] Container) Container.withoutDirectory)
-(extern Container.without-docker-healthcheck : (→ [self Container] Container) Container.withoutDockerHealthcheck)
-(extern Container.without-entrypoint : (→ [self Container] Container) Container.withoutEntrypoint)
-(extern Container.without-env-variable : (→ [self Container] [name String] Container) Container.withoutEnvVariable)
-(extern Container.without-exposed-port : (→ [self Container] [port Nat] Container) Container.withoutExposedPort)
-(extern Container.without-file : (→ [self Container] [path String] Container) Container.withoutFile)
-(extern Container.without-files : (→ [self Container] [paths (List String)] Container) Container.withoutFiles)
-(extern Container.without-label : (→ [self Container] [name String] Container) Container.withoutLabel)
-(extern Container.without-mount : (→ [self Container] [path String] Container) Container.withoutMount)
-(extern Container.without-registry-auth : (→ [self Container] [address String] Container) Container.withoutRegistryAuth)
-(extern Container.without-secret-variable : (→ [self Container] [name String] Container) Container.withoutSecretVariable)
-(extern Container.without-unix-socket : (→ [self Container] [path String] Container) Container.withoutUnixSocket)
-(extern Container.without-user : (→ [self Container] Container) Container.withoutUser)
-(extern Container.without-volatile-variable : (→ [self Container] [name String] Container) Container.withoutVolatileVariable)
-(extern Container.without-workdir : (→ [self Container] Container) Container.withoutWorkdir)
+(def File : Type
+  (Obj Kind.file))
 
-; --- Directory ---
+(def CacheVolume : Type
+  (Obj Kind.cache-volume))
 
-(extern Directory.as-git : (→ [self Directory] GitRepository) Directory.asGit)
-(extern Directory.chown : (→ [self Directory] [path String] [owner String] Directory) Directory.chown)
-(extern Directory.diff : (→ [self Directory] [other Directory] Directory) Directory.diff)
-(extern Directory.directory : (→ [self Directory] [path String] Directory) Directory.directory)
-(extern Directory.docker-build : (→ [self Directory] Container) Directory.dockerBuild)
-(extern Directory.exists : (→ [self Directory] [path String] (Remote Bool)) Directory.exists)
-(extern Directory.file : (→ [self Directory] [path String] File) Directory.file)
-(extern Directory.filter : (→ [self Directory] Directory) Directory.filter)
-(extern Directory.terminal : (→ [self Directory] Directory) Directory.terminal)
-(extern Directory.with-directory : (→ [self Directory] [path String] [source Directory] Directory) Directory.withDirectory)
-(extern Directory.with-error : (→ [self Directory] [err String] Directory) Directory.withError)
-(extern Directory.with-file : (→ [self Directory] [path String] [source File] Directory) Directory.withFile)
-(extern Directory.with-new-directory : (→ [self Directory] [path String] Directory) Directory.withNewDirectory)
-(extern Directory.with-new-file : (→ [self Directory] [path String] [contents String] Directory) Directory.withNewFile)
-(extern Directory.with-patch : (→ [self Directory] [patch String] Directory) Directory.withPatch)
-(extern Directory.with-patch-file : (→ [self Directory] [patch File] Directory) Directory.withPatchFile)
-(extern Directory.with-symlink : (→ [self Directory] [target String] [linkName String] Directory) Directory.withSymlink)
-(extern Directory.with-timestamps : (→ [self Directory] [timestamp Nat] Directory) Directory.withTimestamps)
-(extern Directory.without-directory : (→ [self Directory] [path String] Directory) Directory.withoutDirectory)
-(extern Directory.without-file : (→ [self Directory] [path String] Directory) Directory.withoutFile)
-(extern Directory.without-files : (→ [self Directory] [paths (List String)] Directory) Directory.withoutFiles)
+(def GitRepository : Type
+  (Obj Kind.git-repository))
 
-; --- File ---
+(def GitRef : Type
+  (Obj Kind.git-ref))
 
-(extern File.chown : (→ [self File] [owner String] File) File.chown)
-(extern File.with-name : (→ [self File] [name String] File) File.withName)
-(extern File.with-replaced : (→ [self File] [search String] [replacement String] File) File.withReplaced)
-(extern File.with-timestamps : (→ [self File] [timestamp Nat] File) File.withTimestamps)
+; Un sotto-piano qualsiasi, di qualunque tipo.
+(data Any
+  [any (Obj k)])
 
-; --- CacheVolume ---
-
-
-; --- GitRepository ---
-
-(extern GitRepository.branch : (→ [self GitRepository] [name String] GitRef) GitRepository.branch)
-(extern GitRepository.commit : (→ [self GitRepository] [id String] GitRef) GitRepository.commit)
-(extern GitRepository.head : (→ [self GitRepository] GitRef) GitRepository.head)
-(extern GitRepository.latest-version : (→ [self GitRepository] GitRef) GitRepository.latestVersion)
-(extern GitRepository.ref : (→ [self GitRepository] [name String] GitRef) GitRepository.ref)
-(extern GitRepository.tag : (→ [self GitRepository] [name String] GitRef) GitRepository.tag)
-
-; --- GitRef ---
-
-(extern GitRef.common-ancestor : (→ [self GitRef] [other GitRef] GitRef) GitRef.commonAncestor)
-(extern GitRef.tree : (→ [self GitRef] Directory) GitRef.tree)
+(def nodes : (→ (Obj k) (List Any))
+  [(%host-dir x0)] (:: (any (%host-dir x0)) vuota)
+  [(try-exec x0 x1)] (:: (any (try-exec x0 x1)) (++ (nodes x0) vuota))
+  [(passes? x0)] (:: (any (passes? x0)) (++ (nodes x0) vuota))
+  [(branch x0 x1 x2)] (:: (any (branch x0 x1 x2)) (++ (nodes x0) (++ (nodes x1) (++ (nodes x2) vuota))))
+  [(overlay x0 x1)] (:: (any (overlay x0 x1)) (++ (nodes x1) vuota))
+  [(replace x0 x1)] (:: (any (replace x0 x1)) (++ (nodes x1) vuota))
+  [(Query.cache-volume x0)] (:: (any (Query.cache-volume x0)) vuota)
+  [Query.container] (:: (any Query.container) vuota)
+  [Query.directory] (:: (any Query.directory) vuota)
+  [(Query.file x0 x1)] (:: (any (Query.file x0 x1)) vuota)
+  [(Query.git x0)] (:: (any (Query.git x0)) vuota)
+  [(Query.http x0)] (:: (any (Query.http x0)) vuota)
+  [(Container.as-tarball x0)] (:: (any (Container.as-tarball x0)) (++ (nodes x0) vuota))
+  [(Container.directory x0 x1)] (:: (any (Container.directory x0 x1)) (++ (nodes x0) vuota))
+  [(Container.exists x0 x1)] (:: (any (Container.exists x0 x1)) (++ (nodes x0) vuota))
+  [(Container.file x0 x1)] (:: (any (Container.file x0 x1)) (++ (nodes x0) vuota))
+  [(Container.from x0 x1)] (:: (any (Container.from x0 x1)) (++ (nodes x0) vuota))
+  [(Container.import x0 x1)] (:: (any (Container.import x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(Container.rootfs x0)] (:: (any (Container.rootfs x0)) (++ (nodes x0) vuota))
+  [(Container.terminal x0)] (:: (any (Container.terminal x0)) (++ (nodes x0) vuota))
+  [(Container.with-annotation x0 x1 x2)] (:: (any (Container.with-annotation x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Container.with-default-args x0 x1)] (:: (any (Container.with-default-args x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-default-terminal-cmd x0 x1)] (:: (any (Container.with-default-terminal-cmd x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-directory x0 x1 x2)] (:: (any (Container.with-directory x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Container.with-docker-healthcheck x0 x1)] (:: (any (Container.with-docker-healthcheck x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-entrypoint x0 x1)] (:: (any (Container.with-entrypoint x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-env-variable x0 x1 x2)] (:: (any (Container.with-env-variable x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Container.with-error x0 x1)] (:: (any (Container.with-error x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-exec x0 x1)] (:: (any (Container.with-exec x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-exposed-port x0 x1)] (:: (any (Container.with-exposed-port x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-file x0 x1 x2)] (:: (any (Container.with-file x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Container.with-label x0 x1 x2)] (:: (any (Container.with-label x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Container.with-mounted-cache x0 x1 x2)] (:: (any (Container.with-mounted-cache x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Container.with-mounted-directory x0 x1 x2)] (:: (any (Container.with-mounted-directory x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Container.with-mounted-file x0 x1 x2)] (:: (any (Container.with-mounted-file x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Container.with-mounted-temp x0 x1)] (:: (any (Container.with-mounted-temp x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-new-file x0 x1 x2)] (:: (any (Container.with-new-file x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Container.with-rootfs x0 x1)] (:: (any (Container.with-rootfs x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(Container.with-symlink x0 x1 x2)] (:: (any (Container.with-symlink x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Container.with-user x0 x1)] (:: (any (Container.with-user x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-volatile-variable x0 x1 x2)] (:: (any (Container.with-volatile-variable x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Container.with-workdir x0 x1)] (:: (any (Container.with-workdir x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-annotation x0 x1)] (:: (any (Container.without-annotation x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-default-args x0)] (:: (any (Container.without-default-args x0)) (++ (nodes x0) vuota))
+  [(Container.without-directory x0 x1)] (:: (any (Container.without-directory x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-docker-healthcheck x0)] (:: (any (Container.without-docker-healthcheck x0)) (++ (nodes x0) vuota))
+  [(Container.without-entrypoint x0)] (:: (any (Container.without-entrypoint x0)) (++ (nodes x0) vuota))
+  [(Container.without-env-variable x0 x1)] (:: (any (Container.without-env-variable x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-exposed-port x0 x1)] (:: (any (Container.without-exposed-port x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-file x0 x1)] (:: (any (Container.without-file x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-files x0 x1)] (:: (any (Container.without-files x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-label x0 x1)] (:: (any (Container.without-label x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-mount x0 x1)] (:: (any (Container.without-mount x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-registry-auth x0 x1)] (:: (any (Container.without-registry-auth x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-secret-variable x0 x1)] (:: (any (Container.without-secret-variable x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-unix-socket x0 x1)] (:: (any (Container.without-unix-socket x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-user x0)] (:: (any (Container.without-user x0)) (++ (nodes x0) vuota))
+  [(Container.without-volatile-variable x0 x1)] (:: (any (Container.without-volatile-variable x0 x1)) (++ (nodes x0) vuota))
+  [(Container.without-workdir x0)] (:: (any (Container.without-workdir x0)) (++ (nodes x0) vuota))
+  [(Directory.as-git x0)] (:: (any (Directory.as-git x0)) (++ (nodes x0) vuota))
+  [(Directory.chown x0 x1 x2)] (:: (any (Directory.chown x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Directory.diff x0 x1)] (:: (any (Directory.diff x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(Directory.directory x0 x1)] (:: (any (Directory.directory x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.docker-build x0)] (:: (any (Directory.docker-build x0)) (++ (nodes x0) vuota))
+  [(Directory.exists x0 x1)] (:: (any (Directory.exists x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.file x0 x1)] (:: (any (Directory.file x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.filter x0)] (:: (any (Directory.filter x0)) (++ (nodes x0) vuota))
+  [(Directory.terminal x0)] (:: (any (Directory.terminal x0)) (++ (nodes x0) vuota))
+  [(Directory.with-directory x0 x1 x2)] (:: (any (Directory.with-directory x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Directory.with-error x0 x1)] (:: (any (Directory.with-error x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.with-file x0 x1 x2)] (:: (any (Directory.with-file x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Directory.with-new-directory x0 x1)] (:: (any (Directory.with-new-directory x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.with-new-file x0 x1 x2)] (:: (any (Directory.with-new-file x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Directory.with-patch x0 x1)] (:: (any (Directory.with-patch x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.with-patch-file x0 x1)] (:: (any (Directory.with-patch-file x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(Directory.with-symlink x0 x1 x2)] (:: (any (Directory.with-symlink x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Directory.with-timestamps x0 x1)] (:: (any (Directory.with-timestamps x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.without-directory x0 x1)] (:: (any (Directory.without-directory x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.without-file x0 x1)] (:: (any (Directory.without-file x0 x1)) (++ (nodes x0) vuota))
+  [(Directory.without-files x0 x1)] (:: (any (Directory.without-files x0 x1)) (++ (nodes x0) vuota))
+  [(File.chown x0 x1)] (:: (any (File.chown x0 x1)) (++ (nodes x0) vuota))
+  [(File.with-name x0 x1)] (:: (any (File.with-name x0 x1)) (++ (nodes x0) vuota))
+  [(File.with-replaced x0 x1 x2)] (:: (any (File.with-replaced x0 x1 x2)) (++ (nodes x0) vuota))
+  [(File.with-timestamps x0 x1)] (:: (any (File.with-timestamps x0 x1)) (++ (nodes x0) vuota))
+  [(GitRepository.branch x0 x1)] (:: (any (GitRepository.branch x0 x1)) (++ (nodes x0) vuota))
+  [(GitRepository.commit x0 x1)] (:: (any (GitRepository.commit x0 x1)) (++ (nodes x0) vuota))
+  [(GitRepository.head x0)] (:: (any (GitRepository.head x0)) (++ (nodes x0) vuota))
+  [(GitRepository.latest-version x0)] (:: (any (GitRepository.latest-version x0)) (++ (nodes x0) vuota))
+  [(GitRepository.ref x0 x1)] (:: (any (GitRepository.ref x0 x1)) (++ (nodes x0) vuota))
+  [(GitRepository.tag x0 x1)] (:: (any (GitRepository.tag x0 x1)) (++ (nodes x0) vuota))
+  [(GitRef.common-ancestor x0 x1)] (:: (any (GitRef.common-ancestor x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(GitRef.tree x0)] (:: (any (GitRef.tree x0)) (++ (nodes x0) vuota)))

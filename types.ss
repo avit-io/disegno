@@ -71,9 +71,21 @@
 (define (reduce n sp) (or (try-reduce n sp) `(vglob ,n ,sp)))
 (define (try-reduce n sp)
   (let* ([g (gget n)] [info (and (eq? (g-kind g) 'def) (g-info g))])
-    (and info (>= (length sp) (car info))
-         (let ([r (match-clauses (cdr info) (list-head sp (car info)))])
-           (and r (vapp-sp r (list-tail sp (car info))))))))
+    (cond [info (and (>= (length sp) (car info))
+                     (let ([r (match-clauses (cdr info) (list-head sp (car info)))])
+                       (and r (vapp-sp r (list-tail sp (car info))))))]
+          [(and (eq? (g-kind g) 'extern) (assq (car (car (g-info g))) prims))
+           => (lambda (p)                                ; primitiva pura: si calcola sui letterali
+                (let ([args (map (lambda (a) (force (car a))) sp)])
+                  (and (= (length args) (cadr p)) (for-all (lambda (a) (eq? (car a) 'vstr)) args)
+                       `(vglob ,(if (apply (caddr p) (map cadr args)) 'true 'false) ()))))]
+          [else #f])))
+
+;; Primitive pure sulle stringhe (elenco chiuso del nucleo): nome → (arità procedura-booleana).
+(define (string-contains? s sub)
+  (let ([n (string-length s)] [k (string-length sub)])
+    (let loop ([i 0]) (and (<= (+ i k) n) (or (string=? (substring s i (+ i k)) sub) (loop (+ i 1)))))))
+(define prims `((%contains? 2 ,string-contains?)))
 
 ;; Clausola a runtime: (pattern n corpo); pattern: (pvar livello) (pdot) (pcon c pattern...).
 (define (match-clauses cs args)
@@ -370,7 +382,7 @@
 ;; binder espliciti sono i nomi degli argomenti GraphQL. Un extern non mente: restituisce un tipo
 ;; opaco del motore (Dir, Remote Bool…) o è esso stesso un tipo; mai una proposizione né una
 ;; stringa (sarebbe un dato del mondo che rientra nel linguaggio). Il campo può fissare argomenti:
-;; (Container.withExec (expect ANY)). %branch è uno snodo del nucleo: risultato generico, lo realizza il runner.
+;; (Container.withExec (expect ANY)). Le primitive pure (prims) restituiscono anche Bool: calcolano, non osservano.
 (define (check-extern d)
   (unless (privileged) (oops "extern è riservato alla libreria standard"))
   (unless (and (= (length d) 5) (eq? (caddr d) ':)) (oops "extern malformato: ~s" d))
@@ -381,7 +393,7 @@
       (if (eq? (car r) 'pi)
           (loop (list-ref r 4) (if (eq? (caddr r) 'e) (cons (cadr r) names) names))
           (let-values ([(h args) (spine-of r)])
-            (unless (or (eq? (car r) 'type) (eq? (car spec) '%branch)
+            (unless (or (eq? (car r) 'type) (assq (car spec) prims)
                         (and (eq? (car h) 'glob) (not (eq? (cadr h) 'String)) (eq? (g-kind (gget (cadr h))) 'extern)))
               (oops "~a: un extern deve restituire un tipo opaco del motore" name))
             (hashtable-set! globals name (make-g 'extern (ev '() t) (cons spec (reverse names)))))))))

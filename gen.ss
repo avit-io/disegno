@@ -1,7 +1,11 @@
 ;; Genera engine.disegno dallo schema del motore (introspezione sulla sessione).
 ;; Uso: dagger run scheme --script gen.ss
-;; Solo i tipi in `allowed`, solo gli argomenti obbligatori; i campi con argomenti o risultati
-;; non esprimibili si saltano. Un risultato Boolean diventa un'osservazione (Remote Bool).
+;;
+;; Il piano è un dato: ogni campo del motore diventa un costruttore della famiglia
+;; (data Obj : (→ Kind Type) ...), indicizzata dal tipo GraphQL (Kind.container, ...).
+;; Il nome del costruttore dà il campo (Container.with-exec → withExec), i binder gli argomenti.
+;; Solo i tipi in `allowed`, solo gli argomenti obbligatori; i campi non esprimibili si saltano.
+;; Un risultato Boolean diventa un'osservazione, (Obj Kind.bool).
 (load "core.ss")
 
 (define allowed '("Container" "Directory" "File" "CacheVolume" "GitRepository" "GitRef"))
@@ -14,37 +18,6 @@
 
 (define (get o k) (cdr (assoc k o)))
 
-(define (scalar name)                                    ; tipo di un argomento
-  (cond [(equal? name "String") 'String]
-        [(equal? name "Int") 'Nat]                      ; ponytail: Int → Nat, bastano porte e conteggi
-        [(equal? name "Boolean") 'Bool]
-        [(and (> (string-length name) 2) (string=? (substring name (- (string-length name) 2) (string-length name)) "ID")
-              (member (substring name 0 (- (string-length name) 2)) allowed))
-         (string->symbol (substring name 0 (- (string-length name) 2)))]
-        [else #f]))
-
-;; Gli argomenti oggetto sono ID generici; il tipo vero sta nella direttiva @expectedType(name: "Directory").
-(define (expected a)
-  (let ([d (find (lambda (d) (equal? (get d "name") "expectedType")) (get a "directives"))])
-    (and d (let ([v (get (car (get d "args")) "value")]) (json-read v)))))
-
-(define (arg-type a)
-  (let loop ([t (get a "type")])
-    (let ([k (get t "kind")])
-      (cond [(equal? k "NON_NULL") (loop (get t "ofType"))]
-            [(equal? k "LIST") (and (eq? (loop (get t "ofType")) 'String) '(List String))]
-            [(and (equal? k "SCALAR") (equal? (get t "name") "ID"))
-             (let ([e (expected a)]) (and e (member e allowed) (string->symbol e)))]
-            [(equal? k "SCALAR") (scalar (get t "name"))]
-            [else #f]))))
-
-(define (result-type t)
-  (let ([k (get t "kind")] [n (get t "name")])
-    (cond [(equal? k "NON_NULL") (result-type (get t "ofType"))]
-          [(and (equal? k "OBJECT") (member n allowed)) (string->symbol n)]
-          [(and (equal? k "SCALAR") (equal? n "Boolean")) '(Remote Bool)]
-          [else #f])))
-
 (define (kebab s)                                        ; withNewFile → with-new-file
   (list->string
     (let loop ([cs (string->list s)] [prev #f])
@@ -53,34 +26,89 @@
              (cons* #\- (char-downcase (car cs)) (loop (cdr cs) (car cs)))]
             [else (cons (char-downcase (car cs)) (loop (cdr cs) (car cs)))]))))
 
+(define (camel s)                                        ; with-new-file → withNewFile (come in plan.ss)
+  (let loop ([cs (string->list s)] [up #f])
+    (cond [(null? cs) ""]
+          [(char=? (car cs) #\-) (loop (cdr cs) #t)]
+          [else (string-append (string (if up (char-upcase (car cs)) (car cs))) (loop (cdr cs) #f))])))
+
+(define (obj k) (list 'Obj (string->symbol (string-append "Kind." (kebab k)))))
+
+(define (expected a)                                     ; gli ID sono generici: il tipo sta in @expectedType
+  (let ([d (find (lambda (d) (equal? (get d "name") "expectedType")) (get a "directives"))])
+    (and d (json-read (get (car (get d "args")) "value")))))
+
+(define (arg-type a)
+  (let loop ([t (get a "type")])
+    (let ([k (get t "kind")] [n (get t "name")])
+      (cond [(equal? k "NON_NULL") (loop (get t "ofType"))]
+            [(equal? k "LIST") (and (eq? (loop (get t "ofType")) 'String) '(List String))]
+            [(equal? n "String") 'String]
+            [(equal? n "Int") 'Nat]                     ; ponytail: Int → Nat, bastano porte e conteggi
+            [(equal? n "Boolean") 'Bool]
+            [(equal? n "ID") (let ([e (expected a)]) (and e (member e allowed) (obj e)))]
+            [else #f]))))
+
+(define (result-type t)
+  (let ([k (get t "kind")] [n (get t "name")])
+    (cond [(equal? k "NON_NULL") (result-type (get t "ofType"))]
+          [(and (equal? k "OBJECT") (member n allowed)) (obj n)]
+          [(and (equal? k "SCALAR") (equal? n "Boolean")) (obj "bool")]
+          [else #f])))
+
 (define (required? a) (and (equal? (get (get a "type") "kind") "NON_NULL") (eq? (get a "defaultValue") 'null)))
 
-;; → stringa della dichiarazione, o #f se il campo non è esprimibile
-(define (field-decl type f)
-  (let* ([root? (equal? type "Query")]
+;; Costruttore: (nome ((argomento tipo) ...) risultato), o #f se il campo non è esprimibile.
+(define (constructor type f)
+  (let* ([n (get f "name")]
          [args (filter required? (get f "args"))]
          [ats (map arg-type args)]
          [res (result-type (get f "type"))])
     (and res (not (get f "isDeprecated")) (for-all values ats)
-         (not (let ([n (get f "name")]) (and (> (string-length n) 6) (string=? (substring n (- (string-length n) 6) (string-length n)) "FromID"))))
-         (let ([binders (append (if root? '() (list (format "[self ~a]" type)))
-                                (map (lambda (a t) (format "[~a ~a]" (get a "name") t)) args ats))])
-           (format "(extern ~a.~a : ~a ~a)"
-                   type (kebab (get f "name"))
-                   (if (null? binders) res (format "(→ ~a~a)" (apply string-append (map (lambda (b) (string-append b " ")) binders)) res))
-                   (if root? (get f "name") (format "~a.~a" type (get f "name"))))))))
+         (string=? (camel (kebab n)) n)                  ; il runner deve poter risalire al campo
+         (list (string->symbol (format "~a.~a" type (kebab n)))
+               (append (if (equal? type "Query") '() (list (list 'self (obj type))))
+                       (map (lambda (a t) (list (string->symbol (get a "name")) t)) args ats))
+               res))))
 
-(define (decls type)
-  (let ([t (find (lambda (t) (equal? (get t "name") type)) schema)])
-    (filter values (map (lambda (f) (field-decl type f)) (get t "fields")))))
+(define (constructors type)
+  (filter values (map (lambda (f) (constructor type f))
+                      (get (find (lambda (t) (equal? (get t "name") type)) schema) "fields"))))
+
+;; Snodi del nucleo: costruttori anch'essi, ma li realizza il runner (plan.ss).
+(define nucleo
+  `((%host-dir ((path String)) ,(obj "directory"))
+    (try-exec ((self ,(obj "container")) (args (List String))) ,(obj "container"))
+    (passes? ((self ,(obj "container"))) ,(obj "bool"))
+    (branch ((cond ,(obj "bool")) (then (Obj k)) (else (Obj k))) (Obj k))
+    (overlay ((path String) (dir ,(obj "directory"))) ,(obj "export"))
+    (replace ((path String) (dir ,(obj "directory"))) ,(obj "export"))))
+
+(define all (append nucleo (apply append (map constructors (cons "Query" allowed)))))
+
+(define (signature c)
+  (if (null? (cadr c)) (caddr c)
+      (format "(→ ~a~a)" (apply string-append (map (lambda (b) (format "[~a ~a] " (car b) (cadr b))) (cadr c))) (caddr c))))
+
+(define (obj? t) (and (pair? t) (eq? (car t) 'Obj)))
+
+;; nodes: tutti i sotto-piani, per ricorsione strutturale su ogni costruttore.
+(define (nodes-clause c)
+  (let* ([xs (map (lambda (i) (string->symbol (format "x~a" i))) (iota (length (cadr c))))]
+         [self (if (null? xs) (car c) (cons (car c) xs))]
+         [subs (filter values (map (lambda (b x) (and (obj? (cadr b)) x)) (cadr c) xs))])
+    (format "  [~a] (:: (any ~a) ~a)"
+            self self (fold-right (lambda (x acc) (format "(++ (nodes ~a) ~a)" x acc)) "vuota" subs))))
 
 (call-with-output-file "engine.disegno"
   (lambda (p)
     (format p "; Generato da gen.ss dallo schema di Dagger: non modificare a mano.~%~%")
-    (for-each (lambda (n) (format p "(extern ~a : Type ~a)~%" n n)) allowed)
-    (for-each (lambda (type)
-                (format p "~%; --- ~a ---~%~%" type)
-                (for-each (lambda (d) (format p "~a~%" d)) (decls type)))
-              (cons "Query" allowed)))
+    (format p "(data Kind~%~{  [~a]~^~%~})~%~%"
+            (map (lambda (k) (cadr (obj k))) (append allowed '("bool" "export"))))
+    (format p "(data Obj : (→ Kind Type)~%~{  [~a : ~a]~^~%~})~%~%"
+            (apply append (map (lambda (c) (list (car c) (signature c))) all)))
+    (for-each (lambda (k) (format p "(def ~a : Type~%  ~a)~%~%" k (obj k))) allowed)
+    (format p "; Un sotto-piano qualsiasi, di qualunque tipo.~%(data Any~%  [any (Obj k)])~%~%")
+    (format p "(def nodes : (→ (Obj k) (List Any))~%~{~a~^~%~})~%" (map nodes-clause all)))
   'replace)
-(display "engine.disegno scritto\n")
+(format #t "engine.disegno scritto: ~a costruttori~%" (length all))

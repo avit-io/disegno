@@ -1,4 +1,4 @@
-; Libreria standard: l'unico posto dove extern è ammesso.
+; Libreria standard: l'unico posto dove extern e include sono ammessi.
 
 ; --- uguaglianza ---
 
@@ -54,12 +54,45 @@
   [vuota : (List A)]
   [::    : (→ A (List A) (List A))])
 
-; --- il motore: tipi ed extern generati dallo schema (gen.ss) ---
+(def ++ : (→ (List A) (List A) (List A))
+  [vuota    ys] ys
+  [(:: x xs) ys] (:: x (++ xs ys)))
 
-(extern String : Type String)
-(extern Remote : (→ Type Type) %remote)   ; osservazioni: esistono solo durante l'esecuzione
+(def concat-map : (→ (→ A (List B)) (List A) (List B))
+  [f vuota]     []
+  [f (:: x xs)] (++ (f x) (concat-map f xs)))
+
+(def all : (→ (→ A Bool) (List A) Bool)
+  [p vuota]     true
+  [p (:: x xs)] (if (p x) (all p xs) false))
+
+(def All : (→ (→ A Bool) (List A) Type)
+  [p xs] (So (all p xs)))
+
+; --- stringhe: opache, ma con primitive pure calcolate sui letterali ---
+
+(extern String    : Type String)
+(extern contains? : (→ String String Bool) %contains?)
+
+; --- il piano è un dato: Kind, Obj, gli alias Container, Directory… e nodes, generati (gen.ss) ---
 
 (include "engine.disegno")
+
+; Due tempi, due condizionali: if (sopra) decide su valori noti quando si costruisce il piano;
+; branch su osservazioni, che esistono solo durante l'esecuzione. Un (Remote Bool) non è un Bool.
+; ponytail: l'argomento di Remote ed Export è documentazione; esistono solo osservazioni booleane
+; ed export di directory. Servirà un Kind indicizzato quando ce ne saranno altri.
+
+(def Remote : (→ Type Type)
+  [_] (Obj Kind.bool))
+
+(def Export : (→ Type Type)
+  [_] (Obj Kind.export))
+
+; Confine con l'host: l'utente legge l'host solo tramite (Host "percorso") nella firma di main.
+
+(def Host : (→ String Type)
+  [_] Directory)
 
 ; --- nomi corti: file system del motore, valori immutabili; scrivere è costruire una nuova directory ---
 
@@ -81,7 +114,10 @@
 (def put : (→ Dir String Dir Dir)
   [d path source] (Directory.with-directory d path source))
 
-; --- container: anch'essi valori immutabili; with-exec dichiara un comando, non lo esegue ---
+(def exists? : (→ Dir String (Remote Bool))
+  [d path] (Directory.exists d path))
+
+; --- container: with-exec dichiara un comando, non lo esegue ---
 
 (def container : Container
   Query.container)
@@ -104,25 +140,14 @@
 (def dir-of : (→ Container String Dir)
   [c path] (Container.directory c path))
 
-; --- confine con l'host: il programma dichiara cosa riceve e cosa restituisce ---
-; %host-dir è riservato: l'utente legge l'host solo tramite (Host "percorso") nella firma di main.
+; --- proprietà del piano: si calcolano sul dato ---
 
-(extern %host-dir : (→ [path String] Directory) host.directory)
+(def image-of : (→ Any (List String))
+  [(any (Container.from _ address))] [address]
+  [_]                                [])
 
-(def Host : (→ String Type)
-  [path] Dir)
+(def images : (→ (Obj k) (List String))
+  [p] (concat-map image-of (nodes p)))
 
-(data Export : (→ Type Type)
-  [overlay : (→ String A (Export A))]
-  [replace : (→ String A (Export A))])
-
-; --- due tempi, due condizionali ---
-; if (sopra) decide su valori noti quando si costruisce il piano; branch su osservazioni Remote,
-; che esistono solo durante l'esecuzione. Un (Remote Bool) non è un Bool: non entra in un if.
-
-(extern try-exec : (→ [ctr Container] [args (List String)] Container) (Container.withExec (expect ANY)))
-(extern passes?  : (→ [ctr Container] (Remote Bool))                   Container.exitCode)
-(extern branch   : (→ (Remote Bool) A A A)                             %branch)
-
-(def exists? : (→ Dir String (Remote Bool))
-  [d path] (Directory.exists d path))
+(def pinned? : (→ String Bool)
+  [image] (contains? image "@sha256:"))
