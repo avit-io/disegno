@@ -1,0 +1,6 @@
+{
+  "grammars": [
+    { "name": "disegno", "scope": "source.disegno", "path": ".", "file-types": ["disegno"], "highlights": "queries/highlights.scm" }
+  ],
+  "metadata": { "version": "0.1.0", "license": "MIT", "description": "Disegno: un linguaggio totale su Dagger" }
+}

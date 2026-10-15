@@ -2,7 +2,7 @@
   description = "Disegno — un linguaggio totale su Dagger";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     dagger.url = "github:dagger/nix";
     dagger.inputs.nixpkgs.follows = "nixpkgs";
   };
@@ -38,8 +38,26 @@
         fi
         exec ${pkgs.chez}/bin/scheme --script "$main" "$@"
       '';
+
+      # Il parser tree-sitter, generato da editors/tree-sitter-disegno/grammar.js.
+      grammar = pkgs.tree-sitter.buildGrammar {
+        language = "disegno";
+        version = "0.1.0";
+        src = ./editors/tree-sitter-disegno;
+        generate = true;
+      };
+
+      # Plugin per Neovim: filetype, evidenziazione tree-sitter, :make con la quickfix.
+      nvim-disegno = pkgs.runCommand "nvim-disegno" { } ''
+        mkdir -p $out/parser $out/queries/disegno $out/ftdetect $out/ftplugin
+        cp ${grammar}/parser $out/parser/disegno.so
+        cp ${./editors/tree-sitter-disegno/queries}/*.scm $out/queries/disegno/
+        cp ${./editors/nvim/ftdetect/disegno.lua} $out/ftdetect/disegno.lua
+        substitute ${./editors/nvim/ftplugin/disegno.lua} $out/ftplugin/disegno.lua \
+          --replace-fail @disegno@ ${disegno}/bin/disegno
+      '';
     in {
-      packages.${system}.default = disegno;
+      packages.${system} = { default = disegno; inherit grammar nvim-disegno; };
       apps.${system}.default = { type = "app"; program = "${disegno}/bin/disegno"; };
 
       devShells.${system}.default = pkgs.mkShell {
