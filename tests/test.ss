@@ -310,6 +310,7 @@
   ;; Un passo fallito dice dove sta nel sorgente, con e senza i log per passo (DISEGNO_LOGS, come
   ;; in CI: un gruppo per with-exec). Prima senza: Chez non sa togliere una variabile d'ambiente.
   ;; in-diretta ha un comando nuovo a ogni prova, così non è in cache e le righe passano dal flusso.
+  (putenv "GITHUB_ACTIONS" "") (putenv "GITLAB_CI" "")       ; il formato neutro, anche in CI
   (let ([n (time-nanosecond (current-time))])
     (check-string (format "(def rotto : (→ (Export Dir))
     (overlay \"rotto\" (pipe (container) (from \"alpine\")

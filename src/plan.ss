@@ -125,10 +125,13 @@
 ;; Dagger è pigro e ha la cache: chiedere l'output del prefisso che termina con un withExec esegue
 ;; la catena fino a lì, e la richiesta finale non rifà niente. I log escono nell'ordine dei passi.
 
+(define (env? name)                                      ; definita e non vuota: "" vale come assente
+  (let ([v (getenv name)]) (and v (not (string=? v "")))))
+
 (define logged '())                                      ; prefissi già mostrati
 
 (define (log-steps ch)
-  (when (getenv "DISEGNO_LOGS")
+  (when (env? "DISEGNO_LOGS")
     (for-each (lambda (i)
                 (let ([pre (list-head ch i)])
                   (when (and (eq? (car (list-ref ch (- i 1))) 'withExec) (not (member pre logged)))
@@ -255,21 +258,21 @@
 ;; ponytail: su GitLab le sezioni partono chiuse anche per il passo fallito: si apre prima di
 ;; sapere come finisce. Il messaggio d'errore, fuori dalla sezione, dice comunque dove guardare.
 (define (group-open title)
-  (out (cond [(getenv "GITHUB_ACTIONS") (format "::group::~a\n" title)]
-             [(getenv "GITLAB_CI") (format "~a[collapsed=true]\r\x1b;[0K~a\n" (gitlab-section "start") title)]
+  (out (cond [(env? "GITHUB_ACTIONS") (format "::group::~a\n" title)]
+             [(env? "GITLAB_CI") (format "~a[collapsed=true]\r\x1b;[0K~a\n" (gitlab-section "start") title)]
              [else (format "── ~a\n" title)])))
 
 (define (group-close)
   (unless at-line-start (out "\n"))
-  (out (cond [(getenv "GITHUB_ACTIONS") "::endgroup::\n"]
-             [(getenv "GITLAB_CI") (format "~a\r\x1b;[0K\n" (gitlab-section "end"))]
+  (out (cond [(env? "GITHUB_ACTIONS") "::endgroup::\n"]
+             [(env? "GITLAB_CI") (format "~a\r\x1b;[0K\n" (gitlab-section "end"))]
              [else ""])))
 
 ;; Un passo fallito: dove sta nel sorgente, con che exit code, quale comando. Su GitHub anche
 ;; un'annotazione, che compare sul file e sulla riga.
 (define (step-failed pos code title)
   (let ([what (format "passo fallito (exit ~a): ~a" code title)] [at (and pos (vector->list pos))])
-    (when (getenv "GITHUB_ACTIONS")
+    (when (env? "GITHUB_ACTIONS")
       (printf "::error~@[ ~{file=~a,line=~a,col=~a~}~]::~a\n" at what))
     (error 'disegno (format "~@[~{~a:~a:~a~}: ~]~a" at what))))
 
