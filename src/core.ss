@@ -217,7 +217,7 @@
 
 (define (query text)                                    ; documento GraphQL → risposta JSON (testo)
   (let ([port (getenv "DAGGER_SESSION_PORT")] [token (getenv "DAGGER_SESSION_TOKEN")])
-    (unless (and port token) (error 'submit "manca la sessione: lanciare sotto `dagger run`"))
+    (unless (and port token) (error 'submit "manca la sessione: lanciare sotto `dagger api with-session`"))
     (http-post (string->number port) token "/query" (format "{\"query\": ~a}" (json-string text)))))
 
 (define (submit chain) (query (format "{ ~a }" (plan->graphql chain))))

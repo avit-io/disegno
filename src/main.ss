@@ -3,7 +3,7 @@
 ;;   disegno plan  prog.disegno   disegno esterno: il piano, un GraphQL per ogni esito dei branch
 ;;   disegno run   prog.disegno   opera: l'esecuzione su Dagger (il comando apre la sessione)
 ;;   disegno lsp                  il server LSP per gli editor (diagnostica)
-;; Senza sottocomando: check se il file non ha main, altrimenti plan (o run sotto dagger run).
+;; Senza sottocomando: check se il file non ha main, altrimenti plan (o run sotto dagger api with-session).
 
 (define root (path-parent (path-parent (car (command-line)))))   ; <root>/src/main.ss
 (define (at-root p) (if (string=? root "") p (string-append root "/" p)))

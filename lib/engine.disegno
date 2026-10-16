@@ -30,11 +30,12 @@
   [Container.file : (→ [self (Obj Kind.container)] [path Abs] (Obj Kind.file))]
   [Container.from : (→ [self (Obj Kind.container)] [address Image] (Obj Kind.container))]
   [Container.import : (→ [self (Obj Kind.container)] [source (Obj Kind.file)] (Obj Kind.container))]
+  [Container.layer : (→ [self (Obj Kind.container)] [id String] (Obj Kind.file))]
+  [Container.manifest : (→ [self (Obj Kind.container)] (Obj Kind.file))]
   [Container.rootfs : (→ [self (Obj Kind.container)] (Obj Kind.directory))]
   [Container.terminal : (→ [self (Obj Kind.container)] (Obj Kind.container))]
   [Container.with-annotation : (→ [self (Obj Kind.container)] [name String] [value String] (Obj Kind.container))]
   [Container.with-default-args : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.container))]
-  [Container.with-default-terminal-cmd : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.container))]
   [Container.with-directory : (→ [self (Obj Kind.container)] [path Abs] [source (Obj Kind.directory)] (Obj Kind.container))]
   [Container.with-docker-healthcheck : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.container))]
   [Container.with-entrypoint : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.container))]
@@ -50,6 +51,8 @@
   [Container.with-mounted-temp : (→ [self (Obj Kind.container)] [path Abs] (Obj Kind.container))]
   [Container.with-new-file : (→ [self (Obj Kind.container)] [path Abs] [contents String] (Obj Kind.container))]
   [Container.with-rootfs : (→ [self (Obj Kind.container)] [directory (Obj Kind.directory)] (Obj Kind.container))]
+  [Container.with-run : (→ [self (Obj Kind.container)] [command String] (Obj Kind.container))]
+  [Container.with-shell : (→ [self (Obj Kind.container)] [interactive (List String)] (Obj Kind.container))]
   [Container.with-symlink : (→ [self (Obj Kind.container)] [target String] [linkName String] (Obj Kind.container))]
   [Container.with-user : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
   [Container.with-volatile-variable : (→ [self (Obj Kind.container)] [name String] [value String] (Obj Kind.container))]
@@ -97,12 +100,15 @@
   [File.with-replaced : (→ [self (Obj Kind.file)] [search String] [replacement String] (Obj Kind.file))]
   [File.with-timestamps : (→ [self (Obj Kind.file)] [timestamp Nat] (Obj Kind.file))]
   [GitRepository.branch : (→ [self (Obj Kind.git-repository)] [name String] (Obj Kind.git-ref))]
-  [GitRepository.commit : (→ [self (Obj Kind.git-repository)] [id String] (Obj Kind.git-ref))]
   [GitRepository.head : (→ [self (Obj Kind.git-repository)] (Obj Kind.git-ref))]
-  [GitRepository.latest-version : (→ [self (Obj Kind.git-repository)] (Obj Kind.git-ref))]
+  [GitRepository.latest : (→ [self (Obj Kind.git-repository)] (Obj Kind.git-ref))]
   [GitRepository.ref : (→ [self (Obj Kind.git-repository)] [name String] (Obj Kind.git-ref))]
   [GitRepository.tag : (→ [self (Obj Kind.git-repository)] [name String] (Obj Kind.git-ref))]
+  [GitRepository.with-contents : (→ [self (Obj Kind.git-repository)] [directory (Obj Kind.directory)] (Obj Kind.git-repository))]
+  [GitRepository.with-remote : (→ [self (Obj Kind.git-repository)] [name String] [url String] (Obj Kind.git-repository))]
+  [GitRef.as-repository : (→ [self (Obj Kind.git-ref)] (Obj Kind.git-repository))]
   [GitRef.common-ancestor : (→ [self (Obj Kind.git-ref)] [other (Obj Kind.git-ref)] (Obj Kind.git-ref))]
+  [GitRef.contains : (→ [self (Obj Kind.git-ref)] [other (Obj Kind.git-ref)] (Obj Kind.bool))]
   [GitRef.tree : (→ [self (Obj Kind.git-ref)] (Obj Kind.directory))])
 
 (def Container : Type
@@ -147,11 +153,12 @@
   [(Container.file x0 x1)] (:: (any (Container.file x0 x1)) (++ (nodes x0) vuota))
   [(Container.from x0 x1)] (:: (any (Container.from x0 x1)) (++ (nodes x0) vuota))
   [(Container.import x0 x1)] (:: (any (Container.import x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(Container.layer x0 x1)] (:: (any (Container.layer x0 x1)) (++ (nodes x0) vuota))
+  [(Container.manifest x0)] (:: (any (Container.manifest x0)) (++ (nodes x0) vuota))
   [(Container.rootfs x0)] (:: (any (Container.rootfs x0)) (++ (nodes x0) vuota))
   [(Container.terminal x0)] (:: (any (Container.terminal x0)) (++ (nodes x0) vuota))
   [(Container.with-annotation x0 x1 x2)] (:: (any (Container.with-annotation x0 x1 x2)) (++ (nodes x0) vuota))
   [(Container.with-default-args x0 x1)] (:: (any (Container.with-default-args x0 x1)) (++ (nodes x0) vuota))
-  [(Container.with-default-terminal-cmd x0 x1)] (:: (any (Container.with-default-terminal-cmd x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-directory x0 x1 x2)] (:: (any (Container.with-directory x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Container.with-docker-healthcheck x0 x1)] (:: (any (Container.with-docker-healthcheck x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-entrypoint x0 x1)] (:: (any (Container.with-entrypoint x0 x1)) (++ (nodes x0) vuota))
@@ -167,6 +174,8 @@
   [(Container.with-mounted-temp x0 x1)] (:: (any (Container.with-mounted-temp x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-new-file x0 x1 x2)] (:: (any (Container.with-new-file x0 x1 x2)) (++ (nodes x0) vuota))
   [(Container.with-rootfs x0 x1)] (:: (any (Container.with-rootfs x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(Container.with-run x0 x1)] (:: (any (Container.with-run x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-shell x0 x1)] (:: (any (Container.with-shell x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-symlink x0 x1 x2)] (:: (any (Container.with-symlink x0 x1 x2)) (++ (nodes x0) vuota))
   [(Container.with-user x0 x1)] (:: (any (Container.with-user x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-volatile-variable x0 x1 x2)] (:: (any (Container.with-volatile-variable x0 x1 x2)) (++ (nodes x0) vuota))
@@ -214,12 +223,15 @@
   [(File.with-replaced x0 x1 x2)] (:: (any (File.with-replaced x0 x1 x2)) (++ (nodes x0) vuota))
   [(File.with-timestamps x0 x1)] (:: (any (File.with-timestamps x0 x1)) (++ (nodes x0) vuota))
   [(GitRepository.branch x0 x1)] (:: (any (GitRepository.branch x0 x1)) (++ (nodes x0) vuota))
-  [(GitRepository.commit x0 x1)] (:: (any (GitRepository.commit x0 x1)) (++ (nodes x0) vuota))
   [(GitRepository.head x0)] (:: (any (GitRepository.head x0)) (++ (nodes x0) vuota))
-  [(GitRepository.latest-version x0)] (:: (any (GitRepository.latest-version x0)) (++ (nodes x0) vuota))
+  [(GitRepository.latest x0)] (:: (any (GitRepository.latest x0)) (++ (nodes x0) vuota))
   [(GitRepository.ref x0 x1)] (:: (any (GitRepository.ref x0 x1)) (++ (nodes x0) vuota))
   [(GitRepository.tag x0 x1)] (:: (any (GitRepository.tag x0 x1)) (++ (nodes x0) vuota))
+  [(GitRepository.with-contents x0 x1)] (:: (any (GitRepository.with-contents x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(GitRepository.with-remote x0 x1 x2)] (:: (any (GitRepository.with-remote x0 x1 x2)) (++ (nodes x0) vuota))
+  [(GitRef.as-repository x0)] (:: (any (GitRef.as-repository x0)) (++ (nodes x0) vuota))
   [(GitRef.common-ancestor x0 x1)] (:: (any (GitRef.common-ancestor x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [(GitRef.contains x0 x1)] (:: (any (GitRef.contains x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [(GitRef.tree x0)] (:: (any (GitRef.tree x0)) (++ (nodes x0) vuota)))
 
 (def chain : (→ (Obj k) (List Any))
@@ -242,11 +254,12 @@
   [(Container.file x0 x1)] (:: (any (Container.file x0 x1)) (chain x0))
   [(Container.from x0 x1)] (:: (any (Container.from x0 x1)) (chain x0))
   [(Container.import x0 x1)] (:: (any (Container.import x0 x1)) (chain x0))
+  [(Container.layer x0 x1)] (:: (any (Container.layer x0 x1)) (chain x0))
+  [(Container.manifest x0)] (:: (any (Container.manifest x0)) (chain x0))
   [(Container.rootfs x0)] (:: (any (Container.rootfs x0)) (chain x0))
   [(Container.terminal x0)] (:: (any (Container.terminal x0)) (chain x0))
   [(Container.with-annotation x0 x1 x2)] (:: (any (Container.with-annotation x0 x1 x2)) (chain x0))
   [(Container.with-default-args x0 x1)] (:: (any (Container.with-default-args x0 x1)) (chain x0))
-  [(Container.with-default-terminal-cmd x0 x1)] (:: (any (Container.with-default-terminal-cmd x0 x1)) (chain x0))
   [(Container.with-directory x0 x1 x2)] (:: (any (Container.with-directory x0 x1 x2)) (chain x0))
   [(Container.with-docker-healthcheck x0 x1)] (:: (any (Container.with-docker-healthcheck x0 x1)) (chain x0))
   [(Container.with-entrypoint x0 x1)] (:: (any (Container.with-entrypoint x0 x1)) (chain x0))
@@ -262,6 +275,8 @@
   [(Container.with-mounted-temp x0 x1)] (:: (any (Container.with-mounted-temp x0 x1)) (chain x0))
   [(Container.with-new-file x0 x1 x2)] (:: (any (Container.with-new-file x0 x1 x2)) (chain x0))
   [(Container.with-rootfs x0 x1)] (:: (any (Container.with-rootfs x0 x1)) (chain x0))
+  [(Container.with-run x0 x1)] (:: (any (Container.with-run x0 x1)) (chain x0))
+  [(Container.with-shell x0 x1)] (:: (any (Container.with-shell x0 x1)) (chain x0))
   [(Container.with-symlink x0 x1 x2)] (:: (any (Container.with-symlink x0 x1 x2)) (chain x0))
   [(Container.with-user x0 x1)] (:: (any (Container.with-user x0 x1)) (chain x0))
   [(Container.with-volatile-variable x0 x1 x2)] (:: (any (Container.with-volatile-variable x0 x1 x2)) (chain x0))
@@ -309,10 +324,13 @@
   [(File.with-replaced x0 x1 x2)] (:: (any (File.with-replaced x0 x1 x2)) (chain x0))
   [(File.with-timestamps x0 x1)] (:: (any (File.with-timestamps x0 x1)) (chain x0))
   [(GitRepository.branch x0 x1)] (:: (any (GitRepository.branch x0 x1)) (chain x0))
-  [(GitRepository.commit x0 x1)] (:: (any (GitRepository.commit x0 x1)) (chain x0))
   [(GitRepository.head x0)] (:: (any (GitRepository.head x0)) (chain x0))
-  [(GitRepository.latest-version x0)] (:: (any (GitRepository.latest-version x0)) (chain x0))
+  [(GitRepository.latest x0)] (:: (any (GitRepository.latest x0)) (chain x0))
   [(GitRepository.ref x0 x1)] (:: (any (GitRepository.ref x0 x1)) (chain x0))
   [(GitRepository.tag x0 x1)] (:: (any (GitRepository.tag x0 x1)) (chain x0))
+  [(GitRepository.with-contents x0 x1)] (:: (any (GitRepository.with-contents x0 x1)) (chain x0))
+  [(GitRepository.with-remote x0 x1 x2)] (:: (any (GitRepository.with-remote x0 x1 x2)) (chain x0))
+  [(GitRef.as-repository x0)] (:: (any (GitRef.as-repository x0)) (chain x0))
   [(GitRef.common-ancestor x0 x1)] (:: (any (GitRef.common-ancestor x0 x1)) (chain x0))
+  [(GitRef.contains x0 x1)] (:: (any (GitRef.contains x0 x1)) (chain x0))
   [(GitRef.tree x0)] (:: (any (GitRef.tree x0)) (chain x0)))

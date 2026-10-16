@@ -1,5 +1,5 @@
 ;; Genera engine.disegno dallo schema del motore (introspezione sulla sessione).
-;; Uso: dagger run scheme --script tools/gen.ss
+;; Uso: dagger api with-session scheme --script tools/gen.ss
 ;;
 ;; Il piano è un dato: ogni campo del motore diventa un costruttore della famiglia
 ;; (data Obj : (→ Kind Type) ...), indicizzata dal tipo GraphQL (Kind.container, ...).
@@ -83,7 +83,8 @@
 
 (define (constructors type)
   (filter values (map (lambda (f) (constructor type f))
-                      (get (find (lambda (t) (equal? (get t "name") type)) schema) "fields"))))
+                      (list-sort (lambda (a b) (string<? (get a "name") (get b "name")))   ; lo schema 1.0 non è in ordine
+                                 (get (find (lambda (t) (equal? (get t "name") type)) schema) "fields")))))
 
 ;; Snodi del nucleo: costruttori anch'essi, ma li realizza il runner (plan.ss).
 (define nucleo

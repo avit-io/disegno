@@ -325,7 +325,7 @@ cookbook/05-network.disegno:25:1: auto: nessuna prova di (Cidr-apart "10.0.1.0/2
 
 Dagger è la piattaforma, come la BEAM per Gleam. L'ospite è Chez Scheme 10. Il linguaggio non è un SDK Dagger: il runner è un client di una sessione.
 
-- **Sessione**: con Dagger 0.21 si usa `dagger run`, che mette `DAGGER_SESSION_PORT` e `DAGGER_SESSION_TOKEN` nell'ambiente (il documento originale citava `dagger api with-session`, che è della 1.0).
+- **Sessione**: `dagger api with-session` (Dagger 1.0) mette `DAGGER_SESSION_PORT` e `DAGGER_SESSION_TOKEN` nell'ambiente; il motore si sceglie con `DAGGER_ENGINE`.
 - **Trasporto**: POST su `http://127.0.0.1:$DAGGER_SESSION_PORT/query`, token come utente basic auth. Il client HTTP è scritto a mano (FFI su `socket`/`connect` di libc, HTTP/1.0 senza TLS su localhost), con un parser JSON minimo: poco codice, nel nucleo.
 - **Richieste**: una catena è un documento GraphQL e parte in una richiesta. **Correzione al documento originale**: quando un oggetto è argomento di un altro (una Dir passata a `withDirectory`), non può stare nella stessa query, perché GraphQL non accetta una selezione come argomento. Il runner chiede prima il suo `id` e poi lo passa. Il piano resta statico; le richieste non sono sempre una sola.
 - **Ordine**: le richieste partono in ordine deterministico, da sinistra a destra.
@@ -356,13 +356,13 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `editors/` | la grammatica tree-sitter con le query, e il plugin per Neovim (filetype, tree-sitter, LSP, `:make`) |
 | `lib/std.disegno` | libreria standard: uguaglianza, `Bool`, `Nat`, liste, spazi affini, regioni, nomi corti, `Host`, `Export`, proprietà del piano |
 | `lib/engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes`, `chain` |
-| `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger run`) |
-| `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger run`, dal vivo |
+| `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger api with-session`) |
+| `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger api with-session`, dal vivo |
 | `tests/checks.disegno` | le leggi e le garanzie come teoremi, verificate a ogni test |
 | `cookbook/` | sette ricette numerate e commentate, verificate dai test (`check`, e `plan` se hanno un main); `hello/` è il sorgente Go degli esempi |
 | `flake.nix` | il pacchetto `disegno` (`nix run`), la shell, il motore dedicato con le CA dell'host |
 
-**Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`; `disegno lsp` è il server per gli editor. nixpkgs è fissato a `nixos-25.11`. `run` apre da sé la sessione con `dagger run`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, e `include` rispetto al file che lo contiene, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.
+**Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`; `disegno lsp` è il server per gli editor. nixpkgs è fissato a `nixos-25.11`. `run` apre da sé la sessione con `dagger api with-session`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, e `include` rispetto al file che lo contiene, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.
 
 ## Limitazioni accettate
 
@@ -382,7 +382,7 @@ In cambio della purezza e della semplicità:
 
 ## Questioni aperte
 
-- [x] Quale primitiva usa un client per leggere l'host: `host.directory` in Dagger 0.21. Da riverificare con Workspace in Dagger 1.0.
+- [x] Quale primitiva usa un client per leggere l'host: `host.directory`, in Dagger 0.21 come nella 1.0 (beta.18). Workspace della 1.0 serve ai moduli, non a un client.
 - [ ] Export o Changeset per scrivere. Oggi export classico (`overlay`, `replace` con `wipe`).
 - [ ] Il Changeset rappresenta anche le cancellazioni? Deciderebbe se servono ancora due costruttori di export.
 - [x] Quali osservazioni ammettere e come tiparle: elenco chiuso, `(Obj Kind.bool)`. Resta da tipare osservazioni non booleane, con un `Kind` indicizzato.
@@ -395,7 +395,7 @@ In cambio della purezza e della semplicità:
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
-- [ ] Passaggio a Dagger 1.0 quando il flake lo rende disponibile.
+- [x] Passaggio a Dagger 1.0 (beta.18): il flake scarica il binario da dl.dagger.io, `dagger api with-session` e `DAGGER_ENGINE`. Nessun cambio nel runner; nello schema `GitRepository.latest-version` diventa `latest`, `commit` restituisce `GitCommit` (escluso), nuovi `with-run`, `with-shell`, `GitRef.contains`. Da tornare a github:dagger/nix quando esce la 1.0.
 
 ### Da fare
 

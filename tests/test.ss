@@ -1,5 +1,5 @@
-;; Controlli: nucleo, type checker, piano (a secco) e, sotto `dagger run`, esecuzione dal vivo.
-;; Uso: scheme --script tests/test.ss   (dal vivo: dagger run scheme --script tests/test.ss)
+;; Controlli: nucleo, type checker, piano (a secco) e, sotto `dagger api with-session`, esecuzione dal vivo.
+;; Uso: scheme --script tests/test.ss   (dal vivo: dagger api with-session scheme --script tests/test.ss)
 (define root (path-parent (path-parent (car (command-line)))))   ; <root>/tests/test.ss
 (define (at-root p) (if (string=? root "") p (string-append root "/" p)))
 (load (at-root "src/core.ss"))

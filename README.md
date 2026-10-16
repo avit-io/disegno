@@ -47,7 +47,7 @@ In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza te
       errore: registry irraggiungibile
 ```
 
-Per imparare il linguaggio c'è [Pointless Disegno](book/README.md), un libricino sui tipi dipendenti. Per vederlo in azione c'è il [cookbook](cookbook/README.md): sette ricette brevi, dalle basi alla rete come dato. Dal repository, `nix run . -- run cookbook/02-go-build.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger run scheme --script tests/test.ss`). La CI è scritta in Disegno: [ci.disegno](ci.disegno) esegue la suite in un container, e GitHub Actions ([ci.yml](.github/workflows/ci.yml)) la lancia con `nix run . -- run ci.disegno`.
+Per imparare il linguaggio c'è [Pointless Disegno](book/README.md), un libricino sui tipi dipendenti. Per vederlo in azione c'è il [cookbook](cookbook/README.md): sette ricette brevi, dalle basi alla rete come dato. Dal repository, `nix run . -- run cookbook/02-go-build.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger api with-session scheme --script tests/test.ss`). La CI è scritta in Disegno: [ci.disegno](ci.disegno) esegue la suite in un container, e GitHub Actions ([ci.yml](.github/workflows/ci.yml)) la lancia con `nix run . -- run ci.disegno`.
 
 ```
 src/       il nucleo e il driver          lib/    la libreria standard (engine è generata dallo schema)
@@ -67,6 +67,6 @@ xdg.dataFile."nvim/site/pack/disegno/start/disegno".source = inputs.disegno.pack
 
 Con `programs.neovim` basta aggiungere `nvim-disegno` a `programs.neovim.plugins`. La grammatica sta in `editors/tree-sitter-disegno` (pacchetto `grammar`), per altri editor.
 
-Il progetto, le scelte e le questioni aperte sono in [DESIGN.md](DESIGN.md). È un esperimento: l'ospite è Chez Scheme, il motore Dagger 0.21.
+Il progetto, le scelte e le questioni aperte sono in [DESIGN.md](DESIGN.md). È un esperimento: l'ospite è Chez Scheme, il motore Dagger 1.0 (beta.18).
 
 Il logo è la prima proposizione degli *Elementi*: il triangolo equilatero costruito con due cerchi, una costruzione che è anche una prova. È tracciato in sanguigna, il colore del disegno rinascimentale.

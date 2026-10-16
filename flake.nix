@@ -3,22 +3,33 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-    dagger.url = "github:dagger/nix";
-    dagger.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, dagger, ... }:
+  outputs = { self, nixpkgs, ... }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
-      d = dagger.packages.${system}.dagger;
+
+      # Dagger 1.0, ancora in beta: github:dagger/nix ha solo le versioni stabili.
+      # ponytail: solo x86_64-linux; si torna a dagger/nix quando esce la 1.0.
+      d = pkgs.stdenvNoCC.mkDerivation rec {
+        pname = "dagger";
+        version = "1.0.0-beta.18";
+        src = pkgs.fetchurl {
+          url = "https://dl.dagger.io/dagger/releases/${version}/dagger_v${version}_linux_amd64.tar.gz";
+          hash = "sha256-Uyb0iCW2QAhwUpDLKoEJwo5KiNNB73Zb6CNIYKzzL9s=";
+        };
+        sourceRoot = ".";
+        installPhase = "install -Dm755 dagger $out/bin/dagger";
+      };
 
       # Motore Dagger dedicato con il bundle CA dell'host (proxy TLS aziendale): il motore
       # installa le CA in /usr/local/share/ca-certificates e le passa ai container che esegue.
       # Senza bundle (per esempio su Ubuntu, in CI) il motore usa le sue CA.
+      # Si ricrea se è fermo o di un'altra versione.
       # ponytail: se il bundle dell'host cambia, `docker rm -f disegno-engine` e si ricrea.
       engine = pkgs.writeShellScript "disegno-engine" ''
-        if ! docker inspect -f '{{.State.Running}}' disegno-engine 2>/dev/null | grep -q true; then
+        if [ "$(docker inspect -f '{{.State.Running}} {{.Config.Image}}' disegno-engine 2>/dev/null)" != "true registry.dagger.io/engine:v${d.version}" ]; then
           docker rm -f disegno-engine >/dev/null 2>&1
           ca=""
           if [ -e /etc/ssl/certs/ca-bundle.crt ]; then
@@ -35,14 +46,14 @@
         main=${self}/src/main.ss
         export DISEGNO_SCHEME=${pkgs.chez}/bin/scheme      # per i controlli che lancia disegno lsp
         if [ "$1" = run ]; then
-          if [ -z "$_EXPERIMENTAL_DAGGER_RUNNER_HOST" ]; then
+          if [ -z "$DAGGER_ENGINE" ]; then
             ${engine}
-            export _EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-container://disegno-engine
+            export DAGGER_ENGINE=container://disegno-engine
           fi
           export DAGGER_NO_NAG=1
           progress=""                                     # in CI, o senza terminale: niente TUI, log per passo
           if [ -n "$CI" ] || [ ! -t 1 ]; then export DISEGNO_LOGS=1; progress=--silent; fi
-          exec ${d}/bin/dagger run $progress ${pkgs.chez}/bin/scheme --script "$main" "$@"
+          exec ${d}/bin/dagger api with-session $progress ${pkgs.chez}/bin/scheme --script "$main" "$@"
         fi
         exec ${pkgs.chez}/bin/scheme --script "$main" "$@"
       '';
@@ -72,7 +83,7 @@
         packages = [ pkgs.chez d disegno ];
         shellHook = ''
           ${engine}
-          export _EXPERIMENTAL_DAGGER_RUNNER_HOST=docker-container://disegno-engine DAGGER_NO_NAG=1
+          export DAGGER_ENGINE=container://disegno-engine DAGGER_NO_NAG=1
         '';
       };
     };
