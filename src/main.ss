@@ -68,4 +68,4 @@
                           (newline))
                         (all-plans 'main))]
       [(run) (unless (getenv "DAGGER_SESSION_PORT") (oops "run richiede una sessione Dagger: usare `disegno run`"))
-             (display (run 'main)) (newline)])))
+             (let ([r (run 'main)]) (unless (env? "DISEGNO_LOGS") (display r) (newline)))])))   ; con il resoconto, la riga finale dice già dove

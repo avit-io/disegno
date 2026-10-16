@@ -307,31 +307,44 @@
   (run 'verifica)
   (assert (string=? (call-with-input-file (string-append dir "/out3/esito") get-string-all) "passa\n"))
   (assert (string=? (call-with-input-file (string-append dir "/out3/manca/esito") get-string-all) "fallisce\n"))
-  ;; Un passo fallito dice dove sta nel sorgente, con e senza i log per passo (DISEGNO_LOGS, come
-  ;; in CI: un gruppo per with-exec). Prima senza: Chez non sa togliere una variabile d'ambiente.
-  ;; in-diretta ha un comando nuovo a ogni prova, così non è in cache e le righe passano dal flusso.
+  ;; Un passo fallito dice dove sta nel sorgente, con e senza il resoconto (DISEGNO_LOGS, come in
+  ;; CI: una riga per voce). Prima senza: Chez non sa togliere una variabile d'ambiente.
+  ;; in-diretta ha comandi nuovi a ogni prova, così non è in cache e le righe passano dal flusso.
   (putenv "GITHUB_ACTIONS" "") (putenv "GITLAB_CI" "")       ; il formato neutro, anche in CI
   (let ([n (time-nanosecond (current-time))])
     (check-string (format "(def rotto : (→ (Export Dir))
     (overlay \"rotto\" (pipe (container) (from \"alpine\")
                              (with-exec [\"sh\" \"-c\" \"echo A; sleep 0.3; echo B >&2; sleep 0.3; echo C\"])
                              (with-exec [\"sh\" \"-c\" \"echo male >&2; exit 3\"]) (dir-of /tmp))))
-  (def in-diretta : (→ (Export Dir))
-    (overlay \"rotto\" (pipe (container) (from \"alpine\")
-                             (with-exec [\"sh\" \"-c\" \"echo A~a; sleep 0.05; echo B >&2; sleep 0.05; echo C\"])
-                             (with-exec [\"sh\" \"-c\" \"echo male~a >&2; exit 3\"]) (dir-of /tmp))))" n n))
+  (def prepara : Container
+    (pipe (container) (from \"alpine\") (with-exec [\"sh\" \"-c\" \"echo prep~a\"])))
+  (def in-diretta : (→ [src (Host ~s)] (Export Dir))
+    [src] (overlay \"rotto\" (pipe prepara (with-dir /w src)
+                                   (with-exec [\"sh\" \"-c\" \"echo A~a; sleep 0.05; echo B >&2; sleep 0.05; echo C\"])
+                                   (with-exec [\"sh\" \"-c\" \"echo male~a >&2; exit 3\"]) (dir-of /tmp))))"
+                          n (string-append dir "/in") n n))
     (let ([r (esegui 'rotto)])
       (assert (and (car r) (contiene? (car r) "<stringa>:4:30: passo fallito (exit 3)")))
       (assert (string=? (cdr r) "")))
     (putenv "DISEGNO_LOGS" "1")
+    ;; Il resoconto: una riga per voce, con i nomi del programma; prepara non vede l'input ed è
+    ;; ambiente; in-diretta fallisce, e le ultime righe del passo dicono perché.
     (let* ([r (esegui 'in-diretta)] [msg (car r)] [out (cdr r)])
       (assert (> streamed 0))                                 ; le righe sono arrivate dal flusso
-      (assert (contiene? out (format "\"\nA~a\nB\nC\n" n)))   ; intrecciate, nell'ordine d'arrivo
-      (assert (contiene? out (format "\"\nmale~a\n" n)))
-      (assert (and msg (contiene? msg "<stringa>:8:30: passo fallito (exit 3)"))))
+      (assert (contiene? out "✓ prepara     ambiente  "))
+      (assert (contiene? out "✗ in-diretta  <stringa>:10:36  exit 3  "))
+      (assert (contiene? out (format "\n      male~a\n" n)))
+      (assert (not (contiene? out (format "A~a" n))))         ; la prova di ciò che è andato non si stampa
+      (assert (and msg (contiene? msg "<stringa>:10:36: passo fallito (exit 3)"))))
+    ;; In CI la prova sta nel gruppo della voce: stdout e stderr intrecciati. Il primo passo ora è
+    ;; in cache: il flusso tace, e la prova è combinedOutput.
     (set! logged '())                                         ; un run nuovo, come un processo nuovo
-    (let ([r (esegui 'in-diretta)])                          ; il primo passo ora è in cache: il flusso
-      (assert (contiene? (cdr r) (format "\"\nA~a\nB\nC\n" n)))))   ; tace, le righe sono di combinedOutput
+    (putenv "GITHUB_ACTIONS" "true")
+    (let ([out (cdr (esegui 'in-diretta))])
+      (putenv "GITHUB_ACTIONS" "")
+      (assert (contiene? out "::group::✓ prepara     ambiente  "))
+      (assert (contiene? out (format "\"\nA~a\nB\nC\n" n)))
+      (assert (contiene? out "::error file=<stringa>,line=10,col=36::passo fallito (exit 3)"))))
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

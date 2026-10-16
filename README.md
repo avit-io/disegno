@@ -38,7 +38,14 @@ nix run github:avit-io/disegno -- plan  prog.disegno   # disegno esterno: il pia
 nix run github:avit-io/disegno -- run   prog.disegno   # opera: l'esecuzione su Dagger
 ```
 
-In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza terminale la TUI tace e `disegno` stampa l'output di ogni `with-exec` mentre il comando gira, un gruppo per passo: richiudibile su GitHub Actions (`::group::`) e GitLab (`section_start`), con un'intestazione `──` altrove. Un passo fallito chiude con `file:riga:colonna: passo fallito (exit N): comando`, la posizione del suo `with-exec` nel sorgente (anche nel terminale, con la TUI); su GitHub c'è anche un'annotazione `::error` su quel file e quella riga.
+In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza terminale stampa invece un resoconto: una riga per voce del programma (le definizioni che costruiscono un pezzo di piano), con esito e tempo; «ambiente» per le voci che preparano soltanto, il comando di lavoro per le altre; la risposta delle osservazioni dei `branch`; e in fondo che cosa è stato realizzato. L'output dei comandi è la prova: su GitHub Actions e GitLab sta nel gruppo richiudibile della voce. Una voce fallita mostra le ultime righe e la posizione del suo `with-exec` (`file:riga:colonna`, anche nel terminale); su GitHub anche un'annotazione su quel file e quella riga.
+
+```
+✓ ambiente    ambiente  6.4s
+✓ test        sh -c "echo test; sleep 1; cat dati.txt; echo ok"  1.2s
+✗ pubblica    release.disegno:10:15  exit 7  0.2s
+      errore: registry irraggiungibile
+```
 
 Per imparare il linguaggio c'è [Pointless Disegno](book/README.md), un libricino sui tipi dipendenti. Per vederlo in azione c'è il [cookbook](cookbook/README.md): sette ricette brevi, dalle basi alla rete come dato. Dal repository, `nix run . -- run cookbook/02-go-build.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger run scheme --script tests/test.ss`). La CI è scritta in Disegno: [ci.disegno](ci.disegno) esegue la suite in un container, e GitHub Actions ([ci.yml](.github/workflows/ci.yml)) la lancia con `nix run . -- run ci.disegno`.
 

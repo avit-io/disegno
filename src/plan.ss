@@ -46,11 +46,28 @@
           (pick (if ((observe) (chain (car xs) resolve)) (cadr xs) (caddr xs)) resolve))
         v)))
 
-;; Dove sta nel sorgente ogni passo della catena (un with-exec che il checker ha marcato con at).
+;; Di ogni passo della catena si ricorda: dove sta nel sorgente e a quale voce appartiene (un
+;; with-exec marcato dal checker), e se è lavoro, cioè dipende da un input del programma (un
+;; Host), o preparazione dell'ambiente.
 (define step-pos (make-eq-hashtable))
+(define step-voce (make-eq-hashtable))
+(define step-work (make-eq-hashtable))
 (define (located v ch)
-  (when (= (length v) 4) (hashtable-set! step-pos (list-ref ch (- (length ch) 1)) (cadddr v)))
+  (let ([last (list-ref ch (- (length ch) 1))])
+    (cond [(v-pos v) => (lambda (p) (hashtable-set! step-pos last p))])
+    (hashtable-set! step-work last (on-input? v))
+    (cond [(v-name v) => (lambda (n) (hashtable-set! step-voce last n))]))
   ch)
+
+(define input-memo (make-eq-hashtable))
+(define (on-input? v)                                    ; il valore dipende da un Host?
+  (let ([v (force v)])
+    (and (eq? (car v) 'vglob)
+         (or (eq? (cadr v) '%host-dir)
+             (let ([m (hashtable-ref input-memo v '?)])
+               (if (eq? m '?)
+                   (let ([r (exists (lambda (a) (on-input? (car a))) (caddr v))]) (hashtable-set! input-memo v r) r)
+                   m))))))
 
 (define (chain v resolve)
   (let* ([v (pick v resolve)] [c (node v)])
@@ -121,23 +138,83 @@
 
 ;; --- esecuzione ---
 
-;; --- i log: con DISEGNO_LOGS, l'output di ogni with-exec, un gruppo per passo ---
+;; --- il resoconto: con DISEGNO_LOGS, una riga per voce del programma ---
+;; Il log dice ciò che non si sapeva prima di eseguire: com'è andata ogni voce, quanto ha
+;; impiegato, che cosa si è osservato. Il piano e le sue proprietà erano già noti. Una voce è una
+;; definizione del programma che costruisce un pezzo di piano (chez, test, pubblica); i passi che
+;; nessuna definizione ha nominato appartengono al punto d'ingresso. L'output dei comandi è la
+;; prova: in CI sta nel gruppo chiuso della voce, altrove si mostra solo se la voce fallisce.
 ;; Dagger è pigro e ha la cache: chiedere l'output del prefisso che termina con un withExec esegue
-;; la catena fino a lì, e la richiesta finale non rifà niente. I log escono nell'ordine dei passi.
+;; la catena fino a lì, e la richiesta finale non rifà niente.
 
 (define (env? name)                                      ; definita e non vuota: "" vale come assente
   (let ([v (getenv name)]) (and v (not (string=? v "")))))
 
-(define logged '())                                      ; prefissi già mostrati
+(define entry-name (make-parameter 'main))
+(define logged '())                                      ; prefissi già eseguiti
+
+(define (last-of l) (list-ref l (- (length l) 1)))
+(define (step-args step) (cadr (assq 'args (cdr step))))
 
 (define (log-steps ch)
   (when (env? "DISEGNO_LOGS")
-    (for-each (lambda (i)
-                (let ([pre (list-head ch i)])
-                  (when (and (eq? (car (list-ref ch (- i 1))) 'withExec) (not (member pre logged)))
-                    (set! logged (cons pre logged))
-                    (show-step pre))))
-              (cdr (iota (+ (length ch) 1))))))
+    (let ([pres (filter (lambda (pre) (and (eq? (car (last-of pre)) 'withExec) (not (member pre logged))))
+                        (map (lambda (i) (list-head ch i)) (cdr (iota (+ (length ch) 1)))))])
+      (set! logged (append pres logged))
+      (let loop ([vs (group-voci pres)])
+        (unless (null? vs)
+          (run-voce (car vs) (map car (cdr vs)))
+          (loop (cdr vs)))))))
+
+(define (voce-of step) (hashtable-ref step-voce step (entry-name)))
+
+(define (group-voci pres)                                ; → ((nome pre …) …), passi consecutivi
+  (fold-right (lambda (pre acc)
+                (let ([n (voce-of (last-of pre))])
+                  (if (and (pair? acc) (eq? (caar acc) n))
+                      (cons (cons n (cons pre (cdar acc))) (cdr acc))
+                      (cons (list n pre) acc))))
+              '() pres))
+
+;; Una voce: i suoi passi in ordine, la prova raccolta a parte. Se un passo fallisce, la riga
+;; dice dove, le ultime righe del passo spiegano perché, e si elencano le voci non realizzate.
+(define (run-voce v rest)                                ; v: (nome pre …); rest: le voci dopo
+  (let ([name (car v)] [t0 (now-ns)] [proof ""])
+    (for-each
+      (lambda (pre)
+        (let* ([step (last-of pre)] [cmd (show-args (step-args step))] [r (run-step pre)])
+          (set! proof (string-append proof (format "$ ~a\n" cmd) (car r)))
+          (when (pair? (cdr r))
+            (let ([pos (hashtable-ref step-pos step #f)])
+              (report-voce #f name (if pos (format "~{~a:~a:~a~}" (vector->list pos)) cmd) (cadr r)
+                      (- (now-ns) t0) proof (car r) rest)
+              (step-failed pos (cadr r) cmd)))))
+      (cdr v))
+    (report-voce #t name (what (cdr v)) #f (- (now-ns) t0) proof "" '())))
+
+;; Un passo: le righe arrivano dal flusso mentre gira. Un passo in cache non esegue niente e il
+;; flusso tace: allora la prova è combinedOutput, stdout e stderr nell'ordine d'arrivo al motore.
+;; ponytail: un passo fallito senza flusso ha stdout e stderr separati (le extensions
+;; dell'errore): intrecciarli vorrebbe dire rieseguirlo con expect: ANY, fuori dalla cache.
+(define (run-step pre)                                   ; → (testo) o (testo exit-code)
+  (let ([p (open-output-string)])
+    (start-stream!)
+    (set! log-port p)
+    (let ([before streamed] [e0 eofs])
+      (guard (e [(exec-error e)
+                 => (lambda (x)
+                      (define (ext k) (cond [(assoc k x) => cdr] [else ""]))
+                      (settle! before e0)
+                      (when (= streamed before) (out (lines (ext "stdout") (ext "stderr"))))
+                      (list (lines (get-output-string p)) (ext "exitCode")))])
+        (let ([o (submit-leaf (append pre '((combinedOutput))))])
+          (settle! before e0)
+          (when (= streamed before) (out o))
+          (list (lines (get-output-string p))))))))
+
+(define (what pres)                                      ; il lavoro più recente, o «ambiente»
+  (let ([work (filter (lambda (pre) (hashtable-ref step-work (last-of pre) #f)) pres)])
+    (if (null? work) "ambiente" (show-args (step-args (last-of (last-of work)))))))
 
 (define (show-args args)                                ; il comando, con le virgolette dove servono
   (format "~{~a~^ ~}" (map (lambda (a) (if (memv #\space (string->list a)) (format "~s" a) a)) args)))
@@ -145,28 +222,50 @@
 (define (lines . ss)                                     ; testi uno dopo l'altro, ciascuno chiuso da un a capo
   (apply string-append (map (lambda (s) (if (or (string=? s "") (char=? (string-ref s (- (string-length s) 1)) #\newline)) s (string-append s "\n"))) ss)))
 
-;; Un passo: si apre il gruppo, le righe arrivano dal flusso mentre il passo gira, si chiude.
-;; Un passo in cache non esegue niente e il flusso tace: allora si mostra combinedOutput, che
-;; intreccia stdout e stderr nell'ordine in cui il motore li ha ricevuti.
-;; ponytail: un passo fallito senza flusso ha stdout e stderr separati (le extensions
-;; dell'errore): intrecciarli vorrebbe dire rieseguirlo con expect: ANY, fuori dalla cache.
-(define (show-step pre)
-  (let* ([step (list-ref pre (- (length pre) 1))] [title (show-args (cadr (assq 'args (cdr step))))])
-    (start-stream!)
-    (set! log-port (current-output-port))
-    (group-open title)
-    (let ([before streamed] [e0 eofs])
-      (guard (e [(exec-error e)
-                 => (lambda (x)
-                      (define (ext k) (cond [(assoc k x) => cdr] [else ""]))
-                      (settle! before e0)
-                      (when (= streamed before) (out (lines (ext "stdout") (ext "stderr"))))
-                      (group-close)
-                      (step-failed (hashtable-ref step-pos step #f) (ext "exitCode") title))])
-        (let ([o (submit-leaf (append pre '((combinedOutput))))])
-          (settle! before e0)
-          (when (= streamed before) (out o))
-          (group-close))))))
+(define (secs ns) (format "~as" (/ (round (/ ns 100000000)) 10.0)))
+(define (pad name) (let ([s (format "~a" name)]) (string-append s (make-string (max 1 (- 12 (string-length s))) #\space))))
+
+(define (last-lines text n)
+  (let* ([ls (let loop ([cs (string->list text)] [cur '()] [acc '()])
+               (cond [(null? cs) (reverse (if (null? cur) acc (cons (list->string (reverse cur)) acc)))]
+                     [(char=? (car cs) #\newline) (loop (cdr cs) '() (cons (list->string (reverse cur)) acc))]
+                     [else (loop (cdr cs) (cons (car cs) cur) acc)]))]
+         [k (length ls)])
+    (if (> k n) (list-tail ls (- k n)) ls)))
+
+;; La riga di una voce. In CI è il titolo di un gruppo chiuso (aperto se la voce fallisce, dove si
+;; può) che contiene la prova.
+(define sections 0)
+(define (report-voce ok name what code dt proof tail rest)
+  (let ([line (format "~a ~a~a~@[  exit ~a~]  ~a" (if ok "✓" "✗") (pad name) what code (secs dt))])
+    (cond [(env? "GITHUB_ACTIONS") (printf "::group::~a\n~a::endgroup::\n" line proof)]
+          [(env? "GITLAB_CI")
+           (set! sections (+ sections 1))
+           (let ([t (time-second (current-time))])
+             (printf "\x1b;[0Ksection_start:~a:voce-~a[collapsed=~a]\r\x1b;[0K~a\n~a\x1b;[0Ksection_end:~a:voce-~a\r\x1b;[0K\n"
+                     t sections (if ok "true" "false") line proof t sections))]
+          [else (printf "~a\n" line)])
+    (unless ok
+      (for-each (lambda (l) (printf "      ~a\n" l)) (last-lines tail 10))
+      (unless (null? rest) (printf "  non realizzati: ~{~a~^, ~}\n" rest)))
+    (flush-output-port)))
+
+;; Un'osservazione (la condizione di un branch): che cosa si è chiesto al mondo, e la risposta.
+(define (report-observation ch b)
+  (let* ([last (last-of ch)] [exec (and (eq? (car last) 'exitCode) (last-of (list-head ch (- (length ch) 1))))])
+    (printf "↳ ~a~a → ~a\n" (pad (voce-of (or exec last)))
+            (if exec (format "passa? ~a" (show-args (step-args exec))) (gql-field last))
+            (if b "vero" "falso"))
+    (flush-output-port)))
+
+(define (summary p dt)                                   ; la riga finale: realizzato, e che cosa
+  (let ([last (last-of p)])
+    (printf "realizzato in ~a~@[: ~a~]\n" (secs dt)
+            (case (car last)
+              [(export) (format "esportato ~a" (cadr (assq 'path (cdr last))))]
+              [(publish) (format "pubblicato ~a" (cadr (assq 'address (cdr last))))]
+              [else #f]))
+    (flush-output-port)))
 
 ;; --- il flusso: le righe dei comandi appena il motore le riceve (in CI, con DISEGNO_LOGS) ---
 
@@ -174,7 +273,6 @@
 (define log-port #f)                                     ; la porta del passo corrente
 (define streamed 0)                                      ; righe arrivate dal flusso
 (define eofs 0)                                          ; canali chiusi (stdio.eof): due per comando
-(define at-line-start #t)
 (define stream-on #f)                                    ; #f: da aprire; un fd: aperto; no: chiuso o assente
 
 (define pending '())                                     ; (istante arrivo . testo), in ordine di istante
@@ -238,8 +336,7 @@
 (define (out s) (with-mutex out-mutex (emit s)))
 (define (emit s)
   (unless (string=? s "")
-    (display s log-port) (flush-output-port log-port)
-    (set! at-line-start (char=? (string-ref s (- (string-length s) 1)) #\newline))))
+    (display s log-port) (flush-output-port log-port)))
 
 ;; Le ultime righe possono arrivare dopo la risposta: si aspetta che il comando chiuda i canali.
 (define (settle! s0 e0)                                  ; s0, e0: righe e eof a inizio passo
@@ -251,22 +348,6 @@
                   (> k 40))                             ; ponytail: 2 s, poi si chiude comunque
         (loop (+ k 1))))
     (flush! +inf.0)))                                     ; il passo è finito: tutto il buffer
-
-(define (gitlab-section what)                            ; section_start / section_end del passo
-  (format "\x1b;[0Ksection_~a:~a:passo-~a" what (time-second (current-time)) (length logged)))
-
-;; ponytail: su GitLab le sezioni partono chiuse anche per il passo fallito: si apre prima di
-;; sapere come finisce. Il messaggio d'errore, fuori dalla sezione, dice comunque dove guardare.
-(define (group-open title)
-  (out (cond [(env? "GITHUB_ACTIONS") (format "::group::~a\n" title)]
-             [(env? "GITLAB_CI") (format "~a[collapsed=true]\r\x1b;[0K~a\n" (gitlab-section "start") title)]
-             [else (format "── ~a\n" title)])))
-
-(define (group-close)
-  (unless at-line-start (out "\n"))
-  (out (cond [(env? "GITHUB_ACTIONS") "::endgroup::\n"]
-             [(env? "GITLAB_CI") (format "~a\r\x1b;[0K\n" (gitlab-section "end"))]
-             [else ""])))
 
 ;; Un passo fallito: dove sta nel sorgente, con che exit code, quale comando. Su GitHub anche
 ;; un'annotazione, che compare sul file e sulla riga.
@@ -282,16 +363,23 @@
 ;; ponytail: un'osservazione booleana è un Boolean GraphQL o un exit code (vero se 0).
 (define (observe-live ch)
   (log-steps ch)
-  (let ([r (submit-leaf ch)])
-    (cond [(boolean? r) r] [(number? r) (= r 0)] [else (oops "osservazione non booleana: ~s" r)])))
+  (let* ([r (submit-leaf ch)]
+         [b (cond [(boolean? r) r] [(number? r) (= r 0)] [else (oops "osservazione non booleana: ~s" r)])])
+    (when (env? "DISEGNO_LOGS") (report-observation ch b))
+    b))
 
 (define (run entry)
-  (parameterize ([observe observe-live])
+  (parameterize ([observe observe-live] [entry-name entry])
     (guard (e [(exec-error e) => (lambda (x)                ; anche senza log: quale passo, e dove
                                    (let ([cmd (cdr (assoc "cmd" x))])
                                      (step-failed (cmd-pos cmd) (cdr (assoc "exitCode" x)) (show-args cmd))))])
       (dynamic-wind void
-        (lambda () (let ([p (plan resolve-live entry)]) (log-steps p) (submit-leaf p)))
+        (lambda ()
+          (let* ([t0 (now-ns)] [p (plan resolve-live entry)])
+            (log-steps p)
+            (let ([r (submit-leaf p)])
+              (when (env? "DISEGNO_LOGS") (summary p (- (now-ns) t0)))
+              r)))
         stop-stream!))))
 
 (define (exec-error e)                                   ; → le extensions di un EXEC_ERROR, o #f

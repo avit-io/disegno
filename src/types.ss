@@ -55,7 +55,7 @@
     [(num) `(vnum ,(cadr t))]
     [(ann) (ev env (cadr t))]                            ; (ann t T): l'annotazione non calcola
     [(at) (let ([v (ev env (caddr t))])                 ; un passo ricorda dove sta nel sorgente
-            (if (and (pair? v) (eq? (car v) 'vglob)) (list 'vglob (cadr v) (caddr v) (cadr t)) v))]
+            (if (and (pair? v) (eq? (car v) 'vglob)) (list 'vglob (cadr v) (caddr v) (cadr t) (current-voce)) v))]
     [(meta) (meta-val (cadr t))]
     [(imeta) (fold-left (lambda (f v) (vapp f v 'e)) (meta-val (cadr t)) (reverse env))]))
 
@@ -89,7 +89,9 @@
   (let* ([g (gget n)] [info (and (eq? (g-kind g) 'def) (g-info g))])
     (cond [(and info (accelerate) (let ([f (assq n fast)]) (and f (fast-apply f sp))))]   ; prima: numeri nativi
           [info (and (>= (length sp) (car info))
-                     (let ([r (match-clauses (cdr info) (list-head sp (car info)))])
+                     (let ([r (if (hashtable-ref voci n #f)     ; il corpo di una voce: i suoi passi
+                                  (parameterize ([current-voce n]) (match-clauses (cdr info) (list-head sp (car info))))
+                                  (match-clauses (cdr info) (list-head sp (car info))))])
                        (and r (vapp-sp r (list-tail sp (car info))))))]
           [(and (eq? (g-kind g) 'extern) (assq (car (car (g-info g))) prims))
            => (lambda (p)                                ; primitiva pura: si calcola sui letterali
@@ -548,13 +550,30 @@
 
 (define (check c e ty) (with-pos e (lambda () (at-step e (check* c e ty)))))
 
-;; Un with-exec ricorda dove sta nel sorgente: se il passo fallisce, il runner lo dice.
+;; Un with-exec ricorda dove sta nel sorgente, e la voce nel cui corpo è stato costruito: se il
+;; passo fallisce, il runner dice dove; il resoconto di un run parla con i nomi del programma.
 (define (at-step e t)
   (let ([p (and (pair? e) (hashtable-ref pos-of e #f))])
     (if (and p (memq (term-head t) '(Container.with-exec try-exec))) `(at ,(pos->vector p) ,t) t)))
 
 (define (term-head t)
   (case (car t) [(app) (term-head (cadr t))] [(glob) (cadr t)] [else #f]))
+
+;; Un nodo del piano porta, oltre a costruttore e argomenti, la posizione del passo e la voce.
+(define (v-pos v) (and (> (length v) 3) (cadddr v)))
+(define (v-name v) (and (> (length v) 4) (list-ref v 4)))
+
+;; Una voce è una definizione del programma (non della libreria standard) che produce un pezzo di
+;; piano: mentre se ne valuta il corpo, current-voce ne porta il nome. Gli argomenti li ha già
+;; valutati il chiamante, e restano suoi.
+(define current-voce (make-parameter #f))
+(define voci (make-eq-hashtable))
+(define (plan-type? ty)                                  ; il risultato, dopo tutti gli argomenti, è un Obj
+  (let loop ([t (force ty)] [l 0])
+    (case (car t)
+      [(vpi) (loop (force (pi-cod t (vvar l))) (+ l 1))]
+      [(vglob) (eq? (cadr t) 'Obj)]
+      [else #f])))
 
 (define (check* c e ty)
   (let ([want (force ty)])
@@ -976,6 +995,7 @@
   (let ([ty (begin (k-type t) (ev '() t))])
     (hashtable-set! globals name (make-g 'def ty #f))
     (hashtable-set! sigs name t)
+    (when (and (not (privileged)) (plan-type? ty)) (hashtable-set! voci name #t))
     (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
            [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
            [checked (map (lambda (ps c) (check-clause name ty ps (cdr c))) pats clauses)]   ; (clausola . sintassi risolta)
