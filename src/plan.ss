@@ -174,14 +174,13 @@
 (define at-line-start #t)
 (define stream-on #f)                                    ; #f: da aprire; un fd: aperto; no: chiuso o assente
 
-(define stream-since 0)                                 ; ns: il flusso ripete lo storico della sessione
-(define pending '())                                     ; (istante . testo), in ordine di istante
+(define pending '())                                     ; (istante arrivo . testo), in ordine di istante
 
 (define (now-ns) (let ([t (current-time 'time-utc)]) (+ (* (time-second t) 1000000000) (time-nanosecond t))))
 
 (define (start-stream!)
   (unless stream-on
-    (set! stream-since (now-ns))
+    (set! log-port #f)                                   ; finché è #f, on-log scarta
     (set! stream-on (guard (e [#t 'no])
                       (log-stream (string->number (getenv "DAGGER_SESSION_PORT")) (getenv "DAGGER_SESSION_TOKEN") on-log)))
     (when (number? stream-on)
@@ -189,27 +188,32 @@
         (fork-thread (lambda ()
                        (let loop ()
                          (sleep (make-time 'time-duration 50000000 0))
-                         (when (eqv? stream-on fd) (flush! (- (now-ns) window)) (loop)))))))))
+                         (when (eqv? stream-on fd) (flush! (- (now-ns) window)) (loop))))))
+      ;; All'iscrizione il motore rimanda i log già prodotti nella sessione, tutti e subito: si
+      ;; lasciano passare prima di ascoltare. Filtrarli per istante vorrebbe dire confrontare
+      ;; l'orologio del motore con quello locale.
+      ;; ponytail: 200 ms, una volta per run; in un run vero lo storico è vuoto, il flusso si
+      ;; apre al primo passo, prima di ogni comando.
+      (sleep (make-time 'time-duration 200000000 0)))))
 
 ;; Il motore manda stdout e stderr a pacchetti separati: una riga di stderr può arrivare 200 ms
-;; dopo una di stdout scritta più tardi. Ogni record porta l'istante in cui il comando l'ha
-;; scritta: le righe aspettano nel buffer finché sono più vecchie della finestra, poi escono in
-;; ordine d'istante.
-;; ponytail: finestra fissa di 300 ms e orologio del motore confrontato con quello locale (lo
-;; stesso, con un motore locale); con un motore remoto servirebbe la deriva tra i due.
+;; dopo una di stdout scritta più tardi. Ogni record porta l'istante (del motore) in cui la riga
+;; è stata letta dalla pipe: il buffer è in ordine di quell'istante, e ogni riga esce quando è
+;; arrivata da almeno una finestra (sull'orologio locale). I due orologi non si confrontano mai.
+;; ponytail: finestra fissa di 300 ms; un pacchetto più in ritardo esce fuori posto.
 (define window 300000000)
 
-(define (flush! until)                                   ; stampa le righe con istante ≤ until
+(define (flush! until)                                   ; stampa le righe in testa arrivate entro until
   (with-mutex out-mutex
     (let loop ()
-      (when (and (pair? pending) (<= (caar pending) until))
-        (emit (cdar pending))
+      (when (and (pair? pending) (<= (cadar pending) until))
+        (emit (cddar pending))
         (set! pending (cdr pending))
         (loop)))))
 
 (define (insert-pending t s)                             ; in ordine; a parità, nell'ordine d'arrivo
   (let loop ([ps pending])
-    (cond [(or (null? ps) (< t (caar ps))) (cons (cons t s) ps)]
+    (cond [(or (null? ps) (< t (caar ps))) (cons (cons* t (now-ns) s) ps)]
           [else (cons (car ps) (loop (cdr ps)))])))
 
 ;; Il flusso si chiude prima della sessione: Dagger non sopporta una richiesta ancora aperta.
@@ -217,14 +221,12 @@
   (when (number? stream-on) (log-stream-stop stream-on) (set! stream-on #f)))   ; un altro run lo riapre
 
 ;; Solo l'output dei comandi (stdio.stream); non i valori restituiti, che il motore ripete come
-;; log verbosi (dagger.io/logs.verbose): combinedOutput uscirebbe due volte. E non lo storico:
-;; all'iscrizione il motore rimanda i log già prodotti nella sessione.
+;; log verbosi (dagger.io/logs.verbose): combinedOutput uscirebbe due volte.
 (define (on-log rec)
   (let ([body (json-field (json-field rec "body" '()) "stringValue" #f)]
         [keys (map (lambda (a) (json-field a "key" #f)) (json-field rec "attributes" '()))]
         [t (or (string->number (json-field rec "timeUnixNano" "0")) 0)])
-    (when (and body log-port (member "stdio.stream" keys) (not (member "dagger.io/logs.verbose" keys))
-               (>= t stream-since))
+    (when (and body log-port (member "stdio.stream" keys) (not (member "dagger.io/logs.verbose" keys)))
       (with-mutex out-mutex
         (if (member "stdio.eof" keys)
             (set! eofs (+ eofs 1))

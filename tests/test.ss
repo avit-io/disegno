@@ -269,10 +269,10 @@
     `(("timeUnixNano" . ,(number->string t)) ("body" ("stringValue" . ,s)) ("attributes" (("key" . "stdio.stream")))))
   (set! log-port p)
   (for-each (lambda (t s) (on-log (record t s))) '(100 300 200) '("A\n" "C\n" "B\n"))
-  (flush! 250)                                          ; solo ciò che è più vecchio di 250
-  (assert (string=? (get-output-string p) "A\nB\n"))
+  (flush! (- (now-ns) window))                          ; appena arrivate: aspettano
+  (assert (string=? (get-output-string p) ""))
   (flush! +inf.0)
-  (assert (string=? (get-output-string p) "C\n"))
+  (assert (string=? (get-output-string p) "A\nB\nC\n"))
   (set! log-port #f))
 
 ;; --- dal vivo ---
