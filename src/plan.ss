@@ -152,16 +152,16 @@
     (start-stream!)
     (set! log-port (current-output-port))
     (group-open title)
-    (let ([before streamed])
+    (let ([before streamed] [e0 eofs])
       (guard (e [(exec-error e)
                  => (lambda (x)
                       (define (ext k) (cond [(assoc k x) => cdr] [else ""]))
-                      (settle!)
+                      (settle! before e0)
                       (when (= streamed before) (out (lines (ext "stdout") (ext "stderr"))))
                       (group-close)
                       (step-failed (hashtable-ref step-pos step #f) (ext "exitCode") title))])
         (let ([o (submit-leaf (append pre '((combinedOutput))))])
-          (settle!)
+          (settle! before e0)
           (when (= streamed before) (out o))
           (group-close))))))
 
@@ -170,16 +170,47 @@
 (define out-mutex (make-mutex))                          ; il thread del flusso e il principale
 (define log-port #f)                                     ; la porta del passo corrente
 (define streamed 0)                                      ; righe arrivate dal flusso
+(define eofs 0)                                          ; canali chiusi (stdio.eof): due per comando
 (define at-line-start #t)
 (define stream-on #f)                                    ; #f: da aprire; un fd: aperto; no: chiuso o assente
 
 (define stream-since 0)                                 ; ns: il flusso ripete lo storico della sessione
+(define pending '())                                     ; (istante . testo), in ordine di istante
+
+(define (now-ns) (let ([t (current-time 'time-utc)]) (+ (* (time-second t) 1000000000) (time-nanosecond t))))
 
 (define (start-stream!)
   (unless stream-on
-    (set! stream-since (let ([t (current-time 'time-utc)]) (+ (* (time-second t) 1000000000) (time-nanosecond t))))
+    (set! stream-since (now-ns))
     (set! stream-on (guard (e [#t 'no])
-                      (log-stream (string->number (getenv "DAGGER_SESSION_PORT")) (getenv "DAGGER_SESSION_TOKEN") on-log)))))
+                      (log-stream (string->number (getenv "DAGGER_SESSION_PORT")) (getenv "DAGGER_SESSION_TOKEN") on-log)))
+    (when (number? stream-on)
+      (let ([fd stream-on])                             ; finché il flusso è questo
+        (fork-thread (lambda ()
+                       (let loop ()
+                         (sleep (make-time 'time-duration 50000000 0))
+                         (when (eqv? stream-on fd) (flush! (- (now-ns) window)) (loop)))))))))
+
+;; Il motore manda stdout e stderr a pacchetti separati: una riga di stderr può arrivare 200 ms
+;; dopo una di stdout scritta più tardi. Ogni record porta l'istante in cui il comando l'ha
+;; scritta: le righe aspettano nel buffer finché sono più vecchie della finestra, poi escono in
+;; ordine d'istante.
+;; ponytail: finestra fissa di 300 ms e orologio del motore confrontato con quello locale (lo
+;; stesso, con un motore locale); con un motore remoto servirebbe la deriva tra i due.
+(define window 300000000)
+
+(define (flush! until)                                   ; stampa le righe con istante ≤ until
+  (with-mutex out-mutex
+    (let loop ()
+      (when (and (pair? pending) (<= (caar pending) until))
+        (emit (cdar pending))
+        (set! pending (cdr pending))
+        (loop)))))
+
+(define (insert-pending t s)                             ; in ordine; a parità, nell'ordine d'arrivo
+  (let loop ([ps pending])
+    (cond [(or (null? ps) (< t (caar ps))) (cons (cons t s) ps)]
+          [else (cons (car ps) (loop (cdr ps)))])))
 
 ;; Il flusso si chiude prima della sessione: Dagger non sopporta una richiesta ancora aperta.
 (define (stop-stream!)
@@ -190,10 +221,14 @@
 ;; all'iscrizione il motore rimanda i log già prodotti nella sessione.
 (define (on-log rec)
   (let ([body (json-field (json-field rec "body" '()) "stringValue" #f)]
-        [keys (map (lambda (a) (json-field a "key" #f)) (json-field rec "attributes" '()))])
+        [keys (map (lambda (a) (json-field a "key" #f)) (json-field rec "attributes" '()))]
+        [t (or (string->number (json-field rec "timeUnixNano" "0")) 0)])
     (when (and body log-port (member "stdio.stream" keys) (not (member "dagger.io/logs.verbose" keys))
-               (>= (or (string->number (json-field rec "timeUnixNano" "0")) 0) stream-since))
-      (with-mutex out-mutex (set! streamed (+ streamed 1)) (emit body)))))
+               (>= t stream-since))
+      (with-mutex out-mutex
+        (if (member "stdio.eof" keys)
+            (set! eofs (+ eofs 1))
+            (begin (set! streamed (+ streamed 1)) (set! pending (insert-pending t body))))))))
 
 (define (out s) (with-mutex out-mutex (emit s)))
 (define (emit s)
@@ -201,13 +236,16 @@
     (display s log-port) (flush-output-port log-port)
     (set! at-line-start (char=? (string-ref s (- (string-length s) 1)) #\newline))))
 
-;; Le ultime righe possono arrivare dopo la risposta: si aspetta che il flusso taccia.
-;; ponytail: 100 ms di silenzio bastano su un motore locale; fino a 2 s se continua a parlare.
-(define (settle!)
+;; Le ultime righe possono arrivare dopo la risposta: si aspetta che il comando chiuda i canali.
+(define (settle! s0 e0)                                  ; s0, e0: righe e eof a inizio passo
   (when (number? stream-on)
-    (let loop ([n streamed] [k 0])
-      (sleep (make-time 'time-duration 100000000 0))
-      (unless (or (= n streamed) (> k 20)) (loop streamed (+ k 1))))))
+    (let loop ([k 0])
+      (sleep (make-time 'time-duration 50000000 0))
+      (unless (or (>= (- eofs e0) 2)                     ; stdout e stderr chiusi: il comando ha finito
+                  (and (>= k 2) (= streamed s0) (= eofs e0))   ; niente di niente: in cache
+                  (> k 40))                             ; ponytail: 2 s, poi si chiude comunque
+        (loop (+ k 1))))
+    (flush! +inf.0)))                                     ; il passo è finito: tutto il buffer
 
 (define (gitlab-section what)                            ; section_start / section_end del passo
   (format "\x1b;[0Ksection_~a:~a:passo-~a" what (time-second (current-time)) (length logged)))

@@ -263,6 +263,18 @@
   (def usa-step : (≡ (somma-step 2 add1) 3) auto)")
 (rifiuta "(def manca-step : (→ Rel Nat) [here] 0)" "manca il caso")
 
+;; Il flusso dei log riordina per istante: un pacchetto di stderr consegnato tardi va al suo posto.
+(let ([p (open-output-string)])
+  (define (record t s)
+    `(("timeUnixNano" . ,(number->string t)) ("body" ("stringValue" . ,s)) ("attributes" (("key" . "stdio.stream")))))
+  (set! log-port p)
+  (for-each (lambda (t s) (on-log (record t s))) '(100 300 200) '("A\n" "C\n" "B\n"))
+  (flush! 250)                                          ; solo ciò che è più vecchio di 250
+  (assert (string=? (get-output-string p) "A\nB\n"))
+  (flush! +inf.0)
+  (assert (string=? (get-output-string p) "C\n"))
+  (set! log-port #f))
+
 ;; --- dal vivo ---
 
 
@@ -305,7 +317,7 @@
                              (with-exec [\"sh\" \"-c\" \"echo male >&2; exit 3\"]) (dir-of /tmp))))
   (def in-diretta : (→ (Export Dir))
     (overlay \"rotto\" (pipe (container) (from \"alpine\")
-                             (with-exec [\"sh\" \"-c\" \"echo A~a; sleep 0.3; echo B >&2; sleep 0.3; echo C\"])
+                             (with-exec [\"sh\" \"-c\" \"echo A~a; sleep 0.05; echo B >&2; sleep 0.05; echo C\"])
                              (with-exec [\"sh\" \"-c\" \"echo male~a >&2; exit 3\"]) (dir-of /tmp))))" n n))
     (let ([r (esegui 'rotto)])
       (assert (and (car r) (contiene? (car r) "<stringa>:4:30: passo fallito (exit 3)")))
