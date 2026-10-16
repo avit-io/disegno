@@ -1,7 +1,8 @@
 ;; Nucleo fidato: stampa del piano in GraphQL e trasporto HTTP verso la sessione Dagger.
 ;; Un piano è una catena di campi: ((container) (from (address "alpine")) (stdout)).
 
-(load-shared-object "libc.so.6")
+(let loop ([names '("libc.so.6" "libc.musl-x86_64.so.1")])   ; glibc, poi musl (Alpine)
+  (guard (e [(pair? (cdr names)) (loop (cdr names))]) (load-shared-object (car names))))
 
 ;; --- GraphQL ---
 

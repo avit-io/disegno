@@ -1,0 +1,40 @@
+# La CI di Disegno. Il passo principale è un programma Disegno (ci.disegno): la suite dei test in
+# un container, eseguita da Dagger. In CI `disegno run` non mostra la TUI: ogni with-exec è un
+# gruppo del log, e un passo fallito un'annotazione sul sorgente.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+
+      - name: Binario e plugin di Neovim
+        run: nix build .#default .#nvim-disegno --print-build-logs
+
+      - name: La CI di Disegno, in Disegno
+        run: nix run . -- run ci.disegno
+
+      - name: Log dei test
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: ci-out/
+          if-no-files-found: ignore
+
+  # La suite completa sotto una sessione Dagger: anche la parte dal vivo (piani eseguiti, log
+  # per passo, posizioni dei passi falliti).
+  dal-vivo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Test dal vivo
+        run: nix develop -c sh -c 'dagger run scheme --script tests/test.ss'

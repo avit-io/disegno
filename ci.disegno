@@ -1,0 +1,19 @@
+; La CI di Disegno, scritta in Disegno: la suite dei test in un container, eseguita da Dagger.
+; In GitHub Actions ogni with-exec diventa un gruppo del log, e un passo fallito un'annotazione
+; su questo file. Il log dei test resta anche in ci-out/test.log.
+;
+;   disegno run ci.disegno
+
+(def chez : Container                                    ; Chez Scheme su Alpine, chiamato scheme
+  (pipe (container)
+        (from "alpine:3.22")
+        (with-exec ["apk" "add" "--no-cache" "chez-scheme"])
+        (with-exec ["ln" "-s" "/usr/bin/chez" "/usr/bin/scheme"])))
+
+(def main : (→ [repo (Host ".")] (Export Dir))
+  [repo] (overlay "ci-out"
+           (pipe chez
+                 (with-dir /src repo)
+                 (with-workdir /src)
+                 (with-exec ["sh" "-c" "mkdir -p /out; scheme --script tests/test.ss >/out/test.log 2>&1; s=$?; cat /out/test.log; exit $s"])
+                 (dir-of /out))))

@@ -15,12 +15,16 @@
 
       # Motore Dagger dedicato con il bundle CA dell'host (proxy TLS aziendale): il motore
       # installa le CA in /usr/local/share/ca-certificates e le passa ai container che esegue.
+      # Senza bundle (per esempio su Ubuntu, in CI) il motore usa le sue CA.
       # ponytail: se il bundle dell'host cambia, `docker rm -f disegno-engine` e si ricrea.
       engine = pkgs.writeShellScript "disegno-engine" ''
         if ! docker inspect -f '{{.State.Running}}' disegno-engine 2>/dev/null | grep -q true; then
           docker rm -f disegno-engine >/dev/null 2>&1
-          docker run -d --privileged --name disegno-engine \
-            -v "$(readlink -f /etc/ssl/certs/ca-bundle.crt)":/usr/local/share/ca-certificates/host-bundle.crt:ro \
+          ca=""
+          if [ -e /etc/ssl/certs/ca-bundle.crt ]; then
+            ca="-v $(readlink -f /etc/ssl/certs/ca-bundle.crt):/usr/local/share/ca-certificates/host-bundle.crt:ro"
+          fi
+          docker run -d --privileged --name disegno-engine $ca \
             -v disegno-engine:/var/lib/dagger registry.dagger.io/engine:v${d.version} >/dev/null
         fi
       '';
