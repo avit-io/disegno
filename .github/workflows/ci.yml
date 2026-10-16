@@ -37,4 +37,9 @@ jobs:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31
       - name: Test dal vivo
-        run: nix develop -c sh -c 'dagger api with-session scheme --script tests/test.ss'
+        # Se fallisce, le ultime righe diventano annotazioni: si leggono dal riepilogo della run.
+        run: |
+          s=0; nix develop -c sh -c 'dagger api with-session scheme --script tests/test.ss' >dal-vivo.log 2>&1 || s=$?
+          cat dal-vivo.log
+          if [ $s != 0 ]; then grep -v '^\s*$' dal-vivo.log | tail -8 | sed 's/^/::error::/'; fi
+          exit $s
