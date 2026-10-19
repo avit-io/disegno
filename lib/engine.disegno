@@ -7,11 +7,13 @@
   [Kind.cache-volume]
   [Kind.git-repository]
   [Kind.git-ref]
+  [Kind.secret]
   [Kind.bool]
   [Kind.export])
 
 (data Obj : (→ Kind Type)
   [%host-dir : (→ [path String] (Obj Kind.directory))]
+  [%host-secret : (→ [name String] (Obj Kind.secret))]
   [try-exec : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.container))]
   [passes? : (→ [self (Obj Kind.container)] (Obj Kind.bool))]
   [branch : (→ [cond (Obj Kind.bool)] [then (Obj k)] [else (Obj k)] (Obj k))]
@@ -52,10 +54,13 @@
   [Container.with-mounted-cache : (→ [self (Obj Kind.container)] [path Abs] [cache (Obj Kind.cache-volume)] (Obj Kind.container))]
   [Container.with-mounted-directory : (→ [self (Obj Kind.container)] [path Abs] [source (Obj Kind.directory)] (Obj Kind.container))]
   [Container.with-mounted-file : (→ [self (Obj Kind.container)] [path Abs] [source (Obj Kind.file)] (Obj Kind.container))]
+  [Container.with-mounted-secret : (→ [self (Obj Kind.container)] [path Abs] [source (Obj Kind.secret)] (Obj Kind.container))]
   [Container.with-mounted-temp : (→ [self (Obj Kind.container)] [path Abs] (Obj Kind.container))]
   [Container.with-new-file : (→ [self (Obj Kind.container)] [path Abs] [contents String] (Obj Kind.container))]
+  [Container.with-registry-auth : (→ [self (Obj Kind.container)] [address Image] [username String] [secret (Obj Kind.secret)] (Obj Kind.container))]
   [Container.with-rootfs : (→ [self (Obj Kind.container)] [directory (Obj Kind.directory)] (Obj Kind.container))]
   [Container.with-run : (→ [self (Obj Kind.container)] [command String] (Obj Kind.container))]
+  [Container.with-secret-variable : (→ [self (Obj Kind.container)] [name String] [secret (Obj Kind.secret)] (Obj Kind.container))]
   [Container.with-shell : (→ [self (Obj Kind.container)] [interactive (List String)] (Obj Kind.container))]
   [Container.with-symlink : (→ [self (Obj Kind.container)] [target String] [linkName String] (Obj Kind.container))]
   [Container.with-user : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
@@ -134,12 +139,16 @@
 (def GitRef : Type
   (Obj Kind.git-ref))
 
+(def Secret : Type
+  (Obj Kind.secret))
+
 ; Un sotto-piano qualsiasi, di qualunque tipo.
 (data Any
   [any (Obj k)])
 
 (def nodes : (→ (Obj k) (List Any))
   [(%host-dir x0)] (:: (any (%host-dir x0)) vuota)
+  [(%host-secret x0)] (:: (any (%host-secret x0)) vuota)
   [(try-exec x0 x1)] (:: (any (try-exec x0 x1)) (++ (nodes x0) vuota))
   [(passes? x0)] (:: (any (passes? x0)) (++ (nodes x0) vuota))
   [(branch x0 x1 x2)] (:: (any (branch x0 x1 x2)) (++ (nodes x0) (++ (nodes x1) (++ (nodes x2) vuota))))
@@ -180,10 +189,13 @@
   [(Container.with-mounted-cache x0 x1 x2)] (:: (any (Container.with-mounted-cache x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Container.with-mounted-directory x0 x1 x2)] (:: (any (Container.with-mounted-directory x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Container.with-mounted-file x0 x1 x2)] (:: (any (Container.with-mounted-file x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Container.with-mounted-secret x0 x1 x2)] (:: (any (Container.with-mounted-secret x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Container.with-mounted-temp x0 x1)] (:: (any (Container.with-mounted-temp x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-new-file x0 x1 x2)] (:: (any (Container.with-new-file x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Container.with-registry-auth x0 x1 x2 x3)] (:: (any (Container.with-registry-auth x0 x1 x2 x3)) (++ (nodes x0) (++ (nodes x3) vuota)))
   [(Container.with-rootfs x0 x1)] (:: (any (Container.with-rootfs x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [(Container.with-run x0 x1)] (:: (any (Container.with-run x0 x1)) (++ (nodes x0) vuota))
+  [(Container.with-secret-variable x0 x1 x2)] (:: (any (Container.with-secret-variable x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Container.with-shell x0 x1)] (:: (any (Container.with-shell x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-symlink x0 x1 x2)] (:: (any (Container.with-symlink x0 x1 x2)) (++ (nodes x0) vuota))
   [(Container.with-user x0 x1)] (:: (any (Container.with-user x0 x1)) (++ (nodes x0) vuota))
@@ -245,6 +257,7 @@
 
 (def chain : (→ (Obj k) (List Any))
   [(%host-dir x0)] (:: (any (%host-dir x0)) vuota)
+  [(%host-secret x0)] (:: (any (%host-secret x0)) vuota)
   [(try-exec x0 x1)] (:: (any (try-exec x0 x1)) (chain x0))
   [(passes? x0)] (:: (any (passes? x0)) (chain x0))
   [(branch x0 x1 x2)] (:: (any (branch x0 x1 x2)) (++ (chain x1) (chain x2)))
@@ -285,10 +298,13 @@
   [(Container.with-mounted-cache x0 x1 x2)] (:: (any (Container.with-mounted-cache x0 x1 x2)) (chain x0))
   [(Container.with-mounted-directory x0 x1 x2)] (:: (any (Container.with-mounted-directory x0 x1 x2)) (chain x0))
   [(Container.with-mounted-file x0 x1 x2)] (:: (any (Container.with-mounted-file x0 x1 x2)) (chain x0))
+  [(Container.with-mounted-secret x0 x1 x2)] (:: (any (Container.with-mounted-secret x0 x1 x2)) (chain x0))
   [(Container.with-mounted-temp x0 x1)] (:: (any (Container.with-mounted-temp x0 x1)) (chain x0))
   [(Container.with-new-file x0 x1 x2)] (:: (any (Container.with-new-file x0 x1 x2)) (chain x0))
+  [(Container.with-registry-auth x0 x1 x2 x3)] (:: (any (Container.with-registry-auth x0 x1 x2 x3)) (chain x0))
   [(Container.with-rootfs x0 x1)] (:: (any (Container.with-rootfs x0 x1)) (chain x0))
   [(Container.with-run x0 x1)] (:: (any (Container.with-run x0 x1)) (chain x0))
+  [(Container.with-secret-variable x0 x1 x2)] (:: (any (Container.with-secret-variable x0 x1 x2)) (chain x0))
   [(Container.with-shell x0 x1)] (:: (any (Container.with-shell x0 x1)) (chain x0))
   [(Container.with-symlink x0 x1 x2)] (:: (any (Container.with-symlink x0 x1 x2)) (chain x0))
   [(Container.with-user x0 x1)] (:: (any (Container.with-user x0 x1)) (chain x0))

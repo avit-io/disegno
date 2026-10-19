@@ -23,7 +23,7 @@
 ;; --- type checker ---
 
 (import! 'prelude)
-(for-each import! '(dagger time net files))            ; per i frammenti qui sotto; le ricette importano da sé
+(for-each import! '(dagger time net files aws))            ; per i frammenti qui sotto; le ricette importano da sé
 ;; L'accelerazione è fidata: su numeri piccoli deve coincidere con le clausole unarie.
 (for-each
   (lambda (f)
@@ -159,6 +159,35 @@
   (assert (not (string=? a b)))
   (assert (contiene? a "value: \"1\"")) (assert (contiene? b "value: \"2\"")))
 (rifiuta "(def dentro : Container (with-dir (from (container) \"a\") /x (overlay \"o\" empty)))" "atteso")
+
+;; Segreti: (Host-secret "NOME") nella firma, letto da una variabile d'ambiente. Il piano nomina la
+;; variabile, mai il valore; il container lo riceve con with-secret-variable.
+(check-string (format "
+  (def segreto : (→ [s (Host-secret \"PATH\")] (Export Dir))
+    [s] (branch (probe (with-secret-variable (from (container) \"alpine\") \"S\" s) [\"sh\" \"-c\" \"test -n \\\"$S\\\"\"])
+          (overlay ~s (with-file empty /esito \"ricevuto\\n\"))
+          (overlay ~s (with-file empty /esito \"vuoto\\n\"))))
+  (def segreto-male : (→ [s (Host-secret \"1 X\")] (Export Dir))
+    [s] skip)"
+  (string-append dir "/out6") (string-append dir "/out6")))
+(let ([p (plan->graphql (cadr (car (cdr (car (all-plans 'segreto))))))])
+  (assert (contiene? p "withSecretVariable(name: \"S\", secret: \"<secret(uri: \\\"env://PATH\\\")>\")"))
+  (assert (not (contiene? p (getenv "PATH")))))
+(assert (contiene? (guard (e [#t (condition-message e)]) (all-plans 'segreto-male) "") "non è il nome di una variabile d'ambiente"))
+(rifiuta "(def leggi : String (Query.secret \"env://HOME\"))" "nome sconosciuto")
+
+;; AWS: la CLI fissata, con le credenziali come segreti; dal vivo risponde, senza toccare AWS.
+(check-string (format "
+  (def cli-aws : (→ [s (Host-secret \"PATH\")] (Export Dir))
+    [s] (branch (probe (cli (aws s s \"eu-west-1\")) [\"sh\" \"-c\" \"aws --version && test -n \\\"$AWS_ACCESS_KEY_ID\\\" && test \\\"$AWS_DEFAULT_REGION\\\" = eu-west-1\"])
+          (overlay ~s (with-file empty /esito \"risponde\\n\"))
+          (overlay ~s (with-file empty /esito \"no\\n\"))))"
+  (string-append dir "/out7") (string-append dir "/out7")))
+(rifiuta "(def r : Region \"eu-west-9\")" "«eu-west-9» non è un Region valido")
+;; Che cosa scrive un piano: solo le put-parameter, non gli altri effetti.
+(check-string "(def scritti : (→ [a Aws] (≡ (parameters (then (put-parameter a /app/x \"1\") (apply (from (container) \"b\") [\"echo\"])))
+                                           [/app/x]))
+                 [a] auto)")
 (assert (contiene? (plan->graphql (car (car (car (car (all-plans 'contenuto))))))
                    "withExec(args: [\"grep\", \"-qF\", \"dati\", \"/f\"], expect: ANY) { exitCode }"))
 
@@ -412,6 +441,10 @@
     (assert (contiene? (cdr r2) "realizzato in "))
     (assert (contiene? (cdr r2) ": effetto sh -c \"echo effetto\", esportato "))
     (assert (string=? (call-with-input-file (string-append dir "/out5/dopo") get-string-all) "sì\n")))
+  (run 'segreto)
+  (assert (string=? (call-with-input-file (string-append dir "/out6/esito") get-string-all) "ricevuto\n"))
+  (run 'cli-aws)
+  (assert (string=? (call-with-input-file (string-append dir "/out7/esito") get-string-all) "risponde\n"))
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

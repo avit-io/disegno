@@ -1,0 +1,81 @@
+; AWS: la CLI ufficiale in un container fissato per digest, le credenziali come segreti, e per
+; cominciare il Parameter Store. Scrivere un parametro è un effetto (apply); chiedere se esiste,
+; o se vale un certo testo, è un'osservazione del mondo (probe): guida il ramo, e il valore non
+; torna al linguaggio.
+
+(import dagger)
+
+; --- regioni: un letterale "eu-west-1" atteso come Region si controlla mentre si tipa ---
+
+(def same? : (→ String String Bool)
+  [a b] (not (distinct? a b)))
+
+(def regions : (List String)
+  ["us-east-1" "us-east-2" "us-west-1" "us-west-2" "ca-central-1" "sa-east-1"
+   "eu-west-1" "eu-west-2" "eu-west-3" "eu-central-1" "eu-central-2" "eu-north-1" "eu-south-1" "eu-south-2"
+   "ap-south-1" "ap-south-2" "ap-northeast-1" "ap-northeast-2" "ap-northeast-3"
+   "ap-southeast-1" "ap-southeast-2" "ap-southeast-3" "ap-east-1" "me-south-1" "me-central-1" "af-south-1"])
+
+(def region? : (→ String Bool)
+  [s] (any? (same? s) regions))
+
+(record Region
+  [name : String]
+  [ok   : (So (region? name))])
+
+; --- le credenziali: due segreti dalla firma di main, e la regione ---
+
+(record Aws
+  [key-id     : Secret]
+  [secret-key : Secret]
+  [region     : Region])
+
+(def cli : (→ Aws Container)
+  [a] (pipe (container)
+            (from "amazon/aws-cli@sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de")   ; 2.31.18
+            (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
+            (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
+            (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a)))))
+
+; --- Parameter Store: i nomi sono percorsi, /app/prod/db-host ---
+; ponytail: la CLI legge un valore che comincia con file:// da quel file; put-secure-parameter lo
+; usa di proposito, un valore in chiaro così fatto andrebbe evitato.
+
+(def put-parameter : (→ Aws Abs String (Export Dir))
+  [a name value] (apply (cli a) ["aws" "ssm" "put-parameter" "--name" name "--value" value
+                                 "--type" "String" "--overwrite"]))
+
+; Un valore segreto non passa dagli argomenti: il segreto è montato come file, e la CLI lo legge.
+(def put-secure-parameter : (→ Aws Abs Secret (Export Dir))
+  [a name s] (apply (with-mounted-secret (cli a) /run/disegno/valore s)
+                    ["aws" "ssm" "put-parameter" "--name" name "--value" "file:///run/disegno/valore"
+                     "--type" "SecureString" "--overwrite"]))
+
+(def parameter-exists? : (→ Aws Abs (Remote Bool))
+  [a name] (probe (cli a) ["aws" "ssm" "get-parameter" "--name" name]))
+
+; Il confronto lo fa il container: nome e testo arrivano come argomenti posizionali, non nel comando.
+(def parameter-is? : (→ Aws Abs String (Remote Bool))
+  [a name value] (probe (cli a) ["sh" "-c" "test \"$(aws ssm get-parameter --name \"$1\" --query Parameter.Value --output text)\" = \"$2\""
+                                 "sh" name value]))
+
+; --- che cosa scrive un piano nel Parameter Store, seguendo le sue storie ---
+
+(def parameter-of : (→ (Export Dir) (List Abs))
+  [(apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) (:: _ (:: (arg-path p) _))))))]
+    (if (and (same? a "aws") (and (same? b "ssm") (same? c "put-parameter"))) [p] [])
+  [_] [])
+
+(def written : (→ Event (List Abs))
+  [(done e)] (parameter-of e)
+  [(seen _)] [])
+
+(def parameters : (→ (Export Dir) (List Abs))
+  [p] (concat-map (concat-map written) (histories p)))
+
+(def ssm? : (→ (Export Dir) Bool)               ; un'uscita che scrive un parametro
+  [e] (any? (λ [_] true) (parameter-of e)))
+
+; Ogni parametro che il piano può scrivere sta sotto r.
+(def Parameters-within : (→ Abs (Export Dir) Type)
+  [r p] (Every (λ [q] (⊑ q r)) (parameters p)))

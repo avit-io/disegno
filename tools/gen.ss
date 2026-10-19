@@ -10,7 +10,7 @@
 (define (at-root p) (if (string=? root "") p (string-append root "/" p)))
 (load (at-root "src/core.ss"))
 
-(define allowed '("Container" "Directory" "File" "CacheVolume" "GitRepository" "GitRef"))
+(define allowed '("Container" "Directory" "File" "CacheVolume" "GitRepository" "GitRef" "Secret"))
 
 (define typeref "type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }")
 (define schema
@@ -89,6 +89,7 @@
 ;; Snodi del nucleo: costruttori anch'essi, ma li realizza il runner (plan.ss).
 (define nucleo
   `((%host-dir ((path String)) ,(obj "directory"))
+    (%host-secret ((name String)) ,(obj "secret"))       ; il segreto di una variabile d'ambiente dell'host
     (try-exec ((self ,(obj "container")) (args (List Arg))) ,(obj "container"))
     (passes? ((self ,(obj "container"))) ,(obj "bool"))
     (branch ((cond ,(obj "bool")) (then (Obj k)) (else (Obj k))) (Obj k))
@@ -105,7 +106,8 @@
     ;; per questo è uno snodo dichiarato e non un campo generato.
     (cache-volume ((key String)) ,(obj "cache-volume"))))
 
-(define excluded '("cacheVolume"))                      ; campi radice resi snodi del nucleo
+(define excluded '("cacheVolume"                     ; campi radice resi snodi del nucleo
+                   "secret" "setSecret"))            ; un segreto entra solo dalla firma di main (Host-secret)
 
 (define all (append nucleo (apply append (map constructors (cons "Query" allowed)))))
 

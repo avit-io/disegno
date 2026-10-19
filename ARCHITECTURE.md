@@ -110,6 +110,8 @@ Un teorema parla quindi solo della forma del piano: «il test viene prima di pro
 
 **Effetti in sequenza.** Le uscite del piano si compongono: `(then a b)` realizza `a` e poi `b`, `skip` non fa niente, `(apply c cmd)` esegue un comando come effetto, fuori dalla cache, e `(probe c cmd)` osserva il mondo quando lo si raggiunge. Le proprietà d'ordine seguono il piano come una storia di osservazioni e uscite: `Before` («nessun deploy senza test») e `Precedes` («prod dopo staging») si provano per ogni sorgente.
 
+**Segreti.** Le credenziali entrano come gli input: `(Host-secret "AWS_ACCESS_KEY_ID")` nella firma di `main`, letto da una variabile d'ambiente. Il valore non torna al linguaggio e non compare nel piano, che nomina solo la variabile; un programma non può creare un segreto da sé né leggerne il testo.
+
 **Costo.** Niente piano dinamico: ciò che dipende da un risultato si esprime con `branch` su un'osservazione, non con un valore che torna indietro.
 
 ## 7. Il piano generato dallo schema
@@ -178,6 +180,7 @@ Il controllo verifica che il nome esista e sia del genere giusto (tipo, costrutt
 | `time` | istanti, durate, finestre | affine |
 | `net` | `Ip`, `Cidr`, `Port` | text, affine |
 | `dagger` | `Image`, `Arg`, `engine` (generato), `Host`, `Export`, i nomi corti, le proprietà del piano | text, paths, net |
+| `aws` | la CLI fissata per digest, le credenziali come segreti, `Region` controllata mentre si tipa; il Parameter Store: `put-parameter`, `put-secure-parameter` (effetti), `parameter-exists?`, `parameter-is?` (osservazioni), `Parameters-within` | dagger |
 | `files` | directory come valori (`file`, `put-file`, `merge`), che cosa scrivono (`writes`, `Disjoint-writes`, `Writes-within`), osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) | dagger |
 
 **Perché.** Così il prelude da solo è la teoria dei tipi, e lo si vede: i capitoli 1–4 del libro si controllano senza importare nulla. Il dominio (percorsi, rete, Dagger) diventa una libreria come le altre, e il nucleo non ha nomi di dominio nel codice.

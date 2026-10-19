@@ -81,6 +81,7 @@
       (located v
         (case c
           [(%host-dir) (list '(host) (field 'directory names args))]
+          [(%host-secret) (list `(secret (uri ,(string-append "env://" (gql-arg (car args) resolve)))))]   ; il nome, mai il valore
           [(try-exec) (method 'withExec '(expect ANY))]
           [(cache-volume) (list (field 'cacheVolume names args))]
           [(passes?) (method 'exitCode)]
@@ -122,10 +123,18 @@
   (let* ([sig (or (hashtable-ref sigs main #f) (oops "manca ~a" main))]
          [hosts (let loop ([t sig])
                   (if (eq? (car t) 'pi)
-                      (let ([dom (cadddr t)])
-                        (unless (and (eq? (caddr t) 'e) (eq? (car dom) 'app) (equal? (cadr dom) `(glob ,(bi 'host))) (eq? (car (caddr dom)) 'str))
-                          (oops "gli argomenti di main devono essere (Host \"percorso\")"))
-                        (cons (list 'vglob '%host-dir (list (cons (list 'vstr (in-dir (program-dir) (cadr (caddr dom)))) 'e)))
+                      (let* ([dom (cadddr t)]
+                             [kind (and (eq? (caddr t) 'e) (eq? (car dom) 'app) (eq? (car (caddr dom)) 'str)
+                                        (cond [(equal? (cadr dom) `(glob ,(bi 'host))) 'host]
+                                              [(equal? (cadr dom) `(glob ,(bi 'host-secret))) 'secret]
+                                              [else #f]))]
+                             [s (and kind (cadr (caddr dom)))])
+                        (unless kind (oops "gli argomenti di main devono essere (Host \"percorso\") o (Host-secret \"NOME\")"))
+                        (when (and (eq? kind 'secret) (not (env-name? s)))
+                          (oops "Host-secret: «~a» non è il nome di una variabile d'ambiente" s))
+                        (cons (if (eq? kind 'host)
+                                  (list 'vglob '%host-dir (list (cons (list 'vstr (in-dir (program-dir) s)) 'e)))
+                                  (list 'vglob '%host-secret (list (cons (list 'vstr s) 'e))))
                               (loop (list-ref t 4))))
                       '()))])
     (vapp-sp (ev '() `(glob ,main)) (map (lambda (h) (cons h 'e)) hosts))))
@@ -133,6 +142,11 @@
 ;; Un effetto e un'osservazione del mondo non vanno in cache: una variabile d'ambiente nuova a ogni
 ;; esecuzione, subito prima del comando, così la preparazione dell'ambiente resta in cache.
 (define run-id (make-parameter "<esecuzione>"))
+
+(define (env-name? s)                                    ; AWS_ACCESS_KEY_ID: lettere, cifre, _, non una cifra in testa
+  (let ([cs (string->list s)])
+    (and (pair? cs) (not (char-numeric? (car cs)))
+         (for-all (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (char=? c #\_))) cs))))
 (define (fresh-exec v resolve . fixed)                   ; (apply c cmd) o (probe c cmd) → catena fino al withExec
   (let* ([xs (explicit (caddr v))] [recv (chain (car xs) resolve)]
          [ch (located v (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(run-id)))

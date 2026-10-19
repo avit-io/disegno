@@ -39,6 +39,13 @@
   [_] Directory)
 (builtin host Host)
 
+; Un segreto dall'host: (Host-secret "AWS_ACCESS_KEY_ID") nella firma di main, letto da una
+; variabile d'ambiente. Il valore non torna mai al linguaggio e non compare nel piano: si passa ai
+; container con with-secret-variable o with-mounted-secret.
+(def Host-secret : (→ String Type)
+  [_] Secret)
+(builtin host-secret Host-secret)
+
 ; --- nomi corti: file system del motore, valori immutabili; scrivere è costruire una nuova directory ---
 
 (def Dir : Type
