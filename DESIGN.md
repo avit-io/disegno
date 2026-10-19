@@ -229,6 +229,61 @@ La distinzione di fase viene gratis dai tipi: `(Remote Bool)` non è `Bool`, qui
 
 Il runner realizza `branch` chiedendo la condizione e sottomettendo il ramo scelto, nella stessa sessione. A secco stampa un piano per ogni combinazione di esiti, con la condizione che lo sceglie. Poiché entrambi i rami stanno nel piano, una proprietà del piano va provata su tutti e due: è l'analisi statica dei funtori applicativi selettivi (Mokhov e altri, 2019).
 
+## Effetti in sequenza (proposta)
+
+Proposta, non ancora implementata. È il passo che serve alle librerie per il cloud e per gli strumenti DevOps (AWS, Azure, Kubernetes): una pipeline vera fa più cose in ordine, e alcune agiscono sul mondo.
+
+**Il problema.** Oggi un piano ha un'uscita sola, in cima: `overlay`, `replace` o `publish`. Un deploy si può scrivere solo come `with-exec` dentro un container, e lì è un effetto nascosto:
+- Dagger lo mette in cache, quindi la seconda esecuzione non rifà il deploy;
+- `effects` e `Before` non lo vedono, quindi «niente deploy senza test» non si può provare;
+- nessuna regola dice in che ordine avvengono il deploy e l'export.
+
+**Quattro costruttori del nucleo**, accanto a `branch`, `overlay`, `replace` e `publish`. Sono uscite, cioè `(Export Dir)`, e stanno nell'elenco degli snodi di `gen.ss`:
+
+| Costruttore | Tipo | Che cosa fa |
+|---|---|---|
+| `(apply c cmd)` | `(→ Container (List Arg) (Export Dir))` | esegue `cmd` in `c` come effetto: la preparazione di `c` resta in cache, `cmd` no |
+| `(then a b)` | `(→ (Export Dir) (Export Dir) (Export Dir))` | realizza `a`, poi `b`; se `a` fallisce, `b` non avviene |
+| `skip` | `(Export Dir)` | l'uscita che non fa niente, per i rami di un `branch` |
+| `(probe c cmd)` | `(→ Container (List Arg) (Remote Bool))` | un'osservazione del mondo, non in cache: «lo staging risponde?» |
+
+**Semantica.**
+- **L'ordine** è quello di `then`: da sinistra a destra, e ci si ferma al primo fallimento. Dentro ogni uscita Dagger resta pigro e parallelo come oggi.
+- **Le osservazioni si fanno quando le si raggiunge.** Un `branch` dentro il secondo argomento di `then` si risolve dopo che il primo è stato realizzato, quindi un `probe` vede il mondo dopo il deploy in staging. Il piano resta statico: entrambi i rami ci sono, e `disegno plan` stampa una sequenza di uscite per ogni combinazione di esiti.
+- **La cache.** Il runner aggiunge `withEnvVariable(DISEGNO_RUN, <id dell'esecuzione>)` subito prima del comando di `apply` e di `probe`. Così si rifà solo l'effetto, non la costruzione dell'ambiente. `passes?` resta in cache, perché osserva il risultato di un input, non il mondo.
+- **Il resoconto.** Una voce che contiene un `apply` lo dice: «effetto», con il comando. Le voci successive a un effetto fallito compaiono tra quelle non realizzate.
+
+**Le proprietà.** `effects` impara a seguire `then`. Ogni uscita porta con sé le osservazioni che la proteggono e le uscite che la precedono. Così, oltre a `Before`, si scrive l'ordine:
+
+```
+(def rilascio : (→ [src (Host ".")] (Export Dir))
+  [src] (branch (passes? (test src))
+          (then (publish (image src) "registry.example.com/app:1")
+                (then (apply (kubectl staging) ["kubectl" "apply" "-f" "/k8s"])
+                      (branch (probe (curl) ["curl" "-fsS" "https://staging.example.com/health"])
+                        (apply (kubectl prod) ["kubectl" "apply" "-f" "/k8s"])
+                        skip)))
+          (overlay "reports" (report src))))
+
+(def test-prima-del-deploy : (→ [src Dir] (Before test? apply? (rilascio src))) [src] auto)
+(def prod-dopo-staging : (→ [src Dir] (Precedes staging? prod? (rilascio src))) [src] auto)
+```
+
+`Precedes` dice che ogni effetto che soddisfa `prod?` ha davanti, nella sua sequenza, un effetto che soddisfa `staging?`. Come `Before`, vale per ogni sorgente, perché `effects` non scende nelle directory.
+
+**Perché `then` è binario.** Una sequenza `(sequence [a b c])` sarebbe più comoda, ma un costruttore di `Obj` con un argomento `(List (Obj k))` è un induttivo annidato, e la positività lo rifiuta. Il binario con `skip` basta, ed è un monoide: le librerie possono offrire una forma più comoda come `def`.
+
+**Che cosa non si fa, per ora.**
+- uscite in parallelo: Dagger parallelizza già dentro ogni uscita;
+- compensazioni e rollback: un `(otherwise a b)`, che realizza `b` se `a` fallisce, si aggiungerebbe allo stesso modo;
+- attese e tentativi ripetuti, come «aspetta che lo staging sia pronto»: un `probe` con un numero massimo di tentativi resterebbe totale, ma va deciso dove sta il conteggio.
+
+**Il passo dopo: i segreti.** Un `apply` verso il cloud vuole credenziali. Il modello è quello di `Host`: `main` dichiara nella firma `(Secret "AWS_SECRET_ACCESS_KEY")`, il runner lo legge con `secret(uri: "env://AWS_SECRET_ACCESS_KEY")` e lo passa con `withSecretVariable`. Il valore non torna al linguaggio e non compare nel piano stampato. Serve aggiungere `Secret` ai tipi del generatore.
+
+**Da decidere.**
+1. `apply` con l'ambiente e il comando separati, così la preparazione resta in cache. In alternativa, `(apply c)` sull'ultimo `with-exec` di `c`: si scrive meno, ma è meno chiaro che cosa sia l'effetto.
+2. Se un `probe` conta come test per `Before`, come i controlli sul contenuto. La proposta è di sì: «deploy in prod solo se lo staging risponde» è un test sul mondo.
+
 ## Nucleo fidato
 
 La parte sporca è piccola, chiusa e scritta da chi progetta il linguaggio.
@@ -398,6 +453,7 @@ In cambio della purezza e della semplicità:
 - [x] Negazione nei teoremi: `¬`, pattern assurdi `()`, refutazione con `auto`.
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
+- [ ] Effetti in sequenza (`apply`, `then`, `skip`, `probe`) e segreti come input di `main`: proposta nella sezione «Effetti in sequenza».
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
 - [x] Passaggio a Dagger 1.0 (beta.18): il flake scarica il binario da dl.dagger.io, `dagger api with-session` e `DAGGER_ENGINE`. Nessun cambio nel runner; nello schema `GitRepository.latest-version` diventa `latest`, `commit` restituisce `GitCommit` (escluso), nuovi `with-run`, `with-shell`, `GitRef.contains`. Da tornare a github:dagger/nix quando esce la 1.0.
