@@ -26,14 +26,19 @@
       # Motore Dagger dedicato con il bundle CA dell'host (proxy TLS aziendale): il motore
       # installa le CA in /usr/local/share/ca-certificates e le passa ai container che esegue.
       # Senza bundle (per esempio su Ubuntu, in CI) il motore usa le sue CA.
-      # Si ricrea se è fermo o di un'altra versione.
+      # Si ricrea se è fermo o di un'altra versione. DISEGNO_HOST_CA sceglie il bundle: un percorso
+      # dell'host, o none; nel container di Disegno vale none, perché i suoi percorsi non sono
+      # quelli dell'host su cui Docker monta i volumi.
       # ponytail: se il bundle dell'host cambia, `docker rm -f disegno-engine` e si ricrea.
       engine = pkgs.writeShellScript "disegno-engine" ''
         if [ "$(docker inspect -f '{{.State.Running}} {{.Config.Image}}' disegno-engine 2>/dev/null)" != "true registry.dagger.io/engine:v${d.version}" ]; then
           docker rm -f disegno-engine >/dev/null 2>&1
-          ca=""
-          if [ -e /etc/ssl/certs/ca-bundle.crt ]; then
-            ca="-v $(readlink -f /etc/ssl/certs/ca-bundle.crt):/usr/local/share/ca-certificates/host-bundle.crt:ro"
+          ca="" host_ca="''${DISEGNO_HOST_CA:-}"
+          if [ -z "$host_ca" ] && [ -e /etc/ssl/certs/ca-bundle.crt ]; then
+            host_ca=$(readlink -f /etc/ssl/certs/ca-bundle.crt)
+          fi
+          if [ -n "$host_ca" ] && [ "$host_ca" != none ]; then
+            ca="-v $host_ca:/usr/local/share/ca-certificates/host-bundle.crt:ro"
           fi
           docker run -d --privileged --name disegno-engine $ca \
             -v disegno-engine:/var/lib/dagger registry.dagger.io/engine:v${d.version} >/dev/null
@@ -75,8 +80,27 @@
         substitute ${./editors/nvim/ftplugin/disegno.lua} $out/ftplugin/disegno.lua \
           --replace-fail @disegno@ ${disegno}/bin/disegno
       '';
+      # Disegno come immagine, per una CI senza Nix (Jenkins, GitLab):
+      #   docker run --rm --user "$(id -u):$(id -g)" --group-add "$(stat -c %g /var/run/docker.sock)" \
+      #     -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" -w /work \
+      #     -e ENVIRONMENT -e TAG … ghcr.io/avit-io/disegno:<commit> run .ci/release.disegno
+      # Il motore Dagger gira come container accanto, sul Docker dell'host (socket montato); con
+      # --user i file esportati sono di chi lancia, non di root.
+      image = pkgs.dockerTools.buildLayeredImage {
+        name = "ghcr.io/avit-io/disegno";
+        tag = "latest";
+        contents = [ disegno (pkgs.docker_29.override { clientOnly = true; }) pkgs.coreutils pkgs.bash ];   # solo il client: il demone è quello dell'host
+        extraCommands = "mkdir -m 1777 tmp work";
+        config = {
+          Entrypoint = [ "${disegno}/bin/disegno" ];
+          WorkingDir = "/work";
+          Env = [ "PATH=/bin" "HOME=/tmp" "DISEGNO_HOST_CA=none" ];
+          Labels."org.opencontainers.image.source" = "https://github.com/avit-io/disegno";
+          Labels."org.opencontainers.image.description" = "Disegno: un linguaggio totale con tipi dipendenti per CI/CD, su Dagger";
+        };
+      };
     in {
-      packages.${system} = { default = disegno; inherit grammar nvim-disegno; };
+      packages.${system} = { default = disegno; inherit grammar nvim-disegno image; };
       apps.${system}.default = { type = "app"; program = "${disegno}/bin/disegno"; };
 
       devShells.${system}.default = pkgs.mkShell {

@@ -42,6 +42,14 @@ nix run github:avit-io/disegno -- check prog.disegno   # disegno interno: tipi e
 nix run github:avit-io/disegno -- plan  prog.disegno   # disegno esterno: il piano, in GraphQL
 nix run github:avit-io/disegno -- run   prog.disegno   # opera: l'esecuzione su Dagger
 ```
+Senza Nix, per esempio su Jenkins, c'è l'immagine `ghcr.io/avit-io/disegno`, pubblicata dalla CI a ogni commit di `main` (tag: il commit). Il motore Dagger gira accanto, sul Docker dell'host:
+
+```
+docker run --rm --user "$(id -u):$(id -g)" --group-add "$(stat -c %g /var/run/docker.sock)" \
+  -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/work" -w /work \
+  ghcr.io/avit-io/disegno:<commit> run prog.disegno
+```
+
 
 In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza terminale stampa invece un resoconto: una riga per voce del programma (le definizioni che costruiscono un pezzo di piano), con esito e tempo; «ambiente» per le voci che preparano soltanto, il comando di lavoro per le altre; la risposta delle osservazioni dei `branch`; e in fondo che cosa è stato realizzato. L'output dei comandi è la prova: su GitHub Actions e GitLab sta nel gruppo richiudibile della voce. Una voce fallita mostra le ultime righe e la posizione del suo `with-exec` (`file:riga:colonna`, anche nel terminale); su GitHub anche un'annotazione su quel file e quella riga.
 

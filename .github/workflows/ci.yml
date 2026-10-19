@@ -43,3 +43,25 @@ jobs:
           cat dal-vivo.log
           if [ $s != 0 ]; then { grep -E 'Exception|assertion' dal-vivo.log; grep -v '^\s*$' dal-vivo.log | tail -8; } | sed 's/^/::error::/'; fi
           exit $s
+
+  # Disegno come immagine, per le CI senza Nix: ghcr.io/avit-io/disegno:<commit> e :latest,
+  # solo da main e dopo i test. Il digest stampato è quello da fissare in chi la usa.
+  immagine:
+    needs: [ci, dal-vivo]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - name: Immagine
+        run: nix build .#image -o result-image && docker load < result-image
+      - name: Pubblica su GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag ghcr.io/avit-io/disegno:latest "ghcr.io/avit-io/disegno:${{ github.sha }}"
+          docker push "ghcr.io/avit-io/disegno:${{ github.sha }}"
+          docker push ghcr.io/avit-io/disegno:latest
+          docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/avit-io/disegno:${{ github.sha }}"
