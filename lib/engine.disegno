@@ -110,6 +110,7 @@
   [GitRef.common-ancestor : (→ [self (Obj Kind.git-ref)] [other (Obj Kind.git-ref)] (Obj Kind.git-ref))]
   [GitRef.contains : (→ [self (Obj Kind.git-ref)] [other (Obj Kind.git-ref)] (Obj Kind.bool))]
   [GitRef.tree : (→ [self (Obj Kind.git-ref)] (Obj Kind.directory))])
+(builtin obj Obj)
 
 (def Container : Type
   (Obj Kind.container))

@@ -22,6 +22,36 @@
 (define (gget n) (and (symbol? n) (hashtable-ref globals n #f)))
 (define def-pos (make-eq-hashtable))                    ; globale → posizione della definizione (per l'LSP)
 (define (define-global! n g) (hashtable-set! globals n g) (when (here) (hashtable-set! def-pos n (here))))
+
+;; Builtin: i nomi della libreria che il nucleo conosce. Le chiavi sono un elenco chiuso del
+;; nucleo; la libreria lega ogni chiave a un suo nome con (builtin chiave nome), come i BUILTIN
+;; di Agda. Così il checker non nomina la libreria: i letterali 0, "x", /out, [a b] e
+;; "10.0.0.0/8", le prove calcolate da auto, l'accelerazione e il piano passano da qui.
+;; Fidato come extern: si controlla solo il genere del nome, non che abbia la forma attesa.
+(define builtin-keys                                    ; chiave → genere del nome
+  '((nat . data) (zero . con) (suc . con)                ; i numerali 0, 1, 2…
+    (bool . data) (true . con) (false . con)             ; i risultati di primitive e accelerazione
+    (unit . data) (tt . con) (empty . data) (eq . data) (refl . con) (sigma . data)   ; auto
+    (list . data) (nil . con) (cons . con)               ; [a b]
+    (string . extern)                                    ; "…"
+    (abs . data) (root . con) (slash . con) (rel . data) (here . con) (step . con) (segment . data)   ; /out, "bin/x"
+    (duration . data) (instant . data) (ip . data) (cidr . data)   ; letterali letti secondo il tipo
+    (plus . def) (monus . def) (times . def) (leq? . def) (lt? . def) (nat-eq? . def) (pow2 . def)   ; accelerati
+    (obj . data) (host . def)))                          ; il piano, e l'input di main
+(define builtins (make-eq-hashtable))                   ; chiave → nome
+(define builtin-of (make-eq-hashtable))                 ; nome → chiave
+(define (bi k) (hashtable-ref builtins k #f))
+(define (bi? n k) (and n (eq? n (hashtable-ref builtins k #f))))
+
+(define (check-builtin d)
+  (unless (privileged) (oops "builtin è riservato alla libreria standard"))
+  (unless (and (= (length d) 3) (symbol? (cadr d)) (symbol? (caddr d))) (oops "builtin malformato: ~s" d))
+  (let* ([k (cadr d)] [n (caddr d)] [kind (assq k builtin-keys)] [g (gget n)])
+    (unless kind (oops "builtin: chiave sconosciuta ~a" k))
+    (when (bi k) (oops "builtin: ~a è già legato a ~a" k (bi k)))
+    (unless (and g (eq? (g-kind g) (cdr kind))) (oops "builtin ~a: ~a non è un ~a" k n (cdr kind)))
+    (hashtable-set! builtins k n)
+    (hashtable-set! builtin-of n k)))
 (define (con? n) (let ([g (gget n)]) (and g (eq? (g-kind g) 'con))))
 (define (fresh-name! n)
   (when (memq n '(→ Type _ pipe auto let λ the)) (oops "~a è una parola riservata" n))
@@ -80,8 +110,8 @@
 ;; (come in Lean). zero e add1 di un numero diventano numeri; un pattern add1 sottrae 1.
 (define (numeral v)
   (let ([sp (caddr v)])
-    (cond [(and (eq? (cadr v) 'zero) (null? sp)) '(vnum 0)]
-          [(and (eq? (cadr v) 'add1) (= (length sp) 1))
+    (cond [(and (bi? (cadr v) 'zero) (null? sp)) '(vnum 0)]
+          [(and (bi? (cadr v) 'suc) (= (length sp) 1))
            (let ([x (force (caar sp))]) (if (eq? (car x) 'vnum) `(vnum ,(+ 1 (cadr x))) v))]
           [else v])))
 
@@ -89,7 +119,7 @@
 (define (reduce n sp) (or (try-reduce n sp) `(vglob ,n ,sp)))
 (define (try-reduce n sp)
   (let* ([g (gget n)] [info (and (eq? (g-kind g) 'def) (g-info g))])
-    (cond [(and info (accelerate) (let ([f (assq n fast)]) (and f (fast-apply f sp))))]   ; prima: numeri nativi
+    (cond [(and info (accelerate) (let ([f (assq (hashtable-ref builtin-of n #f) fast)]) (and f (fast-apply f sp))))]   ; prima: numeri nativi
           [info (and (>= (length sp) (car info))
                      (let ([r (if (hashtable-ref voci n #f)     ; il corpo di una voce: i suoi passi
                                   (parameterize ([current-voce n]) (match-clauses (cdr info) (list-head sp (car info))))
@@ -101,21 +131,21 @@
                   (and (= (length args) (cadr p)) (for-all (lambda (a) (memq (car a) '(vstr vnum))) args)
                        (let ([r (apply (caddr p) (map cadr args))])
                          (cond [(string? r) `(vstr ,r)] [(number? r) `(vnum ,r)]
-                               [r '(vglob true ())] [else '(vglob false ())])))))]
+                               [r `(vglob ,(bi 'true) ())] [else `(vglob ,(bi 'false) ())])))))]
           [else #f])))
 
 ;; Accelerazione (fidata, come in Lean): queste def della libreria standard, su argomenti numerici,
 ;; si calcolano in Scheme invece che per clausole. Nella logica restano le definizioni unarie;
 ;; test.ss verifica che i due calcoli coincidano. accelerate si spegne per quel confronto.
 (define accelerate (make-parameter #t))
-(define fast `((+ 2 ,+) (∸ 2 ,(lambda (a b) (max 0 (- a b)))) (* 2 ,*)
-               (≤? 2 ,<=) (<? 2 ,<) (nat=? 2 ,=) (pow2 1 ,(lambda (k) (expt 2 k)))))
+(define fast `((plus 2 ,+) (monus 2 ,(lambda (a b) (max 0 (- a b)))) (times 2 ,*)          ; per chiave builtin
+               (leq? 2 ,<=) (lt? 2 ,<) (nat-eq? 2 ,=) (pow2 1 ,(lambda (k) (expt 2 k)))))
 (define (fast-apply f sp)
   (and (= (length sp) (cadr f))
        (let ([args (map (lambda (a) (force (car a))) sp)])
          (and (for-all (lambda (a) (eq? (car a) 'vnum)) args)
               (let ([r (apply (caddr f) (map cadr args))])
-                (cond [(number? r) `(vnum ,r)] [r '(vglob true ())] [else '(vglob false ())]))))))
+                (cond [(number? r) `(vnum ,r)] [r `(vglob ,(bi 'true) ())] [else `(vglob ,(bi 'false) ())]))))))
 
 ;; Primitive pure (elenco chiuso del nucleo): nome → (arità procedura). Calcolano solo su letterali,
 ;; stringhe e numeri, e restituiscono una stringa, un numero o un booleano.
@@ -155,13 +185,14 @@
                 (component? (car name+tag))
                 (for-all component? (if (and (pair? path) (registry? (car path))) (cdr path) path)))))))
 
-;; Lettori di letterali (nucleo): stringa → espressione Disegno, o #f se malformata.
+;; Lettori di letterali (nucleo): stringa → i campi del valore, o #f se malformata. Il costruttore
+;; è l'unico del tipo legato alla chiave (builtin duration Duration…); le prove si calcolano con auto.
 (define (digits->nat s)
   (and (> (string-length s) 0) (for-all char-numeric? (string->list s)) (string->number s)))
 
-(define (read-duration s)                                ; "90s", "5m", "1h30m", "2d" → (secs n)
+(define (read-duration s)                                ; "90s", "5m", "1h30m", "2d" → (secondi)
   (let loop ([cs (string->list s)] [num '()] [total 0] [any #f])
-    (cond [(null? cs) (and any (null? num) `(secs ,total))]
+    (cond [(null? cs) (and any (null? num) (list total))]
           [(char-numeric? (car cs)) (loop (cdr cs) (cons (car cs) num) total any)]
           [(and (pair? num) (assv (car cs) '((#\d . 86400) (#\h . 3600) (#\m . 60) (#\s . 1))))
            => (lambda (u) (loop (cdr cs) '() (+ total (* (cdr u) (string->number (list->string (reverse num))))) #t))]
@@ -173,7 +204,7 @@
          [doe (+ (* yoe 365) (quotient yoe 4) (- (quotient yoe 100)) doy)])
     (+ (* era 146097) doe -719468)))
 
-(define (read-instant s)                                 ; "2026-10-15" o "2026-10-15T10:00:00Z" → (at secondi)
+(define (read-instant s)                                 ; "2026-10-15" o "2026-10-15T10:00:00Z" → (secondi)
   (let ([n (string-length s)])
     (and (or (= n 10) (and (= n 20) (char=? (string-ref s 10) #\T) (char=? (string-ref s 19) #\Z)
                            (char=? (string-ref s 13) #\:) (char=? (string-ref s 16) #\:)))
@@ -182,7 +213,7 @@
                [h (if (= n 20) (digits->nat (substring s 11 13)) 0)] [mi (if (= n 20) (digits->nat (substring s 14 16)) 0)]
                [se (if (= n 20) (digits->nat (substring s 17 19)) 0)])
            (and y mo d h mi se (<= 1 mo 12) (<= 1 d 31) (< h 24) (< mi 60) (< se 60) (>= y 1970)
-                `(at ,(+ (* 86400 (days-from-civil y mo d)) (* 3600 h) (* 60 mi) se)))))))
+                (list (+ (* 86400 (days-from-civil y mo d)) (* 3600 h) (* 60 mi) se)))))))
 
 (define (ip->nat s)                                      ; "10.0.0.5" → 167772165
   (let ([parts (split-on s #\.)])
@@ -191,7 +222,7 @@
            (and (for-all (lambda (o) (and o (<= o 255))) os)
                 (fold-left (lambda (acc o) (+ (* acc 256) o)) 0 os))))))
 
-(define (read-ip s) (let ([n (ip->nat s)]) (and n `(ip ,n auto))))
+(define (read-ip s) (let ([n (ip->nat s)]) (and n (list n))))
 
 (define (read-cidr s)                                    ; "10.0.0.0/8": il blocco è (prefisso, lunghezza)
   (let ([parts (split-on s #\/)])
@@ -199,9 +230,9 @@
          (let ([base (ip->nat (car parts))] [len (digits->nat (cadr parts))])
            (and base len (<= len 32)
                 (let ([size (expt 2 (- 32 len))])
-                  (and (= 0 (remainder base size)) `(cidr ,(quotient base size) ,len auto))))))))
+                  (and (= 0 (remainder base size)) (list (quotient base size) len))))))))
 
-(define readers `((Duration . ,read-duration) (Instant . ,read-instant) (Ip . ,read-ip) (Cidr . ,read-cidr)))
+(define readers `((duration . ,read-duration) (instant . ,read-instant) (ip . ,read-ip) (cidr . ,read-cidr)))
 
 ;; Un passo di percorso: non vuoto, senza /, né . né ..
 (define (segment? s) (and (> (string-length s) 0) (not (memv #\/ (string->list s))) (not (member s '("." "..")))))
@@ -231,8 +262,8 @@
     [(pdot) 'yes]
     [(pcon) (let ([v (force v)])
               (cond [(eq? (car v) 'vnum)
-                     (cond [(and (eq? (cadr p) 'zero) (= (cadr v) 0)) 'yes]
-                           [(and (eq? (cadr p) 'add1) (> (cadr v) 0)) (match (car (caddr p)) `(vnum ,(- (cadr v) 1)) env)]
+                     (cond [(and (bi? (cadr p) 'zero) (= (cadr v) 0)) 'yes]
+                           [(and (bi? (cadr p) 'suc) (> (cadr v) 0)) (match (car (caddr p)) `(vnum ,(- (cadr v) 1)) env)]
                            [else 'no])]
                     [(not (and (eq? (car v) 'vglob) (con? (cadr v)))) 'stuck]
                     [(eq? (cadr v) (cadr p)) (match-all (caddr p) (map car (caddr v)) env)]
@@ -284,7 +315,7 @@
       [else (ufail 'mismatch)])))
 
 (define (unify-num l n b)                               ; un numero contro add1 x, zero o altro
-  (cond [(and (eq? (car b) 'vglob) (eq? (cadr b) 'add1) (= (length (caddr b)) 1))
+  (cond [(and (eq? (car b) 'vglob) (bi? (cadr b) 'suc) (= (length (caddr b)) 1))
          (if (= n 0) (ufail 'conflict) (unify l `(vnum ,(- n 1)) (caar (caddr b))))]
         [(and (eq? (car b) 'vglob) (con? (cadr b))) (ufail 'conflict)]
         [else (ufail 'mismatch)]))
@@ -328,7 +359,7 @@
     [(glob) (let ([g (gget (cadr t))]) (if g (g-type g) (oops "kernel: ~a non esiste" (cadr t))))]
     [(type) `(vtype ,(+ (cadr t) 1))]                   ; Type n : Type n+1, mai Type : Type
     [(str) (string-type)]
-    [(num) '(vglob Nat ())]
+    [(num) `(vglob ,(bi 'nat) ())]
     [(ann) (let ([ty (ev env (caddr t))]) (k-type-in env tys l (caddr t)) (k-check env tys l (cadr t) ty) ty)]
     [(at) (k-infer env tys l (caddr t))]
     [(pi) (let ([la (k-level (k-infer env tys l (cadddr t)))])
@@ -363,8 +394,8 @@
 (define (index-of x xs)
   (let loop ([xs xs] [i 0]) (cond [(null? xs) #f] [(equal? (car xs) x) i] [else (loop (cdr xs) (+ i 1))])))
 (define (nat? e) (and (integer? e) (exact? e) (>= e 0)))
-(define (nat n) (if (zero? n) '(glob zero) `(app (glob add1) ,(nat (- n 1)) e)))
-(define (string-type) (if (gget 'String) '(vglob String ()) (oops "i letterali stringa richiedono String: (import text)")))
+(define (nat n) (if (zero? n) `(glob ,(bi 'zero)) `(app (glob ,(bi 'suc)) ,(nat (- n 1)) e)))
+(define (string-type) (if (bi 'string) `(vglob ,(bi 'string) ()) (oops "i letterali stringa richiedono String: (import text)")))
 
 ;; [..] arriva come (%br ..) (vedi brackets): in (→ ...) è un binder [x T], in un termine una lista.
 (define (binder? e) (and (pair? e) (memq (car e) '(%br %imp)) (= (length e) 3) (symbol? (cadr e))))  ; %imp: implicito, solo interno
@@ -377,14 +408,14 @@
     [(eq? e 'Type) (values '(type 0) '(vtype 1))]
     [(string? e) (values `(str ,e) (string-type))]
     [(eq? e '_) (oops "_ non è un termine")]
-    [(nat? e) (unless (gget 'Nat) (oops "i letterali richiedono Nat")) (values `(num ,e) '(vglob Nat ()))]
+    [(nat? e) (unless (bi 'nat) (oops "i letterali numerici richiedono il builtin nat")) (values `(num ,e) `(vglob ,(bi 'nat) ()))]
     [(symbol? e)
      (cond [(index-of e (ctx-names c)) => (lambda (i) (values `(var ,i) (list-ref (ctx-tys c) i)))]
            [(assq e (ctx-defs c)) => (lambda (d) (values (reify (ctx-l c) (cadr d)) (caddr d)))]
            [(and (not (privileged)) (char=? (string-ref (symbol->string e) 0) #\%)) (oops "~a è riservato al nucleo" e)]
            [(gget e) => (lambda (g) (values `(glob ,e) (g-type g)))]
            [(root-field e) => (lambda (n) (values `(glob ,n) (g-type (gget n))))]
-           [(path-literal? e) (values (path-term c e) (quote (vglob Abs ())))]
+           [(path-literal? e) (values (path-term c e) `(vglob ,(bi 'abs) ()))]
            [else (oops "nome sconosciuto: ~a" e)])]
     [(let-form? e) (let-values ([(c body) (let-bind c e)]) (infer c body))]
     [(and (pair? e) (eq? (car e) 'the) (= (length e) 3))   ; (the T e): e controllato contro T
@@ -403,7 +434,7 @@
                                (list s acc)))
                          (cadr e) (cddr e)))]
     [(and (pair? e) (eq? (car e) '%br))                ; ["a" "b"] = (:: "a" (:: "b" vuota))
-     (infer c (fold-right (lambda (x acc) (list ':: x acc)) 'vuota (cdr e)))]
+     (infer c (fold-right (lambda (x acc) (list (bi 'cons) x acc)) (bi 'nil) (cdr e)))]
     [(and (pair? e) (symbol? (car e)) (not (known? c (car e))) (pair? (cdr e)) (pair? (qualified (car e))))
      ;; nome corto con argomenti: il tipo del primo argomento sceglie il metodo (with-exec su un
      ;; Container è Container.with-exec); altrimenti è un campo radice. Il primo argomento si
@@ -461,9 +492,9 @@
 ;; Per le relazioni induttive, come (⊑ p q), cerca una prova componendo costruttori.
 (define (auto c ty)
   (let ([v (force ty)])
-    (cond [(and (eq? (car v) 'vglob) (eq? (cadr v) '⊤)) '(glob tt)]
-          [(and (eq? (car v) 'vglob) (eq? (cadr v) '≡)) (check c 'refl ty)]
-          [(and (eq? (car v) 'vglob) (eq? (cadr v) '⊥)) (oops "auto: la proposizione si riduce a ⊥, non a vero")]
+    (cond [(and (eq? (car v) 'vglob) (bi? (cadr v) 'unit)) `(glob ,(bi 'tt))]
+          [(and (eq? (car v) 'vglob) (bi? (cadr v) 'eq)) (check c (bi 'refl) ty)]
+          [(and (eq? (car v) 'vglob) (bi? (cadr v) 'empty)) (oops "auto: la proposizione si riduce a ⊥, non a vero")]
           [(neg-dom v) => (lambda (a) (refutation c v a))]
           [else (let ([b (box #f)])
                   (or (parameterize ([blame b]) (search c v 32))
@@ -475,7 +506,7 @@
 ;; verificare come definizione ausiliaria: copertura e assurdi li controlla il checker.
 (define (neg-dom v)
   (and (eq? (car v) 'vpi) (eq? (caddr v) 'e)
-       (let ([cod (force (pi-cod v (vvar 0)))]) (and (eq? (car cod) 'vglob) (eq? (cadr cod) '⊥) (pi-dom v)))))
+       (let ([cod (force (pi-cod v (vvar 0)))]) (and (eq? (car cod) 'vglob) (bi? (cadr cod) 'empty) (pi-dom v)))))
 
 (define auto-count 0)
 (define (refutation c v a)
@@ -525,13 +556,13 @@
 (define (search c goal depth . conj)
   (let ([g (force goal)] [conj (or (null? conj) (car conj))])
     (and (> depth 0) (eq? (car g) 'vglob) (not (has-meta? (reify (ctx-l c) g)))
-         (or (case (cadr g)
-               [(⊤) '(glob tt)]
-               [(≡) (guard (x [#t #f]) (check c 'refl g))]
+         (or (case (hashtable-ref builtin-of (cadr g) #f)
+               [(unit) `(glob ,(bi 'tt))]
+               [(eq) (guard (x [#t #f]) (check c (bi 'refl) g))]
                [else (let ([d (gget (cadr g))])
                        (and (eq? (g-kind d) 'data)
                             (exists (lambda (k) (try-constructor c k g depth conj)) (g-info d))))])
-             (begin (when (and conj (blame) (not (unbox (blame))) (not (memq (cadr g) '(× Σ ⊤ ⊥))))
+             (begin (when (and conj (blame) (not (unbox (blame))) (not (memq (hashtable-ref builtin-of (cadr g) #f) '(sigma unit empty))))
                       (set-box! (blame) g))
                     #f)))))
 
@@ -574,7 +605,7 @@
   (let loop ([t (force ty)] [l 0])
     (case (car t)
       [(vpi) (loop (force (pi-cod t (vvar l))) (+ l 1))]
-      [(vglob) (eq? (cadr t) 'Obj)]
+      [(vglob) (bi? (cadr t) 'obj)]
       [else #f])))
 
 (define (check* c e ty)
@@ -582,18 +613,20 @@
     (cond [(eq? e 'auto) (auto c ty)]
           [(let-form? e) (let-values ([(c body) (let-bind c e)]) (check c body ty))]
           [(lambda-form? e) (check-lambda c (cdr (cadr e)) (caddr e) ty)]
-          [(and (string? e) (eq? (car want) 'vglob) (assq (cadr want) readers))
-           => (lambda (r) (let ([x ((cdr r) e)])           ; letterale letto secondo il tipo, nel contesto
-                            (unless x (oops "«~a» non è un ~a valido" e (cadr want)))   ; vuoto: nessuna cattura
-                            (check ctx0 x want)))]
-          [(and (string? e) (eq? (car want) 'vglob) (eq? (cadr want) 'Rel))   ; "bin/hello" è un vettore
-           (fold-left (lambda (acc seg) `(app (app (glob step) ,acc e) ,(check c seg '(vglob Segment ())) e))
-                      '(glob here)
+          [(and (string? e) (eq? (car want) 'vglob) (assq (hashtable-ref builtin-of (cadr want) #f) readers))
+           => (lambda (r) (let ([vs ((cdr r) e)])          ; letterale letto secondo il tipo, nel contesto
+                            (unless vs (oops "«~a» non è un ~a valido" e (cadr want)))   ; vuoto: nessuna cattura
+                            (let* ([k (car (g-info (gget (cadr want))))]
+                                   [n (length (explicit-args k))])
+                              (check ctx0 `(,k ,@vs ,@(make-list (- n (length vs)) 'auto)) want))))]
+          [(and (string? e) (eq? (car want) 'vglob) (bi? (cadr want) 'rel))   ; "bin/hello" è un vettore
+           (fold-left (lambda (acc seg) `(app (app (glob ,(bi 'step)) ,acc e) ,(check c seg `(vglob ,(bi 'segment) ())) e))
+                      `(glob ,(bi 'here))
                       (filter (lambda (s) (not (string=? s ""))) (split-on e #\/)))]
-          [(and (pair? e) (eq? (car e) '%br) (eq? (car want) 'vglob) (eq? (cadr want) 'List))
+          [(and (pair? e) (eq? (car e) '%br) (eq? (car want) 'vglob) (bi? (cadr want) 'list))
            (let ([a (car (car (caddr want)))] [l (ctx-l c)])  ; ogni elemento riceve il tipo atteso
-             (fold-right (lambda (x acc) `(app (app (app (glob ::) ,(reify l a) i) ,(check c x a) e) ,acc e))
-                         `(app (glob vuota) ,(reify l a) i) (cdr e)))]
+             (fold-right (lambda (x acc) `(app (app (app (glob ,(bi 'cons)) ,(reify l a) i) ,(check c x a) e) ,acc e))
+                         `(app (glob ,(bi 'nil)) ,(reify l a) i) (cdr e)))]
           [(and (pair? e) (symbol? (car e)) (gget (car e)) (not (known-local? c (car e))) (pair? (cdr e))
                 (check-introduction c e want))
            => values]
@@ -654,8 +687,8 @@
            (if (not (eq? (car kt) 'vpi))
                tm
                (let ([p (force (pi-dom kt))])
-                 (cond [(not (and (eq? (car p) 'vglob) (memq (cadr p) '(⊤ ≡ ⊥)))) #f]
-                       [(eq? (cadr p) '⊥) (oops "«~a» non è un ~a valido" (if (string? e) e (show c (ev (ctx-env c) t))) tname)]
+                 (cond [(not (and (eq? (car p) 'vglob) (memq (hashtable-ref builtin-of (cadr p) #f) '(unit eq empty)))) #f]
+                       [(bi? (cadr p) 'empty) (oops "«~a» non è un ~a valido" (if (string? e) e (show c (ev (ctx-env c) t))) tname)]
                        [else (let ([pf (auto c p)]) (loop `(app ,tm ,pf e) (force (pi-cod kt (ev (ctx-env c) pf)))))])))))))
 
 ;; (λ [x y] corpo): si controlla contro un Π. Un Π implicito non nominato riceve una λ implicita
@@ -687,9 +720,9 @@
 (define (path-literal? e)
   (and (symbol? e) (let ([s (symbol->string e)]) (and (> (string-length s) 1) (char=? (string-ref s 0) #\/)))))
 (define (path-term c e)
-  (unless (gget 'Abs) (oops "il percorso ~a richiede Abs: (import paths)" e))
-  (fold-left (lambda (acc seg) `(app (app (glob /) ,acc e) ,(check c seg '(vglob Segment ())) e))
-             '(glob root)
+  (unless (bi 'abs) (oops "il percorso ~a richiede i percorsi: (import paths)" e))
+  (fold-left (lambda (acc seg) `(app (app (glob ,(bi 'slash)) ,acc e) ,(check c seg `(vglob ,(bi 'segment) ())) e))
+             `(glob ,(bi 'root))
              (filter (lambda (s) (not (string=? s ""))) (split-on (symbol->string e) #\/))))
 
 (define (check-type c e)                                ; → (values termine livello)
@@ -709,12 +742,18 @@
         (values `(pi ,x ,(if (and (pair? (car as)) (eq? (caar as) '%imp)) 'i 'e) ,ta ,tb) (max na nb)))))
 
 ;; Variabili libere di una firma, in ordine di prima occorrenza: diventano argomenti impliciti.
+;; Nelle firme si quantificano da sé solo i nomi da variabile: una lettera, poi cifre (A, x, n2).
+;; Un altro nome libero è un nome sconosciuto: un Port senza (import net) non diventa un tipo qualsiasi.
+(define (variable-shaped? x)
+  (let ([cs (string->list (symbol->string x))])
+    (and (char-alphabetic? (car cs)) (for-all char-numeric? (cdr cs)))))
+
 (define (free-vars e)
   (let ([acc '()])
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ %br %imp pipe let auto λ the))) (set! acc (cons e acc)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ %br %imp pipe let auto λ the))) (if (variable-shaped? e) (set! acc (cons e acc)) (oops "nome sconosciuto: ~a" e)))]
         [(lambda-form? e) (walk (caddr e) (append (cdr (cadr e)) bound))]   ; λ lega i suoi nomi
         [(let-form? e)                                   ; let lega in sequenza
          (let loop ([bs (cdr (cadr e))] [bound bound])
@@ -774,6 +813,7 @@
     [(extern) (check-extern d)]
     [(record) (for-each check-decl (record->decls d))]
     [(import) (for-each import! (cdr d))]
+    [(builtin) (check-builtin d)]
     [else (oops "dichiarazione sconosciuta: ~s" d)]))
 
 ;; (import dagger time): i moduli della libreria standard, lib/<nome>.disegno, ciascuno una volta
@@ -840,7 +880,7 @@
           (loop (list-ref r 4) (if (eq? (caddr r) 'e) (cons (cadr r) names) names))
           (let-values ([(h args) (spine-of r)])
             (unless (or (eq? (car r) 'type) (assq (car spec) prims)
-                        (and (eq? (car h) 'glob) (not (eq? (cadr h) 'String)) (eq? (g-kind (gget (cadr h))) 'extern)))
+                        (and (eq? (car h) 'glob) (not (bi? (cadr h) 'string)) (eq? (g-kind (gget (cadr h))) 'extern)))
               (oops "~a: un extern deve restituire un tipo opaco del motore" name))
             (define-global! name (make-g 'extern (ev '() t) (cons spec (reverse names)))))))))
 
@@ -1277,36 +1317,41 @@
 
 (define (show c v) (sexp (ctx-names c) (reify (ctx-l c) v)))
 (define (sexp names t)
-  (cond [(and (equal? (car t) 'app) (equal? (cadr t) '(glob Obj)) (equal? (car (caddr t)) 'glob))
+  (cond [(and (equal? (car t) 'app) (bi 'obj) (equal? (cadr t) `(glob ,(bi 'obj))) (equal? (car (caddr t)) 'glob))
          (kind-alias (cadr (caddr t)))]                  ; (Obj Kind.cache-volume) si legge CacheVolume
         [(literal-of t) => values]                       ; punti e segmenti come si scrivono: /out/bin, "bin"
         [else (sexp1 names t)]))
 
-;; Valori raffinati stampati come si scrivono: (image "alpine" tt) → "alpine", (cidr 2561 24 tt) →
-;; "10.0.1.0/24", (ip n tt) → "10.0.0.5", (port 8080 tt) → 8080.
+;; Valori raffinati stampati come si scrivono: (image "alpine" tt) → "alpine", (port 8080 tt) →
+;; 8080: un costruttore con un letterale e poi solo prove. Gli indirizzi hanno la loro forma:
+;; (ip n tt) → "10.0.0.5", (cidr 2561 24 tt) → "10.0.1.0/24".
 (define (refined t)
   (let-values ([(h args) (spine-of t)])
     (define (num i) (and (> (length args) i) (eq? (car (list-ref args i)) 'num) (cadr (list-ref args i))))
-    (cond [(and (equal? h '(glob image)) (pair? args) (eq? (car (car args)) 'str)) (cadr (car args))]
-          [(and (equal? h '(glob cidr)) (num 0) (num 1)) (format "~a/~a" (nat->ip (* (num 0) (expt 2 (- 32 (num 1))))) (num 1))]
-          [(and (equal? h '(glob ip)) (num 0)) (nat->ip (num 0))]
-          [(and (equal? h '(glob port)) (num 0)) (num 0)]
-          [else #f])))
+    (define (proofs? as) (for-all (lambda (a) (equal? a `(glob ,(bi 'tt)))) as))
+    (let ([k (and (eq? (car h) 'glob) (con? (cadr h)) (hashtable-ref builtin-of (g-info (gget (cadr h))) #f))])
+      (cond [(and (eq? k 'cidr) (num 0) (num 1)) (format "~a/~a" (nat->ip (* (num 0) (expt 2 (- 32 (num 1))))) (num 1))]
+            [(and (eq? k 'ip) (num 0)) (nat->ip (num 0))]
+            [(and (eq? (car h) 'glob) (con? (cadr h)) (pair? args) (pair? (cdr args)) (memq (car (car args)) '(str num))
+                  (proofs? (cdr args)))
+             (cadr (car args))]
+            [else #f]))))
 
 (define (literal-of t)
   (define (seg t)                                        ; (segment "x" prova) → "x"
     (let-values ([(h args) (spine-of t)])
-      (and (equal? h '(glob segment)) (pair? args) (eq? (car (car args)) 'str) (cadr (car args)))))
+      (and (eq? (car h) 'glob) (con? (cadr h)) (bi? (g-info (gget (cadr h))) 'segment)
+           (pair? args) (eq? (car (car args)) 'str) (cadr (car args)))))
   (define (abs t)                                        ; → lista di segmenti, o #f
     (let-values ([(h args) (spine-of t)])
-      (cond [(equal? t '(glob root)) '()]
-            [(and (equal? h '(glob /)) (= (length args) 2))
+      (cond [(and (bi 'root) (equal? t `(glob ,(bi 'root)))) '()]
+            [(and (bi 'slash) (equal? h `(glob ,(bi 'slash))) (= (length args) 2))
              (let ([p (abs (car args))] [s (seg (cadr args))]) (and p s (append p (list s))))]
             [else #f])))
   (define (rel t)                                        ; (step (step here "bin") "hello") → ("bin" "hello")
     (let-values ([(h args) (spine-of t)])
-      (cond [(equal? t '(glob here)) '()]
-            [(and (equal? h '(glob step)) (= (length args) 2))
+      (cond [(and (bi 'here) (equal? t `(glob ,(bi 'here)))) '()]
+            [(and (bi 'step) (equal? h `(glob ,(bi 'step))) (= (length args) 2))
              (let ([p (rel (car args))] [s (seg (cadr args))]) (and p s (append p (list s))))]
             [else #f])))
   (cond [(abs t) => (lambda (ss) (string->symbol (apply string-append "/" (let loop ([ss ss]) (if (or (null? ss) (null? (cdr ss))) ss (cons* (car ss) "/" (loop (cdr ss))))))))]
@@ -1318,7 +1363,7 @@
 (define (kind-alias k)
   (case k
     [(Kind.bool) '(Remote Bool)]                          ; un'osservazione, non un Bool
-    [(Kind.export) '(Export Dir)]
+    [(Kind.export) '(Export Dir)]                          ; ponytail: solo stampa, i nomi di dagger.disegno
     [else (kind-alias1 k)]))
 
 (define (kind-alias1 k)

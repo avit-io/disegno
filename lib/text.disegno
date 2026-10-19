@@ -1,6 +1,7 @@
 ; Il testo: le stringhe sono opache, ma con primitive pure calcolate sui letterali.
 
 (extern String    : Type String)
+(builtin string String)
 (extern contains? : (→ String String Bool) %contains?)
 (extern concat    : (→ String String String) %concat)
 (extern show      : (→ Nat String) %show)

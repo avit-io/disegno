@@ -9,6 +9,7 @@
 (record Ip
   [n  : Nat]
   [ok : (So (<? n 4294967296))])
+(builtin ip Ip)
 
 (def Ip.⊕ : (→ [p Ip] [o Nat] (So (<? (+ (Ip.n p) o) 4294967296)) Ip)
   [p o h] (ip (+ (Ip.n p) o) h))
@@ -17,6 +18,7 @@
   [prefix : Nat]
   [len    : Nat]
   [ok     : (So (and (≤? len 32) (<? prefix (pow2 len))))])
+(builtin cidr Cidr)
 
 (def cidr-range : (→ Cidr Interval)
   [c] (let [size (pow2 (∸ 32 (Cidr.len c))), lo (* (Cidr.prefix c) size)]

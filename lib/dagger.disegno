@@ -37,6 +37,7 @@
 
 (def Host : (→ String Type)
   [_] Directory)
+(builtin host Host)
 
 ; --- nomi corti: file system del motore, valori immutabili; scrivere è costruire una nuova directory ---
 

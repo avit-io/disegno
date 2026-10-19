@@ -30,7 +30,7 @@
            [lines (if (equal? (car args) "where")
                       (filter values (map (lambda (n) (let ([p (hashtable-ref def-pos n #f)]) (and p (pos->string p)))) names))
                       (if (and (not (gget name)) (path-literal? name))
-                          (list (format "~a : Abs" name))
+                          (list (format "~a : ~a" name (bi 'abs)))
                           (filter values (map type-of-global names))))])
       (if (null? lines)
           (exit 1)

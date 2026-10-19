@@ -1,10 +1,12 @@
-; Il prelude: la logica, cioè la teoria dei tipi di Martin-Löf e i suoi dati. Si carica sempre;
-; il resto della libreria si importa: (import dagger), (import time), (import net).
+; Il prelude: la logica, cioè la teoria dei tipi di Martin-Löf e i suoi dati, con i builtin che
+; il nucleo usa per i letterali e per auto. Si carica sempre; il resto si importa: (import dagger).
 
 ; --- uguaglianza ---
 
 (data ≡ : (→ A A Type)
   [refl : (≡ x x)])
+(builtin eq ≡)
+(builtin refl refl)
 
 (def cong : (→ [f (→ A B)] (≡ x y) (≡ (f x) (f y)))
   [f refl] refl)
@@ -27,13 +29,19 @@
 ; --- proposizioni decidibili: (So b) è ⊤ se b è vero, ⊥ altrimenti; auto prova ⊤ calcolando ---
 
 (data ⊥ : Type)
+(builtin empty ⊥)
 
 (data ⊤
   [tt])
+(builtin unit ⊤)
+(builtin tt tt)
 
 (data Bool
   [true]
   [false])
+(builtin bool Bool)
+(builtin true true)
+(builtin false false)
 
 (def ¬ : (→ Type Type)              ; negazione: (¬ A) è A → ⊥
   [A] (→ A ⊥))
@@ -51,6 +59,9 @@
 (data Nat
   [zero]
   [add1 Nat])
+(builtin nat Nat)
+(builtin zero zero)
+(builtin suc add1)
 
 (def + : (→ Nat Nat Nat)
   [zero     m] m
@@ -64,8 +75,8 @@
 (def ≥ : (→ Nat Nat Type)
   [m n] (So (≤? n m)))
 
-; Le definizioni sono unarie e sono la verità logica; il valutatore calcola +, ∸, *, ≤?, <?,
-; nat=? e pow2 nativamente sui numeri (types.ss, fast), e test.ss verifica che coincidano.
+; Le definizioni sono unarie e sono la verità logica; il valutatore calcola nativamente sui numeri
+; quelle legate qui sotto come builtin (types.ss, fast), e test.ss verifica che coincidano.
 
 (def ∸ : (→ Nat Nat Nat)                 ; sottrazione troncata
   [p        zero]     p
@@ -88,6 +99,14 @@
 (def pow2 : (→ Nat Nat)
   [zero]     1
   [(add1 k)] (+ (pow2 k) (pow2 k)))
+
+(builtin plus +)
+(builtin monus ∸)
+(builtin times *)
+(builtin leq? ≤?)
+(builtin lt? <?)
+(builtin nat-eq? nat=?)
+(builtin pow2 pow2)
 
 (def not : (→ Bool Bool)
   [true]  false
@@ -121,6 +140,9 @@
 (data List : (→ Type Type)
   [vuota : (List A)]
   [::    : (→ A (List A) (List A))])
+(builtin list List)
+(builtin nil vuota)
+(builtin cons ::)
 
 (def ++ : (→ (List A) (List A) (List A))
   [vuota    ys] ys
@@ -153,6 +175,7 @@
 ; tale che B a". × è il caso in cui B non dipende da a.
 (data Σ : (→ [A Type] (→ A Type) Type)
   [pair : (→ {A Type} {B (→ A Type)} [a A] (B a) (Σ A B))])
+(builtin sigma Σ)
 
 (def fst : (→ {A Type} {B (→ A Type)} (Σ A B) A)
   [(pair a _)] a)

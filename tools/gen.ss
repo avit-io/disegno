@@ -132,7 +132,7 @@
     (format p "; Generato da gen.ss dallo schema di Dagger: non modificare a mano.~%~%")
     (format p "(data Kind~%~{  [~a]~^~%~})~%~%"
             (map (lambda (k) (cadr (obj k))) (append allowed '("bool" "export"))))
-    (format p "(data Obj : (→ Kind Type)~%~{  [~a : ~a]~^~%~})~%~%"
+    (format p "(data Obj : (→ Kind Type)~%~{  [~a : ~a]~^~%~})~%(builtin obj Obj)~%~%"
             (apply append (map (lambda (c) (list (car c) (signature c))) all)))
     (for-each (lambda (k) (format p "(def ~a : Type~%  ~a)~%~%" k (obj k))) allowed)
     (format p "; Un sotto-piano qualsiasi, di qualunque tipo.~%(data Any~%  [any (Obj k)])~%~%")

@@ -11,14 +11,21 @@
 (record Segment
   [name : String]
   [ok   : (So (segment? name))])
+(builtin segment Segment)
 
 (data Abs
   [root]
   [/ Abs Segment])
+(builtin abs Abs)
+(builtin root root)
+(builtin slash /)
 
 (data Rel
   [here]
   [step Rel Segment])
+(builtin rel Rel)
+(builtin here here)
+(builtin step step)
 
 ; (⊑ p q): p sta dentro q. È induttivo, quindi la differenza si calcola sulla prova e le leggi
 ; si dimostrano per induzione, senza confrontare stringhe.

@@ -4,9 +4,11 @@
 
 (data Instant
   [at Nat])
+(builtin instant Instant)
 
 (data Duration
   [secs Nat])
+(builtin duration Duration)
 
 (def Instant.⊕ : (→ Instant Duration Instant)
   [(at a) (secs d)] (at (+ a d)))

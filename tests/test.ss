@@ -31,7 +31,7 @@
       (lambda (a)
         (for-each
           (lambda (b)
-            (let* ([t (fold-left (lambda (acc x) `(app ,acc (num ,x) e)) `(glob ,(car f)) (list-head (list a b) (cadr f)))]
+            (let* ([t (fold-left (lambda (acc x) `(app ,acc (num ,x) e)) `(glob ,(bi (car f))) (list-head (list a b) (cadr f)))]
                    [on (reify 0 (ev '() t))]
                    [off (parameterize ([accelerate #f]) (reify 0 (ev '() t)))])
               (unless (equal? on off) (error 'prova (format "accelerazione di ~a su ~a ~a: ~s invece di ~s" (car f) a b on off)))))
@@ -235,6 +235,13 @@
 ;; import: solo i moduli di lib/, per nome; un percorso non passa.
 (rifiuta "(import ../tests/checks)" "non è il nome di un modulo")
 (rifiuta "(import nessuno)" "il modulo nessuno non esiste")
+;; builtin: solo nella libreria, chiavi chiuse, una volta, del genere giusto.
+(rifiuta "(builtin nat Nat)" "builtin è riservato alla libreria standard")
+(parameterize ([privileged #t])
+  (rifiuta "(builtin intero Nat)" "chiave sconosciuta intero")
+  (rifiuta "(builtin nat Bool)" "nat è già legato a Nat"))
+;; Nelle firme si generalizzano solo i nomi da variabile: Porta non è un tipo implicito.
+(rifiuta "(def f : (→ Porta Nat) [_] 0)" "nome sconosciuto: Porta")
 (assert (equal? (guard (e [#t (condition-message e)]) (check-string "(def f : (→ Nat \"x\") [_] 0)\n(def g : Nat (f 1))") #f)
                 "<stringa>:1:10: \"x\" non è un tipo"))
 

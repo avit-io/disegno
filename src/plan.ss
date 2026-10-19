@@ -30,7 +30,7 @@
 
 (define (node v)                                         ; → nome del costruttore se v è un nodo del piano
   (and (eq? (car v) 'vglob)
-       (let ([g (gget (cadr v))]) (and g (eq? (g-kind g) 'con) (eq? (g-info g) 'Obj) (cadr v)))))
+       (let ([g (gget (cadr v))]) (and g (eq? (g-kind g) 'con) (bi? (g-info g) 'obj) (cadr v)))))
 
 (define (arg-names c)                                    ; binder espliciti del costruttore
   (let loop ([t (force (g-type (gget c)))] [l 0])
@@ -95,13 +95,13 @@
     (cond [(node v) (resolve (chain v resolve))]
           [(eq? (car v) 'vnum) (cadr v)]
           [(eq? (car v) 'vstr) (cadr v)]
-          [(and (eq? (car v) 'vglob) (memq (cadr v) '(true false))) (eq? (cadr v) 'true)]
-          [(and (eq? (car v) 'vglob) (eq? (cadr v) 'zero)) 0]
-          [(and (eq? (car v) 'vglob) (eq? (cadr v) 'add1)) (+ 1 (gql-arg (car (explicit (caddr v))) resolve))]
-          [(and (eq? (car v) 'vglob) (eq? (cadr v) 'vuota)) '()]
-          [(and (eq? (car v) 'vglob) (eq? (cadr v) '::))
+          [(and (eq? (car v) 'vglob) (or (bi? (cadr v) 'true) (bi? (cadr v) 'false))) (bi? (cadr v) 'true)]
+          [(and (eq? (car v) 'vglob) (bi? (cadr v) 'zero)) 0]
+          [(and (eq? (car v) 'vglob) (bi? (cadr v) 'suc)) (+ 1 (gql-arg (car (explicit (caddr v))) resolve))]
+          [(and (eq? (car v) 'vglob) (bi? (cadr v) 'nil)) '()]
+          [(and (eq? (car v) 'vglob) (bi? (cadr v) 'cons))
            (let* ([xs (explicit (caddr v))] [x (gql-arg (car xs) resolve)]) (cons x (gql-arg (cadr xs) resolve)))]
-          [(and (eq? (car v) 'vglob) (memq (cadr v) '(root /))) (abs-string v resolve)]
+          [(and (eq? (car v) 'vglob) (or (bi? (cadr v) 'root) (bi? (cadr v) 'slash))) (abs-string v resolve)]
           ;; un valore raffinato (Image, Segment, Arg…) va al motore con il suo primo campo
           [(and (eq? (car v) 'vglob) (eq? (g-kind (gget (cadr v))) 'con) (pair? (explicit (caddr v))))
            (gql-arg (car (explicit (caddr v))) resolve)]
@@ -109,8 +109,8 @@
 
 (define (abs-string v resolve)                           ; (/ (/ root "go") "pkg") → "/go/pkg"
   (let loop ([v (force v)] [acc '()])
-    (cond [(eq? (cadr v) 'root) (if (null? acc) "/" (apply string-append (map (lambda (s) (string-append "/" s)) acc)))]
-          [(eq? (cadr v) '/) (let ([xs (explicit (caddr v))]) (loop (force (car xs)) (cons (gql-arg (cadr xs) resolve) acc)))]
+    (cond [(bi? (cadr v) 'root) (if (null? acc) "/" (apply string-append (map (lambda (s) (string-append "/" s)) acc)))]
+          [(bi? (cadr v) 'slash) (let ([xs (explicit (caddr v))]) (loop (force (car xs)) (cons (gql-arg (cadr xs) resolve) acc)))]
           [else (oops "percorso non statico: ~s" (sexp '() (reify 0 v)))])))
 
 ;; main : (→ [x (Host "p")] ... (Export Dir)) → catena che termina con export.
@@ -120,7 +120,7 @@
          [hosts (let loop ([t sig])
                   (if (eq? (car t) 'pi)
                       (let ([dom (cadddr t)])
-                        (unless (and (eq? (caddr t) 'e) (eq? (car dom) 'app) (equal? (cadr dom) '(glob Host)) (eq? (car (caddr dom)) 'str))
+                        (unless (and (eq? (caddr t) 'e) (eq? (car dom) 'app) (equal? (cadr dom) `(glob ,(bi 'host))) (eq? (car (caddr dom)) 'str))
                           (oops "gli argomenti di main devono essere (Host \"percorso\")"))
                         (cons (list 'vglob '%host-dir (list (cons (list 'vstr (in-dir (program-dir) (cadr (caddr dom)))) 'e)))
                               (loop (list-ref t 4))))
