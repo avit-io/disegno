@@ -46,6 +46,13 @@
   [_] Secret)
 (builtin host-secret Host-secret)
 
+; Un parametro del piano: (Host-env "TAG" "") nella firma di main, letto dall'ambiente quando si
+; costruisce il piano, con un valore di default. È un input, non un'osservazione: il piano è una
+; funzione dei parametri, e i teoremi valgono per ogni valore.
+(def Host-env : (→ String String Type)
+  [_ _] String)
+(builtin host-env Host-env)
+
 ; --- nomi corti: file system del motore, valori immutabili; scrivere è costruire una nuova directory ---
 
 (def Dir : Type
@@ -112,6 +119,7 @@
   [(branch c a b)] (++ (map (:: (seen c)) (histories a)) (histories b))
   [(then a b)]     (concat-map (λ [h] (map (++ h) (histories b))) (histories a))
   [skip]           [[]]
+  [(otherwise a b)] (++ (histories a) (histories b))   ; b dopo un fallimento di a: il caso peggiore, b da solo
   [e]              [[(done e)]])
 
 ; (earlier w? e? g h): in h, ogni uscita che soddisfa e? viene dopo un evento che soddisfa w?.

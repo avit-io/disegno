@@ -112,6 +112,10 @@ Un teorema parla quindi solo della forma del piano: «il test viene prima di pro
 
 **Segreti.** Le credenziali entrano come gli input: `(Host-secret "AWS_ACCESS_KEY_ID")` nella firma di `main`, letto da una variabile d'ambiente. Il valore non torna al linguaggio e non compare nel piano, che nomina solo la variabile; un programma non può creare un segreto da sé né leggerne il testo. Gli altri segreti la pipeline li carica da sé: `(secret-from c cmd)` dice da dove viene il valore (Secrets Manager, il Parameter Store, domani Vault), e il runner lo legge a esecuzione, quando un passo lo usa, e lo passa a Dagger con `setSecret`. Il valore attraversa il runner, fidato, mai il linguaggio; il piano mostra il comando che lo legge. Così la CI fornisce al massimo la credenziale di partenza.
 
+**Parametri.** `(Host-env "NOME" "default")` è un input del piano, una `String` letta dall'ambiente quando lo si costruisce. A differenza di un'osservazione decide anche gli `if` (release o rollback): il piano è una funzione dei parametri, e i teoremi valgono per ogni valore. Un segreto non è mai un parametro: gli argomenti dei comandi si stampano nel piano.
+
+**Fallimenti.** `(otherwise a b)` realizza `b` se `a` fallisce, poi fallisce con l'errore di `a`: un report di fallimento, un rollback. Per le proprietà d'ordine le storie di `b` contano da sole, il caso peggiore.
+
 **Costo.** Niente piano dinamico: ciò che dipende da un risultato si esprime con `branch` su un'osservazione, non con un valore che torna indietro.
 
 ## 7. Il piano generato dallo schema

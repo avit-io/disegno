@@ -231,6 +231,43 @@
                     (esito-s3 \"pubblicato\\n\"))
                   (esito-s3 \"pagina assente\\n\")))))))"
   (string-append dir "/out10")))
+;; Parametri del piano: (Host-env "NOME" "default"), letti dall'ambiente quando si costruisce il
+;; piano. Decidono anche gli if: il piano è una funzione dei parametri.
+(check-string (format "
+  (def param : (→ [t (Host-env \"DISEGNO_PROVA_TAG\" \"1.0\")] [k (Host-env \"DISEGNO_PROVA_TIPO\" \"release\")] (Export Dir))
+    [t k] (if (same? k \"rollback\")
+            (overlay ~s (with-file empty /rollback t))
+            (overlay ~s (with-file empty /release t))))
+  (def param-male : (→ [t (Host-env \"1 X\" \"\")] (Export Dir))
+    [t] skip)"
+  (string-append dir "/out12") (string-append dir "/out12")))
+(let ([p (lambda () (plan->graphql (plan resolve-dry 'param)))])
+  (assert (contiene? (p) "withNewFile(path: \"/release\", contents: \"1.0\""))
+  (putenv "DISEGNO_PROVA_TIPO" "rollback") (putenv "DISEGNO_PROVA_TAG" "10.0.42")
+  (assert (contiene? (p) "withNewFile(path: \"/rollback\", contents: \"10.0.42\""))
+  (putenv "DISEGNO_PROVA_TIPO" "") (putenv "DISEGNO_PROVA_TAG" ""))   ; vuota vale come assente
+(assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'param-male) "") "non è il nome di una variabile d'ambiente"))
+
+;; otherwise: se a fallisce si realizza b, poi si fallisce lo stesso. A secco il piano mostra b
+;; dopo il segno «se qualcosa prima fallisce». Per Before, b conta come se a fosse fallito subito.
+(check-string (format "
+  (def con-riserva : (Export Dir)
+    (otherwise (then (overlay ~s (with-file empty /prima \"sì\\n\"))
+                     (apply (from (container) \"alpine\") [\"sh\" \"-c\" \"exit 3\"]))
+               (overlay ~s (with-file empty /riserva \"sì\\n\"))))
+  (def rilascio-o-report : (→ Dir (Export Dir))
+    [src] (otherwise (branch (passes? (try-exec (with-dir (from (container) \"alpine\") /w src) [\"true\"]))
+                       (apply (from (container) \"alpine\") [\"echo\" \"deploy\"])
+                       skip)
+                     (overlay \"report\" (with-file empty /fallito \"sì\\n\"))))
+  (def deploy-protetto : (→ [src Dir] (Before test? apply? (rilascio-o-report src)))
+    [src] auto)"
+  (string-append dir "/out13") (string-append dir "/out13")))
+(assert (equal? (map car (cdr (car (all-plans 'con-riserva)))) '(uscita uscita altrimenti uscita)))
+;; Un apply come riserva non è protetto dal test: Before lo vede, perché b conta da solo.
+(rifiuta "(def riserva-scoperta : (→ [src Dir] (Before test? apply? (otherwise (rilascio-o-report src) (apply (from (container) \"alpine\") [\"echo\" \"report\"]))))
+            [src] auto)" "auto")
+
 ;; Segreti letti a esecuzione: Secrets Manager su LocalStack. Il segreto si crea (qui, in chiaro:
 ;; è un test), poi un container lo riceve da secrets-manager-key e lo confronta. Il piano del
 ;; consumatore mostra il comando che lo legge, mai il valore.
@@ -526,6 +563,10 @@
   (assert (string=? (call-with-input-file (string-append dir "/out6/esito") get-string-all) "ricevuto\n"))
   (run 'cli-aws)
   (assert (string=? (call-with-input-file (string-append dir "/out7/esito") get-string-all) "risponde\n"))
+  (let ([r (esegui 'con-riserva)])                       ; fallisce, ma prima la riserva
+    (assert (and (car r) (contiene? (car r) "passo fallito (exit 3)")))
+    (assert (file-exists? (string-append dir "/out13/prima")))
+    (assert (file-exists? (string-append dir "/out13/riserva"))))
   (run 'filtri)
   (assert (zero? (system (format "test -x ~a/out9/run.sh" dir))))
   (assert (not (file-exists? (string-append dir "/out9/note.txt"))))

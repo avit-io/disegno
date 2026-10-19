@@ -87,7 +87,7 @@
           [(passes?) (method 'exitCode)]
           [(probe) (append (fresh-exec v resolve '(expect ANY)) '((exitCode)))]   ; il mondo, fuori dalla cache
           [(secret-from) ((fetch-secret) v resolve)]                          ; a secco il comando, dal vivo setSecret
-          [(overlay replace publish apply then skip start) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
+          [(overlay replace publish apply then skip start otherwise) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
           [else (let ([segs (split-dots (symbol->string c))])
                   (if (string=? (car segs) "Query")
                       (list (field (string->symbol (camel (cadr segs))) names args))
@@ -120,25 +120,33 @@
 ;; branch si risolve quando lo si raggiunge, then realizza a e poi b, skip non fa niente; ogni
 ;; uscita foglia (export, publish, effetto) è una catena che emit riceve. Dal vivo emit la esegue
 ;; subito, quindi un'osservazione dopo un effetto vede il mondo dopo l'effetto.
+;; Gli input di main, dalla firma: (Host "percorso") una directory, (Host-secret "NOME") un segreto,
+;; (Host-env "NOME" "default") un parametro, letto dall'ambiente quando si costruisce il piano.
+(define (main-input dom)                                 ; → valore dell'argomento, o errore
+  (define (str? t) (and (pair? t) (eq? (car t) 'str)))
+  (define (head-is? t k) (equal? t `(glob ,(bi k))))
+  (cond
+    [(and (eq? (car dom) 'app) (str? (caddr dom)) (head-is? (cadr dom) 'host))
+     (list 'vglob '%host-dir (list (cons (list 'vstr (in-dir (program-dir) (cadr (caddr dom)))) 'e)))]
+    [(and (eq? (car dom) 'app) (str? (caddr dom)) (head-is? (cadr dom) 'host-secret))
+     (let ([s (cadr (caddr dom))])
+       (unless (env-name? s) (oops "Host-secret: «~a» non è il nome di una variabile d'ambiente" s))
+       (list 'vglob '%host-secret (list (cons (list 'vstr s) 'e))))]
+    [(and (eq? (car dom) 'app) (str? (caddr dom)) (pair? (cadr dom)) (eq? (car (cadr dom)) 'app)
+          (str? (caddr (cadr dom))) (head-is? (cadr (cadr dom)) 'host-env))
+     (let ([s (cadr (caddr (cadr dom)))] [default (cadr (caddr dom))])
+       (unless (env-name? s) (oops "Host-env: «~a» non è il nome di una variabile d'ambiente" s))
+       (list 'vstr (let ([v (getenv s)]) (if (and v (not (string=? v ""))) v default))))]
+    [else (oops "gli argomenti di main devono essere (Host \"percorso\"), (Host-secret \"NOME\") o (Host-env \"NOME\" \"default\")")]))
+
 (define (entry-value main)
   (let* ([sig (or (hashtable-ref sigs main #f) (oops "manca ~a" main))]
-         [hosts (let loop ([t sig])
-                  (if (eq? (car t) 'pi)
-                      (let* ([dom (cadddr t)]
-                             [kind (and (eq? (caddr t) 'e) (eq? (car dom) 'app) (eq? (car (caddr dom)) 'str)
-                                        (cond [(equal? (cadr dom) `(glob ,(bi 'host))) 'host]
-                                              [(equal? (cadr dom) `(glob ,(bi 'host-secret))) 'secret]
-                                              [else #f]))]
-                             [s (and kind (cadr (caddr dom)))])
-                        (unless kind (oops "gli argomenti di main devono essere (Host \"percorso\") o (Host-secret \"NOME\")"))
-                        (when (and (eq? kind 'secret) (not (env-name? s)))
-                          (oops "Host-secret: «~a» non è il nome di una variabile d'ambiente" s))
-                        (cons (if (eq? kind 'host)
-                                  (list 'vglob '%host-dir (list (cons (list 'vstr (in-dir (program-dir) s)) 'e)))
-                                  (list 'vglob '%host-secret (list (cons (list 'vstr s) 'e))))
-                              (loop (list-ref t 4))))
-                      '()))])
-    (vapp-sp (ev '() `(glob ,main)) (map (lambda (h) (cons h 'e)) hosts))))
+         [inputs (let loop ([t sig])
+                   (if (eq? (car t) 'pi)
+                       (begin (unless (eq? (caddr t) 'e) (oops "gli argomenti di main sono espliciti"))
+                              (cons (main-input (cadddr t)) (loop (list-ref t 4))))
+                       '()))])
+    (vapp-sp (ev '() `(glob ,main)) (map (lambda (h) (cons h 'e)) inputs))))
 
 ;; Un effetto e un'osservazione del mondo non vanno in cache: una variabile d'ambiente nuova a ogni
 ;; esecuzione, subito prima del comando, così la preparazione dell'ambiente resta in cache.
@@ -185,10 +193,18 @@
     (hashtable-set! step-work (last-of ch) #t)           ; un effetto è lavoro: il resoconto mostra il comando
     ch))
 
+(define realize-dry (make-parameter #t))              ; dal vivo #f: otherwise prova davvero
+
 (define (realize v resolve emit)
   (let ([v (pick v resolve)])
     (case (node v)
       [(then) (let ([xs (explicit (caddr v))]) (realize (car xs) resolve emit) (realize (cadr xs) resolve emit))]
+      [(otherwise)                                       ; se a fallisce, b; poi l'errore di a
+       (let ([xs (explicit (caddr v))])
+         (if (realize-dry)
+             (begin (realize (car xs) resolve emit) (emit 'altrimenti) (realize (cadr xs) resolve emit))
+             (guard (e [#t (realize (cadr xs) resolve emit) (raise e)])
+               (realize (car xs) resolve emit))))]
       [(skip) (void)]
       [(overlay replace)                                 ; export sull'host; replace è con wipe
        (let* ([path (in-dir (program-dir) (gql-arg (car (explicit (caddr v))) resolve))]
@@ -203,7 +219,7 @@
 
 (define (exits resolve . entry)                          ; → le catene delle uscite, in ordine
   (let ([acc '()])
-    (realize (entry-value (if (null? entry) 'main (car entry))) resolve (lambda (ch) (set! acc (cons ch acc))))
+    (realize (entry-value (if (null? entry) 'main (car entry))) resolve (lambda (ch) (when (pair? ch) (set! acc (cons ch acc)))))
     (reverse acc)))
 
 (define (plan resolve . entry)                           ; un piano con un'uscita sola: la sua catena
@@ -463,7 +479,7 @@
         (lambda ()
           (let ([t0 (now-ns)] [done '()])
             (hashtable-clear! secret-memo)
-            (parameterize ([run-id (number->string t0)] [fetch-secret fetch-live])
+            (parameterize ([run-id (number->string t0)] [fetch-secret fetch-live] [realize-dry #f])
               (realize (entry-value entry) resolve-live
                        (lambda (ch) (log-steps ch) (submit-leaf ch) (set! done (cons ch done)))))
             (when (env? "DISEGNO_LOGS") (summary (reverse done) (- (now-ns) t0)))
@@ -494,7 +510,8 @@
                                           (set! taken (append taken (list (cons ch b))))
                                           (set! events (cons (list 'se ch b) events))
                                           b))])
-                (realize (entry-value entry) resolve-dry (lambda (ch) (set! events (cons (list 'uscita ch) events)))))])
+                (realize (entry-value entry) resolve-dry
+                         (lambda (ch) (set! events (cons (if (pair? ch) (list 'uscita ch) (list 'altrimenti)) events)))))])
       (cons (cons taken (reverse events))
             (apply append (map (lambda (i) (explore (append (map cdr (list-head taken i)) '(#f))))
                                (reverse (filter (lambda (i) (>= i (length prefix))) (iota (length taken))))))))))

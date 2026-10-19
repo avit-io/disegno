@@ -7,9 +7,6 @@
 
 ; --- regioni: un letterale "eu-west-1" atteso come Region si controlla mentre si tipa ---
 
-(def same? : (→ String String Bool)
-  [a b] (not (distinct? a b)))
-
 (def regions : (List String)
   ["us-east-1" "us-east-2" "us-west-1" "us-west-2" "ca-central-1" "sa-east-1"
    "eu-west-1" "eu-west-2" "eu-west-3" "eu-central-1" "eu-central-2" "eu-north-1" "eu-south-1" "eu-south-2"

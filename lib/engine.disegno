@@ -24,6 +24,7 @@
   [apply : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.export))]
   [then : (→ [first (Obj Kind.export)] [second (Obj Kind.export)] (Obj Kind.export))]
   [skip : (Obj Kind.export)]
+  [otherwise : (→ [first (Obj Kind.export)] [second (Obj Kind.export)] (Obj Kind.export))]
   [start : (→ [self (Obj Kind.service)] (Obj Kind.export))]
   [probe : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.bool))]
   [secret-from : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.secret))]
@@ -168,6 +169,7 @@
   [(apply x0 x1)] (:: (any (apply x0 x1)) (++ (nodes x0) vuota))
   [(then x0 x1)] (:: (any (then x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [skip] (:: (any skip) vuota)
+  [(otherwise x0 x1)] (:: (any (otherwise x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [(start x0)] (:: (any (start x0)) (++ (nodes x0) vuota))
   [(probe x0 x1)] (:: (any (probe x0 x1)) (++ (nodes x0) vuota))
   [(secret-from x0 x1)] (:: (any (secret-from x0 x1)) (++ (nodes x0) vuota))
@@ -283,6 +285,7 @@
   [(apply x0 x1)] (:: (any (apply x0 x1)) (chain x0))
   [(then x0 x1)] (:: (any (then x0 x1)) vuota)
   [skip] (:: (any skip) vuota)
+  [(otherwise x0 x1)] (:: (any (otherwise x0 x1)) vuota)
   [(start x0)] (:: (any (start x0)) (chain x0))
   [(probe x0 x1)] (:: (any (probe x0 x1)) (chain x0))
   [(secret-from x0 x1)] (:: (any (secret-from x0 x1)) (chain x0))

@@ -69,9 +69,10 @@
                (for-each (lambda (p i)
                           (when (> i 0) (newline))
                           (for-each (lambda (ev)
-                                      (if (eq? (car ev) 'se)
-                                          (format #t "# se ~a → ~a~%" (plan->graphql (cadr ev)) (if (caddr ev) "vero" "falso"))
-                                          (begin (display (plan->graphql (cadr ev))) (newline))))
+                                      (case (car ev)
+                                        [(se) (format #t "# se ~a → ~a~%" (plan->graphql (cadr ev)) (if (caddr ev) "vero" "falso"))]
+                                        [(altrimenti) (display "# se qualcosa prima fallisce:\n")]
+                                        [else (display (plan->graphql (cadr ev))) (newline)]))
                                     (cdr p)))
                         ps (iota (length ps))))]
       [(run) (unless (getenv "DAGGER_SESSION_PORT") (oops "run richiede una sessione Dagger: usare `disegno run`"))

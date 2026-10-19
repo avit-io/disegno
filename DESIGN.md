@@ -249,6 +249,8 @@ Implementati (i segreti no, vedi sotto). Sono il passo che serve alle librerie p
 | `(then a b)` | `(→ (Export Dir) (Export Dir) (Export Dir))` | realizza `a`, poi `b`; se `a` fallisce, `b` non avviene |
 | `skip` | `(Export Dir)` | l'uscita che non fa niente, per i rami di un `branch` |
 | `(probe c cmd)` | `(→ Container (List Arg) (Remote Bool))` | un'osservazione del mondo, non in cache: «lo staging risponde?» |
+| `(otherwise a b)` | `(→ (Export Dir) (Export Dir) (Export Dir))` | se `a` fallisce realizza `b` (un report, un rollback), poi fallisce con l'errore di `a`; per `Before` e `Precedes` le storie di `b` contano da sole, il caso peggiore |
+| `(start svc)` | `(→ Service (Export Dir))` | un service in background, vivo fino alla fine della sessione |
 
 **Semantica.**
 - **L'ordine** è quello di `then`: da sinistra a destra, e ci si ferma al primo fallimento. Dentro ogni uscita Dagger resta pigro e parallelo come oggi.
@@ -286,6 +288,8 @@ Implementati (i segreti no, vedi sotto). Sono il passo che serve alle librerie p
 **Segreti letti a esecuzione.** Mettere ogni segreto nella CI non regge, e ogni CI lo farebbe a modo suo: la pipeline li carica da sé. Il programma dice da dove viene un segreto, `(secret-from c cmd)`: il comando `cmd`, nel container `c`, ne stampa il valore. Le librerie offrono le sorgenti come semplici `def`: `secrets-manager`, `secrets-manager-key` (una chiave di un segreto JSON), `ssm-secure`, e domani Vault o Azure Key Vault. Il valore si legge a esecuzione, quando un passo lo usa e non prima, fuori dalla cache, con l'output su un file e non nei log; il runner lo passa a Dagger con `setSecret`, che da lì lo maschera. Lo schema di Dagger non permette altro: un `Secret` nasce solo da `Query.secret`, da `setSecret` o da `Address.secret`, quindi un container non può darne uno a un altro. Il valore attraversa il runner, fidato, mai il linguaggio; a secco il piano mostra il comando, il resoconto dice «segreto letto». Resta nella cache del motore come file di un passo: per un motore condiviso va saputo. Dalla CI basta la credenziale di partenza, o un ruolo IAM.
 
 **I service in background.** Dagger ferma un service quando nessun comando lo usa più. Se lo stato deve restare tra un passo e l'altro, come per un emulatore, `(start svc)` è un'uscita che lo avvia e lo tiene vivo fino alla fine della sessione.
+
+**Parametri del piano.** `(Host-env "DEPLOYMENT_TYPE" "release")` nella firma di `main` è una `String` letta dall'ambiente quando si costruisce il piano, con un default: i parametri di una CI (il tipo di rilascio, un tag) senza passare da un file. È un input, non un'osservazione: decide anche gli `if`, perché il piano è una funzione dei suoi parametri, e i teoremi valgono per ogni valore. Un segreto invece non è mai un parametro né un letterale: gli argomenti di un `apply` si stampano nel piano e nel resoconto.
 
 **Deciso.**
 1. `apply` ha l'ambiente e il comando separati: la preparazione resta in cache, e si vede che cosa è l'effetto.
@@ -468,7 +472,8 @@ In cambio della purezza e della semplicità:
 - [x] Argomenti opzionali promossi campo per campo (`promoted` in `gen.ss`): i glob di `filter` (`only`, `except` in `files`), i permessi (`with-executable`), l'entrypoint di `as-service`.
 - [x] S3 in `aws` (sync, put, controlli), provato su LocalStack; ricetta `10-aws-static-site`.
 - [x] Segreti letti a esecuzione (`secret-from`; in `aws`: `secrets-manager`, `secrets-manager-key`, `ssm-secure`) e service in background (`start`), provati su LocalStack.
-- [ ] Input di piano (`Host-env`) e `otherwise` per i fallimenti; poi ECR, git e kustomize, ArgoCD, DORA: quanto serve per una pipeline di rilascio su Kubernetes.
+- [x] Parametri del piano (`Host-env`) e `otherwise` per i fallimenti.
+- [ ] ECR, git e kustomize, ArgoCD, DORA: quanto serve per una pipeline di rilascio su Kubernetes.
 - [ ] Azure.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.

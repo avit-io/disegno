@@ -7,6 +7,9 @@
 (extern show      : (→ Nat String) %show)
 (extern distinct? : (→ String String Bool) %distinct?)
 
+(def same? : (→ String String Bool)          ; due testi uguali: (same? tipo "rollback")
+  [a b] (not (distinct? a b)))
+
 ; (re? pattern s): s, tutta, corrisponde all'espressione regolare. Per i tipi raffinati di dominio:
 ; (record Bucket [name : String] [ok : (So (re? "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" name))]).
 (extern re? : (→ String String Bool) %re?)
