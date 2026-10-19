@@ -204,7 +204,7 @@
       (guard (e [(exec-error e)
                  => (lambda (x)
                       (define (ext k) (cond [(assoc k x) => cdr] [else ""]))
-                      (settle! before e0)
+                      (settle! before e0 #t)
                       (when (= streamed before) (out (lines (ext "stdout") (ext "stderr"))))
                       (list (lines (get-output-string p)) (ext "exitCode")))])
         (let ([o (submit-leaf (append pre '((combinedOutput))))])
@@ -339,12 +339,12 @@
     (display s log-port) (flush-output-port log-port)))
 
 ;; Le ultime righe possono arrivare dopo la risposta: si aspetta che il comando chiuda i canali.
-(define (settle! s0 e0)                                  ; s0, e0: righe e eof a inizio passo
+(define (settle! s0 e0 . ran)                            ; s0, e0: righe e eof a inizio passo; ran: il passo è fallito, quindi ha girato
   (when (number? stream-on)
     (let loop ([k 0])
       (sleep (make-time 'time-duration 50000000 0))
       (unless (or (>= (- eofs e0) 2)                     ; stdout e stderr chiusi: il comando ha finito
-                  (and (>= k 2) (= streamed s0) (= eofs e0))   ; niente di niente: in cache
+                  (and (>= k 2) (null? ran) (= streamed s0) (= eofs e0))   ; niente di niente: in cache (un fallimento non lo è)
                   (> k 40))                             ; ponytail: 2 s, poi si chiude comunque
         (loop (+ k 1))))
     (flush! +inf.0)))                                     ; il passo è finito: tutto il buffer

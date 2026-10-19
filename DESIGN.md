@@ -1,6 +1,6 @@
 # Disegno — un linguaggio totale su Dagger
 
-Oct 15, 2026 · @Alvise Vitturi — rivisto alla fine della prima giornata di implementazione.
+Oct 15, 2026 · @Alvise Vitturi — rivisto alla fine della prima giornata di implementazione. Le scelte del linguaggio, con le ragioni e i costi, sono in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Il nome
 
@@ -338,7 +338,7 @@ Precedente sul lato Dagger: Dang, il linguaggio nativo di Dagger 1.0, conferma c
 ## Architettura
 
 ```
-README.md  DESIGN.md  flake.nix
+README.md  DESIGN.md  ARCHITECTURE.md  flake.nix
 src/       core.ss  types.ss  plan.ss  main.ss  lsp.ss   il nucleo, il driver, il server LSP
 lib/       prelude  text  affine  paths  time  net  dagger  engine    la libreria standard, in moduli (engine è generato)
 tools/     gen.ss                                    il generatore dallo schema

@@ -41,5 +41,5 @@ jobs:
         run: |
           s=0; nix develop -c sh -c 'dagger api with-session scheme --script tests/test.ss' >dal-vivo.log 2>&1 || s=$?
           cat dal-vivo.log
-          if [ $s != 0 ]; then grep -v '^\s*$' dal-vivo.log | tail -8 | sed 's/^/::error::/'; fi
+          if [ $s != 0 ]; then { grep -E 'Exception|assertion' dal-vivo.log; grep -v '^\s*$' dal-vivo.log | tail -8; } | sed 's/^/::error::/'; fi
           exit $s

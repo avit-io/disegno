@@ -69,6 +69,6 @@ xdg.dataFile."nvim/site/pack/disegno/start/disegno".source = inputs.disegno.pack
 
 Con `programs.neovim` basta aggiungere `nvim-disegno` a `programs.neovim.plugins`. La grammatica sta in `editors/tree-sitter-disegno` (pacchetto `grammar`), per altri editor.
 
-Il progetto, le scelte e le questioni aperte sono in [DESIGN.md](DESIGN.md). È un esperimento: l'ospite è Chez Scheme, il motore Dagger 1.0 (beta.18).
+Il progetto e le questioni aperte sono in [DESIGN.md](DESIGN.md), le scelte del linguaggio e le loro ragioni in [ARCHITECTURE.md](ARCHITECTURE.md). È un esperimento: l'ospite è Chez Scheme, il motore Dagger 1.0 (beta.18).
 
 Il logo è la prima proposizione degli *Elementi*: il triangolo equilatero costruito con due cerchi, una costruzione che è anche una prova. È tracciato in sanguigna, il colore del disegno rinascimentale.
