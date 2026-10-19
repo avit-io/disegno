@@ -364,7 +364,7 @@
   (let loop ([xs xs] [i 0]) (cond [(null? xs) #f] [(equal? (car xs) x) i] [else (loop (cdr xs) (+ i 1))])))
 (define (nat? e) (and (integer? e) (exact? e) (>= e 0)))
 (define (nat n) (if (zero? n) '(glob zero) `(app (glob add1) ,(nat (- n 1)) e)))
-(define (string-type) (if (gget 'String) '(vglob String ()) (oops "i letterali stringa richiedono String")))
+(define (string-type) (if (gget 'String) '(vglob String ()) (oops "i letterali stringa richiedono String: (import text)")))
 
 ;; [..] arriva come (%br ..) (vedi brackets): in (→ ...) è un binder [x T], in un termine una lista.
 (define (binder? e) (and (pair? e) (memq (car e) '(%br %imp)) (= (length e) 3) (symbol? (cadr e))))  ; %imp: implicito, solo interno
@@ -687,6 +687,7 @@
 (define (path-literal? e)
   (and (symbol? e) (let ([s (symbol->string e)]) (and (> (string-length s) 1) (char=? (string-ref s 0) #\/)))))
 (define (path-term c e)
+  (unless (gget 'Abs) (oops "il percorso ~a richiede Abs: (import paths)" e))
   (fold-left (lambda (acc seg) `(app (app (glob /) ,acc e) ,(check c seg '(vglob Segment ())) e))
              '(glob root)
              (filter (lambda (s) (not (string=? s ""))) (split-on (symbol->string e) #\/))))
@@ -772,8 +773,23 @@
     [(def) (check-def d)]
     [(extern) (check-extern d)]
     [(record) (for-each check-decl (record->decls d))]
-    [(include) (unless (privileged) (oops "include è riservato alla libreria standard")) (check-file (in-dir (current-dir) (cadr d)))]
+    [(import) (for-each import! (cdr d))]
     [else (oops "dichiarazione sconosciuta: ~s" d)]))
+
+;; (import dagger time): i moduli della libreria standard, lib/<nome>.disegno, ciascuno una volta
+;; sola. Si controllano come libreria (extern ammessi); il nome è una parola, quindi un programma
+;; non può far caricare con quei privilegi un file suo. Lo spazio dei nomi è uno solo.
+;; ponytail: niente nomi qualificati né import selettivi; un ciclo tra moduli si ferma in silenzio.
+(define imported (make-eq-hashtable))
+(define (import! m)
+  (unless (and (symbol? m) (for-all (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (char=? c #\-)))
+                                    (string->list (symbol->string m))))
+    (oops "import: ~s non è il nome di un modulo" m))
+  (unless (hashtable-ref imported m #f)
+    (let ([f (at-root (format "lib/~a.disegno" m))])
+      (unless (file-exists? f) (oops "import: il modulo ~a non esiste" m))
+      (hashtable-set! imported m #t)
+      (parameterize ([privileged #t]) (check-file f)))))
 
 ;; (record Service [name : String] [replicas : Nat] [ok : (≥ replicas 1)]) è zucchero per
 ;; un data con il solo costruttore service e le proiezioni Service.name, Service.replicas, ...

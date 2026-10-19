@@ -8,6 +8,8 @@
 ;   disegno plan cookbook/05-network.disegno
 ;   disegno run  cookbook/05-network.disegno      scrive cookbook/net/network.txt
 
+(import dagger time net)
+
 (def vpc : Cidr "10.0.0.0/16")
 
 (record Subnet

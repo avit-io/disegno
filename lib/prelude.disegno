@@ -1,0 +1,175 @@
+; Il prelude: la logica, cioè la teoria dei tipi di Martin-Löf e i suoi dati. Si carica sempre;
+; il resto della libreria si importa: (import dagger), (import time), (import net).
+
+; --- uguaglianza ---
+
+(data ≡ : (→ A A Type)
+  [refl : (≡ x x)])
+
+(def cong : (→ [f (→ A B)] (≡ x y) (≡ (f x) (f y)))
+  [f refl] refl)
+
+(def sym : (→ (≡ x y) (≡ y x))
+  [refl] refl)
+
+(def trans : (→ (≡ x y) (≡ y z) (≡ x z))
+  [refl refl] refl)
+
+; transport (il replace di Pie): l'eliminazione dell'uguaglianza. Ciò che vale di x vale di y, se x ≡ y.
+(def transport : (→ {A Type} {x A} {y A} (≡ x y) [P (→ A Type)] (P x) (P y))
+  [refl P px] px)
+
+; Either: la disgiunzione. Due introduzioni; eliminarla vuol dire trattare entrambi i casi.
+(data Either : (→ Type Type Type)
+  [left  : (→ A (Either A B))]
+  [right : (→ B (Either A B))])
+
+; --- proposizioni decidibili: (So b) è ⊤ se b è vero, ⊥ altrimenti; auto prova ⊤ calcolando ---
+
+(data ⊥ : Type)
+
+(data ⊤
+  [tt])
+
+(data Bool
+  [true]
+  [false])
+
+(def ¬ : (→ Type Type)              ; negazione: (¬ A) è A → ⊥
+  [A] (→ A ⊥))
+
+(def So : (→ Bool Type)
+  [true]  ⊤
+  [false] ⊥)
+
+(def if : (→ Bool A A A)
+  [true  a _] a
+  [false _ b] b)
+
+; --- naturali: 0, 1, 2… sono zucchero per zero, add1 ---
+
+(data Nat
+  [zero]
+  [add1 Nat])
+
+(def + : (→ Nat Nat Nat)
+  [zero     m] m
+  [(add1 k) m] (add1 (+ k m)))
+
+(def ≤? : (→ Nat Nat Bool)
+  [zero     _]        true
+  [(add1 _) zero]     false
+  [(add1 m) (add1 n)] (≤? m n))
+
+(def ≥ : (→ Nat Nat Type)
+  [m n] (So (≤? n m)))
+
+; Le definizioni sono unarie e sono la verità logica; il valutatore calcola +, ∸, *, ≤?, <?,
+; nat=? e pow2 nativamente sui numeri (types.ss, fast), e test.ss verifica che coincidano.
+
+(def ∸ : (→ Nat Nat Nat)                 ; sottrazione troncata
+  [p        zero]     p
+  [zero     (add1 _)] zero
+  [(add1 p) (add1 q)] (∸ p q))
+
+(def * : (→ Nat Nat Nat)
+  [zero     _] zero
+  [(add1 k) m] (+ m (* k m)))
+
+(def <? : (→ Nat Nat Bool)
+  [m n] (≤? (add1 m) n))
+
+(def nat=? : (→ Nat Nat Bool)
+  [zero     zero]     true
+  [zero     (add1 _)] false
+  [(add1 _) zero]     false
+  [(add1 m) (add1 n)] (nat=? m n))
+
+(def pow2 : (→ Nat Nat)
+  [zero]     1
+  [(add1 k)] (+ (pow2 k) (pow2 k)))
+
+(def not : (→ Bool Bool)
+  [true]  false
+  [false] true)
+
+(def and : (→ Bool Bool Bool)
+  [true  b] b
+  [false _] false)
+
+(def or : (→ Bool Bool Bool)
+  [true  _] true
+  [false b] b)
+
+; L'ordine come relazione induttiva: la differenza si calcola sulla prova, come per i percorsi.
+(data ≤ : (→ Nat Nat Type)
+  [≤-zero : (≤ zero n)]
+  [≤-succ : (→ (≤ m n) (≤ (add1 m) (add1 n)))])
+
+; Riflessione: dal test booleano alla relazione induttiva.
+(def ≤-from : (→ [m Nat] [n Nat] (So (≤? m n)) (≤ m n))
+  [zero     n        _] ≤-zero
+  [(add1 m) (add1 n) h] (≤-succ (≤-from m n h)))
+
+; La legge dei naturali: q + (p ∸ q) = p se q ≤ p. Serve al tempo e agli indirizzi.
+(def +-∸ : (→ [p Nat] [q Nat] [h (≤ q p)] (≡ (+ q (∸ p q)) p))
+  [p        zero     ≤-zero]     refl
+  [(add1 p) (add1 q) (≤-succ h)] (cong add1 (+-∸ p q h)))
+
+; --- liste: ["a" "b"] è zucchero per (:: "a" (:: "b" vuota)) ---
+
+(data List : (→ Type Type)
+  [vuota : (List A)]
+  [::    : (→ A (List A) (List A))])
+
+(def ++ : (→ (List A) (List A) (List A))
+  [vuota    ys] ys
+  [(:: x xs) ys] (:: x (++ xs ys)))
+
+(def concat-map : (→ (→ A (List B)) (List A) (List B))
+  [f vuota]     []
+  [f (:: x xs)] (++ (f x) (concat-map f xs)))
+
+(def any? : (→ (→ A Bool) (List A) Bool)
+  [p vuota]     false
+  [p (:: x xs)] (if (p x) true (any? p xs)))
+
+(def all : (→ (→ A Bool) (List A) Bool)
+  [p vuota]     true
+  [p (:: x xs)] (if (p x) (all p xs) false))
+
+(def map : (→ (→ A B) (List A) (List B))
+  [f vuota]     []
+  [f (:: x xs)] (:: (f x) (map f xs)))
+
+; (Holds p x): p vale su x. È un dato e non (So (p x)), così se auto fallisce dice su quale x.
+(data Holds : (→ (→ A Bool) A Type)
+  [holds : (→ [p (→ A Bool)] [x A] (So (p x)) (Holds p x))])
+
+
+; Proposizioni su liste: Every p xs (ogni elemento soddisfa p), Pairwise r xs (ogni coppia è in r).
+
+; Σ: la coppia dipendente. Il secondo elemento ha un tipo che dipende dal primo; è "esiste a
+; tale che B a". × è il caso in cui B non dipende da a.
+(data Σ : (→ [A Type] (→ A Type) Type)
+  [pair : (→ {A Type} {B (→ A Type)} [a A] (B a) (Σ A B))])
+
+(def fst : (→ {A Type} {B (→ A Type)} (Σ A B) A)
+  [(pair a _)] a)
+
+(def snd : (→ {A Type} {B (→ A Type)} [p (Σ A B)] (B (fst p)))
+  [(pair _ b)] b)
+
+(def × : (→ Type Type Type)
+  [A B] (Σ A (λ [_] B)))
+
+(def Every : (→ (→ A Type) (List A) Type)
+  [p vuota]     ⊤
+  [p (:: x xs)] (× (p x) (Every p xs)))
+
+(def Pairwise : (→ (→ A A Type) (List A) Type)
+  [r vuota]     ⊤
+  [r (:: x xs)] (× (Every (r x) xs) (Pairwise r xs)))
+
+(def All : (→ (→ A Bool) (List A) Type)
+  [p xs] (Every (Holds p) xs))

@@ -52,7 +52,7 @@ Il linguaggio appare come un linguaggio a sé: dal codice non si vede l'ospite n
 
 - Una sola forma di definizione: `def nome : tipo`, poi clausole `[pattern] corpo`, oppure un corpo solo.
 - `data` per i tipi induttivi, `record` per un solo costruttore con campi nominati, anche con parametri: `(record (Affine P V [≤ (→ P P Type)]) …)`.
-- `extern` e `include` sono riservati alla libreria standard.
+- `extern` è riservato alla libreria standard. Un programma vede il prelude (la logica) e importa il resto per nome: `(import dagger time)` carica `lib/dagger.disegno` e `lib/time.disegno`, una volta sola, in un unico spazio di nomi. Il nome è una parola, non un percorso: un programma non fa caricare con i privilegi della libreria un file suo.
 - Le variabili libere nelle firme sono quantificate implicitamente. Se il tipo di una di esse non si può ricavare, lo si generalizza: `refl : (≡ x x)` diventa `{A : Type}{x : A} → x ≡ x`.
 - I letterali `0, 1, 2…` sono zucchero per `zero`, `add1`; le stringhe `"…"` sono letterali di tipo `String`.
 - **Le quadre sono sintassi**: in una firma `[x T]` è un binder, `(x T)` un'applicazione; in un termine `["a" "b"]` è una lista; nelle definizioni `[…]` raccoglie i pattern di una clausola o i campi di un costruttore.
@@ -108,7 +108,7 @@ Il linguaggio non ha primitive di IO. Le operazioni del motore sono **costruttor
 - **Una famiglia sola, indicizzata dal tipo GraphQL**: `Container`, `Directory`, `File` si richiamano a vicenda; con un indice non servono data mutuamente ricorsivi, e positività, copertura e universi funzionano senza casi speciali.
 - **Il nome del costruttore è il campo**: `Container.with-exec` è `withExec` su `Container`; `Query.git` è un campo radice. I nomi dei binder espliciti sono gli argomenti GraphQL; `self` è l'oggetto su cui si chiama il metodo.
 - **Generazione** (`tools/gen.ss`): introspezione sulla sessione; solo i tipi in un elenco consentito (per non invadere lo spazio dei nomi dell'utente), solo gli argomenti obbligatori. Gli argomenti oggetto sono `ID` generici nello schema: il tipo vero si legge dalla direttiva `@expectedType`. `Int` diventa `Nat`, `Boolean` diventa `Bool` negli argomenti e un'osservazione `(Obj Kind.bool)` nei risultati. Il file generato, `lib/engine.disegno`, si committa: il type checking non richiede una sessione.
-- **Nomi curati**: i campi si scrivono senza prefisso (vedi Superficie); `std.disegno` aggiunge solo i nomi che rinominano davvero, come `with-file` (`withNewFile`), `with-dir`, `dir-of`, `put`, `exists?`.
+- **Nomi curati**: i campi si scrivono senza prefisso (vedi Superficie); `dagger.disegno` aggiunge solo i nomi che rinominano davvero, come `with-file` (`withNewFile`), `with-dir`, `dir-of`, `put`, `exists?`.
 - **Attraversamento generato**: `nodes : (→ (Obj k) (List Any))` elenca tutti i sotto-piani per ricorsione strutturale, un caso per costruttore. Sopra di esso le proprietà si scrivono in poche righe, senza ricorsione annidata:
 
 ```
@@ -339,7 +339,7 @@ Precedente sul lato Dagger: Dang, il linguaggio nativo di Dagger 1.0, conferma c
 ```
 README.md  DESIGN.md  flake.nix
 src/       core.ss  types.ss  plan.ss  main.ss  lsp.ss   il nucleo, il driver, il server LSP
-lib/       std.disegno  engine.disegno              la libreria standard (engine è generato)
+lib/       prelude  text  affine  paths  time  net  dagger  engine    la libreria standard, in moduli (engine è generato)
 tools/     gen.ss                                    il generatore dallo schema
 tests/     test.ss  checks.disegno                   i test e i teoremi di controllo
 cookbook/  00-basics … 06-theorems  hello/            le ricette
@@ -354,7 +354,9 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `src/main.ss` | driver: `check`, `plan`, `run`, `lsp`, `type`; trova la radice dalla propria posizione |
 | `src/lsp.ss` | il server LSP: JSON-RPC su stdin/stdout, diagnostica da un controllo in un processo a sé |
 | `editors/` | la grammatica tree-sitter con le query, e il plugin per Neovim (filetype, tree-sitter, LSP, `:make`) |
-| `lib/std.disegno` | libreria standard: uguaglianza, `Bool`, `Nat`, liste, spazi affini, regioni, nomi corti, `Host`, `Export`, proprietà del piano |
+| `lib/prelude.disegno` | la logica, sempre caricata: uguaglianza, `⊥`, `⊤`, `Bool`, `So`, `Nat`, `≤`, liste, `Σ`, `Either`, `Every`, `Pairwise`; niente extern |
+| `lib/text`, `affine`, `paths`, `time`, `net` | stringhe; spazi affini e intervalli; percorsi e regioni; istanti e durate; IP, CIDR e porte |
+| `lib/dagger.disegno` | il piano: `Image`, `Arg`, `engine`, `Host`, `Export`, nomi corti, proprietà del piano |
 | `lib/engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes`, `chain` |
 | `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger api with-session`) |
 | `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger api with-session`, dal vivo |
@@ -362,7 +364,7 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `cookbook/` | sette ricette numerate e commentate, verificate dai test (`check`, e `plan` se hanno un main); `hello/` è il sorgente Go degli esempi |
 | `flake.nix` | il pacchetto `disegno` (`nix run`), la shell, il motore dedicato con le CA dell'host |
 
-**Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`; `disegno lsp` è il server per gli editor. nixpkgs è fissato a `nixos-25.11`. `run` apre da sé la sessione con `dagger api with-session`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, e `include` rispetto al file che lo contiene, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.
+**Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`; `disegno lsp` è il server per gli editor. nixpkgs è fissato a `nixos-25.11`. `run` apre da sé la sessione con `dagger api with-session`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.
 
 ## Limitazioni accettate
 
@@ -399,7 +401,8 @@ In cambio della purezza e della semplicità:
 
 ### Da fare
 
-- **Editor**: fatti tree-sitter (grammatica, evidenziazione) e l'LSP in Chez (`disegno lsp`): diagnostica mentre si scrive con tutti gli errori del file (un errore non ferma il controllo; i "nome sconosciuto" a cascata si tacciono), hover con il tipo dei nomi globali e le varianti dei nomi corti, vai alla definizione anche dentro `std` ed `engine`, simboli del file; con il plugin `nvim-disegno`. Restano hover e definizione delle variabili locali (il reader non conserva la posizione degli atomi) e il completamento.
+- **Libreria in moduli**: fatto `import`. Il prelude da solo è la teoria di Martin-Löf, e i capitoli 1–4 del libro si controllano solo con quello. Resta la tabella dei builtin: il checker conosce ancora per nome `Nat`, `zero` e `add1`, `::` e `vuota`, `String`, i percorsi (`Abs`, `Rel`, `Segment`), i letterali di `Duration`, `Instant`, `Ip`, `Cidr`, e `Obj`. Una dichiarazione nella libreria, come i `BUILTIN` di Agda, li legherebbe ai loro nomi. Senza il modulo giusto, oggi un nome come `Port` in una firma diventa una variabile implicita, e l'errore che ne segue è oscuro.
+- **Editor**: fatti tree-sitter (grammatica, evidenziazione) e l'LSP in Chez (`disegno lsp`): diagnostica mentre si scrive con tutti gli errori del file (un errore non ferma il controllo; i "nome sconosciuto" a cascata si tacciono), hover con il tipo dei nomi globali e le varianti dei nomi corti, vai alla definizione anche dentro la libreria, simboli del file; con il plugin `nvim-disegno`. Restano hover e definizione delle variabili locali (il reader non conserva la posizione degli atomi) e il completamento.
 - **Pointless Disegno** (`book/`): un libricino per imparare i tipi dipendenti, sul filo di Gentzen, Dummett e Prawitz (il significato nelle introduzioni, l'eliminazione in armonia). Scritti i nove capitoli, dalle introduzioni alle prove come programmi, al livello di Pie (λ, `the`, impliciti, Σ, `Either`, `transport`). Le soluzioni degli esercizi sono in `book/solutions/`, verificate dai test.
 - **I log: il resoconto dell'opera rispetto al disegno.** Il log di Dagger racconta il meccanismo (le chiamate, la cache) o l'output grezzo, e chi legge annega nella preparazione dell'ambiente. In Disegno il piano è noto prima di eseguire, con i nomi del programma e le proprietà già dimostrate: il log dice solo il residuo, ciò che si impara eseguendo. In CI (o senza terminale) `disegno run` non mostra la TUI e stampa una riga per **voce**: una definizione del programma che costruisce un pezzo di piano (`chez`, `test`, `pubblica`), con esito, che cosa ha fatto e tempo. Un passo appartiene alla voce nel cui corpo è stato costruito (mentre la valutazione apre il corpo di una voce, i `with-exec` ne prendono il nome; gli argomenti li ha valutati il chiamante); i passi di `main` sono di `main`. Una voce i cui passi non dipendono da un input del programma (un `Host`) è **ambiente**, e si dice soltanto «ambiente»; altrimenti la riga mostra il comando di lavoro. Le osservazioni (`passes?`, `exists?`) dicono la risposta e quindi il ramo. In fondo, «realizzato» e che cosa è stato esportato o pubblicato. L'output dei comandi è la **prova**: in CI sta nel gruppo chiuso della voce, altrove non si stampa; una voce fallita mostra le ultime righe del passo, la posizione del suo `with-exec` nel sorgente (anche nel terminale, e su GitHub un'annotazione), e le voci non realizzate.
   La prova viene dal flusso dei log del motore (`/v1/logs` della sessione, server-sent events con record OpenTelemetry in JSON), letto in un thread mentre il passo gira; il passo finisce quando il comando chiude stdout e stderr (`stdio.eof`). Il motore consegna stdout e stderr a pacchetti separati: le righe aspettano 300 ms dal loro arrivo (orologio locale) ed escono nell'ordine dell'istante del motore, senza mai confrontare i due orologi; righe scritte nello stesso millisecondo restano in ordine incerto, come in ogni strumento che legge due pipe. Un passo in cache non esegue niente: la prova è `combinedOutput`. Dagger è pigro e ha la cache, quindi eseguire passo per passo non rifà il lavoro.

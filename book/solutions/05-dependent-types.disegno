@@ -2,6 +2,8 @@
 ;
 ;   disegno check book/solutions/05-dependent-types.disegno
 
+(import text)
+
 (data Vec : (→ Type Nat Type)
   [vnil  : (Vec A zero)]
   [vcons : (→ A (Vec A n) (Vec A (add1 n)))])

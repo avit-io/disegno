@@ -10,6 +10,8 @@
 ; --- un programma: la somma è nella libreria standard; qui una prova su di essa ---
 ; Le variabili libere nelle firme sono implicite; 0, 1, 2… sono zucchero per zero, add1.
 
+(import text)
+
 (def +-zero : (→ [n Nat] (≡ (+ n 0) n))
   [zero]     refl
   [(add1 k)] (cong add1 (+-zero k)))          ; induzione: la chiamata su k è strutturale

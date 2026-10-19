@@ -1,0 +1,144 @@
+; Dagger: il piano come dato, i nomi corti e le proprietà del piano.
+
+(import text paths net)
+
+(extern image-ref? : (→ String Bool) %image-ref?)
+
+; --- valori raffinati: il letterale resta, il tipo cambia ---
+; Un record (valore, prova) accoglie un letterale: "golang:1.25-alpine" atteso come Image diventa
+; (image "golang:1.25-alpine" auto). Se è malformato è un errore di tipo, non del container.
+
+(record Image
+  [raw : String]
+  [ok  : (So (image-ref? raw))])
+
+; La riga di comando resta lo scalpello: si tipano i valori che vi si interpolano, non la sintassi.
+
+(data Arg
+  [arg-text String]
+  [arg-path Abs])
+
+; --- il piano è un dato: Kind, Obj, gli alias Container, Directory… e nodes, generati (gen.ss) ---
+
+(import engine)                            ; generato: usa Arg, Image, Abs, Port
+
+; Due tempi, due condizionali: if (nel prelude) decide su valori noti quando si costruisce il piano;
+; branch su osservazioni, che esistono solo durante l'esecuzione. Un (Remote Bool) non è un Bool.
+; ponytail: l'argomento di Remote ed Export è documentazione; esistono solo osservazioni booleane
+; ed export di directory. Servirà un Kind indicizzato quando ce ne saranno altri.
+
+(def Remote : (→ Type Type)
+  [_] (Obj Kind.bool))
+
+(def Export : (→ Type Type)
+  [_] (Obj Kind.export))
+
+; Confine con l'host: l'utente legge l'host solo tramite (Host "percorso") nella firma di main.
+
+(def Host : (→ String Type)
+  [_] Directory)
+
+; --- nomi corti: file system del motore, valori immutabili; scrivere è costruire una nuova directory ---
+
+(def Dir : Type
+  Directory)
+
+(def empty : Dir
+  Query.directory)
+
+(def with-file : (→ Dir Abs String Dir)
+  [d path contents] (Directory.with-new-file d path contents))
+
+(def without : (→ Dir Abs Dir)
+  [d path] (Directory.without-file d path))
+
+(def sub : (→ Dir Abs Dir)
+  [d path] (Directory.directory d path))
+
+(def put : (→ Dir Abs Dir Dir)
+  [d path source] (Directory.with-directory d path source))
+
+(def exists? : (→ Dir Abs (Remote Bool))
+  [d path] (Directory.exists d path))
+
+; --- container: with-exec dichiara un comando, non lo esegue ---
+; I campi dello schema si scrivono senza prefisso: (from c "alpine") è Container.from perché c è
+; un Container, (container) è il campo radice Query.container. Qui solo i nomi curati.
+
+(def with-dir : (→ Container Abs Dir Container)
+  [c path source] (Container.with-directory c path source))
+
+(def with-env : (→ Container String String Container)
+  [c name value] (Container.with-env-variable c name value))
+
+(def dir-of : (→ Container Abs Dir)
+  [c path] (Container.directory c path))
+
+; --- proprietà del piano: si calcolano sul dato ---
+
+(def image-of : (→ Any (List Image))
+  [(any (Container.from _ address))] [address]
+  [_]                                [])
+
+(def images : (→ (Obj k) (List Image))
+  [p] (concat-map image-of (nodes p)))
+
+; Un'immagine con tag è un punto mobile, una con digest un punto fisso: pinned vuol dire fissa.
+(def pinned? : (→ Image Bool)
+  [i] (contains? (Image.raw i) "@sha256:"))
+
+; Proprietà d'ordine. Le uscite del piano (export, publish) si scelgono con branch: effects le
+; elenca, ciascuna con le osservazioni che devono essere vere perché avvenga. Non scende nelle
+; directory, quindi vale anche per un input astratto: (→ [src Dir] (Before … (release src))).
+
+(data Effect
+  [effect (List (Remote Bool)) (Export Dir)])
+
+(def effects : (→ (List (Remote Bool)) (Export Dir) (List Effect))
+  [gs (branch c a b)] (++ (effects (:: c gs) a) (effects gs b))
+  [gs e]              [(effect gs e)])
+
+(def guarded? : (→ (→ (Remote Bool) Bool) (→ (Export Dir) Bool) Effect Bool)
+  [t? e? (effect gs x)] (if (e? x) (any? t? gs) true))
+
+; (Before t? e? p): ogni uscita che soddisfa e? avviene solo se un'osservazione che soddisfa t? è vera.
+(def Before : (→ (→ (Remote Bool) Bool) (→ (Export Dir) Bool) (Export Dir) Type)
+  [t? e? p] (So (all (guarded? t? e?) (effects vuota p))))
+
+(def test? : (→ (Remote Bool) Bool)
+  [(passes? _)] true
+  [_]           false)
+
+(def publish? : (→ (Export Dir) Bool)
+  [(publish _ _)] true
+  [_]             false)
+
+; Montaggi lungo la catena di un container: dove vengono collocati directory, file e cache.
+; Due container diversi non si contendono il file system, quindi si guarda solo la catena (chain),
+; che non scende negli argomenti: la proprietà vale per ogni sorgente.
+
+(def mount-of : (→ Any (List Abs))
+  [(any (Container.with-directory _ path _))]         [path]
+  [(any (Container.with-file _ path _))]              [path]
+  [(any (Container.with-mounted-directory _ path _))] [path]
+  [(any (Container.with-mounted-file _ path _))]      [path]
+  [(any (Container.with-mounted-cache _ path _))]     [path]
+  [_]                                                 [])
+
+(def mounts : (→ (Obj k) (List Abs))
+  [p] (concat-map mount-of (chain p)))
+
+(def Disjoint-mounts : (→ (Obj k) Type)
+  [p] (Pairwise ⋔ (mounts p)))
+
+; Porte esposte lungo la catena di un container: nessuna porta allocata due volte.
+
+(def port-of : (→ Any (List Port))
+  [(any (Container.with-exposed-port _ p))] [p]
+  [_]                                       [])
+
+(def ports : (→ (Obj k) (List Port))
+  [p] (concat-map port-of (chain p)))
+
+(def Distinct-ports : (→ (Obj k) Type)
+  [p] (Pairwise port≠ (ports p)))

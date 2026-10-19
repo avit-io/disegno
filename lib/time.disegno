@@ -1,0 +1,29 @@
+(import affine)
+
+; --- tempo: istanti e durate, in secondi. "2026-10-15T10:00:00Z" è un istante, "1h30m" una durata ---
+
+(data Instant
+  [at Nat])
+
+(data Duration
+  [secs Nat])
+
+(def Instant.⊕ : (→ Instant Duration Instant)
+  [(at a) (secs d)] (at (+ a d)))
+
+; Sugli istanti (miliardi di secondi) l'ordine è il test decidibile, che auto calcola; la legge
+; passa per la relazione induttiva con il lemma di riflessione ≤-from.
+(def ≥t : (→ Instant Instant Type)        ; (≥t p q): p non viene prima di q
+  [(at p) (at q)] (So (≤? q p)))
+
+(def Instant.⊖ : (→ [p Instant] [q Instant] (≥t p q) Duration)
+  [(at a) (at b) _] (secs (∸ a b)))
+
+(def Instant.⊕-⊖ : (→ [p Instant] [q Instant] [h (≥t p q)] (≡ (Instant.⊕ q (Instant.⊖ p q h)) p))
+  [(at a) (at b) h] (cong at (+-∸ a b (≤-from b a h))))
+
+(def tempo : (Affine Instant Duration ≥t)
+  (affine Instant.⊕ Instant.⊖ Instant.⊕-⊖))
+
+(def window : (→ Instant Duration Interval) ; una finestra: dall'istante, per la durata
+  [(at a) (secs d)] (interval a (+ a d)))

@@ -1,0 +1,38 @@
+; Spazi affini e regioni su una retta: la struttura comune a percorsi, tempo e indirizzi.
+
+; Uno spazio affine: punti P, spostamenti V, una relazione ≤ che dice quando la differenza esiste.
+(record (Affine P V [≤ (→ P P Type)])
+  [+   : (→ P V P)]
+  [-   : (→ [p P] [q P] (≤ p q) V)]
+  [law : (→ [p P] [q P] [h (≤ p q)] (≡ (+ q (- p q h)) p))])
+
+; --- naturali: l'istanza da cui discendono tempo e indirizzi ---
+
+(def ≥N : (→ Nat Nat Type)                ; (≥N p q): la differenza p ∸ q è esatta
+  [p q] (≤ q p))
+
+(def Nat.⊖ : (→ [p Nat] [q Nat] (≥N p q) Nat)
+  [p q _] (∸ p q))
+
+(def naturali : (Affine Nat Nat ≥N)
+  (affine + Nat.⊖ +-∸))
+
+; --- regioni su una retta: intervalli semiaperti [lo, hi) ---
+; Le finestre di tempo, i blocchi CIDR e gli intervalli di porte sono intervalli; le proposizioni
+; naturali sono il contenimento e la disgiunzione.
+
+(record Interval
+  [lo : Nat]
+  [hi : Nat])
+
+(def apart? : (→ Interval Interval Bool)
+  [a b] (or (≤? (Interval.hi a) (Interval.lo b)) (≤? (Interval.hi b) (Interval.lo a))))
+
+(data Apart : (→ Interval Interval Type)
+  [apart : (→ [a Interval] [b Interval] (So (apart? a b)) (Apart a b))])
+
+(def within? : (→ Interval Interval Bool)  ; a sta dentro b
+  [a b] (and (≤? (Interval.lo b) (Interval.lo a)) (≤? (Interval.hi a) (Interval.hi b))))
+
+(def Within : (→ Interval Interval Type)
+  [a b] (So (within? a b)))

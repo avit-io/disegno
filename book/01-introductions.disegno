@@ -30,7 +30,7 @@
   primavera)
 
 ; --- i naturali, nella libreria standard ---
-; Nat è dichiarato così, in lib/std.disegno:
+; Nat è dichiarato così, in lib/prelude.disegno:
 ;
 ;   (data Nat
 ;     [zero]

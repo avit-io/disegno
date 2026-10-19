@@ -134,6 +134,9 @@
 ; Un piano di build, e una politica: nessuna immagine con il tag :latest. images raccoglie le
 ; immagini del piano, All chiede che il predicato valga per ognuna.
 
+; Il piano, le immagini e i loro nomi stanno nel modulo dagger della libreria.
+(import dagger)
+
 (def senza-latest? : (→ Image Bool)
   [i] (not (contains? (Image.raw i) ":latest")))
 

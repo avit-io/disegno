@@ -17,6 +17,8 @@
 ; un tipo per ogni n. Le introduzioni dicono quale membro della famiglia costruiscono: vnil sta
 ; in (Vec A zero), e vcons, da un vettore di n elementi, ne fa uno di (add1 n).
 
+(import text)
+
 (data Vec : (→ Type Nat Type)
   [vnil  : (Vec A zero)]
   [vcons : (→ A (Vec A n) (Vec A (add1 n)))])

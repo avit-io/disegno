@@ -4,6 +4,8 @@
 ;
 ;   disegno run ci.disegno
 
+(import dagger)
+
 (def chez : Container                                    ; Chez Scheme su Alpine, chiamato scheme
   (pipe (container)
         (from "alpine:3.22")

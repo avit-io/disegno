@@ -42,6 +42,8 @@
 
 ; 4. Una politica, e il teorema che il piano la rispetta.
 
+(import dagger)
+
 (def golang? : (→ Image Bool)
   [i] (contains? (Image.raw i) "golang"))
 

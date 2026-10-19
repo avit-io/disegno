@@ -5,6 +5,8 @@
 
 ; --- aritmetica e liste ---
 
+(import dagger time)
+
 (def +-assoc : (→ [a Nat] [b Nat] [c Nat] (≡ (+ (+ a b) c) (+ a (+ b c))))
   [zero     b c] refl
   [(add1 a) b c] (cong add1 (+-assoc a b c)))

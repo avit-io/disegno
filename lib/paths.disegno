@@ -1,0 +1,57 @@
+(import text affine)
+
+; --- I punti non si sommano: il file system come spazio affine ---
+; Un punto è la radice più dei passi: /out è (/ root "out"). Un vettore è una sequenza di passi:
+; "bin/hello". Punto ⊕ vettore = punto; punto ⊖ punto = vettore, solo se uno contiene l'altro;
+; punto + punto non si può nemmeno scrivere: / vuole un Segment.
+; Senza .. i vettori sono un monoide, non un gruppo: per questo la differenza è parziale.
+
+(extern segment? : (→ String Bool) %segment?)
+
+(record Segment
+  [name : String]
+  [ok   : (So (segment? name))])
+
+(data Abs
+  [root]
+  [/ Abs Segment])
+
+(data Rel
+  [here]
+  [step Rel Segment])
+
+; (⊑ p q): p sta dentro q. È induttivo, quindi la differenza si calcola sulla prova e le leggi
+; si dimostrano per induzione, senza confrontare stringhe.
+(data ⊑ : (→ Abs Abs Type)
+  [⊑-refl : (⊑ p p)]
+  [⊑-step : (→ (⊑ p q) (⊑ (/ p s) q))])
+
+(def Abs.⊕ : (→ Abs Rel Abs)
+  [p here]       p
+  [p (step v s)] (/ (⊕ p v) s))
+
+(def Abs.⊖ : (→ [p Abs] [q Abs] (⊑ p q) Rel)
+  [p       q ⊑-refl]     here
+  [(/ p s) q (⊑-step h)] (step (⊖ p q h) s))
+
+(def /s : (→ Segment Abs Abs)
+  [s p] (/ p s))
+
+; La legge: q ⊕ (p ⊖ q) = p. Dimostrata qui una volta; chi scrive un disegno la eredita.
+(def ⊕-⊖ : (→ [p Abs] [q Abs] [h (⊑ p q)] (≡ (⊕ q (⊖ p q h)) p))
+  [p       q ⊑-refl]     refl
+  [(/ p s) q (⊑-step h)] (cong (/s s) (⊕-⊖ p q h)))
+
+(def percorsi : (Affine Abs Rel ⊑)
+  (affine Abs.⊕ Abs.⊖ ⊕-⊖))
+
+; Regioni: il sottoalbero di un punto. (⋔ p q): i sottoalberi di p e q sono disgiunti, perché i
+; due percorsi si separano a un passo. Induttivo come ⊑; auto trova il punto di separazione.
+
+(def ≠ : (→ Segment Segment Type)
+  [s t] (So (distinct? (Segment.name s) (Segment.name t))))
+
+(data ⋔ : (→ Abs Abs Type)
+  [⋔-here  : (→ (≠ s t) (⋔ (/ p s) (/ p t)))]
+  [⋔-left  : (→ (⋔ p q) (⋔ (/ p s) q))]
+  [⋔-right : (→ (⋔ p q) (⋔ p (/ q s)))])

@@ -22,7 +22,8 @@
 
 ;; --- type checker ---
 
-(parameterize ([privileged #t]) (check-file (at-root "lib/std.disegno")))
+(import! 'prelude)
+(for-each import! '(dagger time net))                  ; per i frammenti qui sotto; le ricette importano da sé
 ;; L'accelerazione è fidata: su numeri piccoli deve coincidere con le clausole unarie.
 (for-each
   (lambda (f)
@@ -231,6 +232,9 @@
 (rifiuta "(def ok : Nat 1)\n(def male : Abs\n  (⊕ /out /bin))" "<stringa>:3:3: /bin: atteso Rel, trovato Abs")
 ;; Un errore non ferma il file; chi usa un nome la cui firma è sbagliata non aggiunge errori.
 (rifiuta "(def a : Nat zz)\n(def b : Bool 3)" "<stringa>:2:1: 3: atteso Bool")
+;; import: solo i moduli di lib/, per nome; un percorso non passa.
+(rifiuta "(import ../tests/checks)" "non è il nome di un modulo")
+(rifiuta "(import nessuno)" "il modulo nessuno non esiste")
 (assert (equal? (guard (e [#t (condition-message e)]) (check-string "(def f : (→ Nat \"x\") [_] 0)\n(def g : Nat (f 1))") #f)
                 "<stringa>:1:10: \"x\" non è un tipo"))
 
@@ -245,24 +249,24 @@
     (lambda (p)
       (for-each (lambda (m) (put-string p (frame m)))
         (list (msg "initialize" '(("capabilities" . (("x" . 1)))) 1)
-              (msg "textDocument/didOpen" `(("textDocument" . (("uri" . ,uri) ("text" . "(def male : Abs\n  (⊕ /out /bin))\n(def peggio : Nat \"x\")\n")))))
-              (msg "textDocument/didChange" `(("textDocument" . (("uri" . ,uri))) ("contentChanges" . ,(vector '(("text" . "(def bene : Abs (⊕ /out \"bin\"))\n(def r : (≡ 1 1) refl)\n"))))))
+              (msg "textDocument/didOpen" `(("textDocument" . (("uri" . ,uri) ("text" . "(import paths)\n(def male : Abs\n  (⊕ /out /bin))\n(def peggio : Nat \"x\")\n")))))
+              (msg "textDocument/didChange" `(("textDocument" . (("uri" . ,uri))) ("contentChanges" . ,(vector '(("text" . "(import paths)\n(def bene : Abs (⊕ /out \"bin\"))\n(def r : (≡ 1 1) refl)\n"))))))
               (msg "textDocument/didSave" `(("textDocument" . (("uri" . ,uri)))))
-              (msg "textDocument/hover" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 0) ("character" . 17)))) 3)
-              (msg "textDocument/definition" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 1) ("character" . 18)))) 4)
-              (msg "textDocument/definition" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 0) ("character" . 5)))) 5)
+              (msg "textDocument/hover" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 1) ("character" . 17)))) 3)
+              (msg "textDocument/definition" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 2) ("character" . 18)))) 4)
+              (msg "textDocument/definition" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 1) ("character" . 5)))) 5)
               (msg "textDocument/documentSymbol" `(("textDocument" . (("uri" . ,uri)))) 6)
               (msg "shutdown" '(("x" . 1)) 2)
               (msg "exit" '(("x" . 1)))))) 'replace)
   (system (format "scheme --script ~a lsp < ~a > ~a" (at-root "src/main.ss") in out))
   (let ([r (call-with-input-file out get-string-all)])
     (assert (contiene? r "\"capabilities\""))
-    (assert (contiene? r "\"range\":{\"start\":{\"line\":1,\"character\":2}"))
+    (assert (contiene? r "\"range\":{\"start\":{\"line\":2,\"character\":2}"))
     (assert (contiene? r "\"message\":\"/bin: atteso Rel, trovato Abs\""))
-    (assert (contiene? r "\"range\":{\"start\":{\"line\":2,\"character\":0}"))   ; anche il secondo errore
+    (assert (contiene? r "\"range\":{\"start\":{\"line\":3,\"character\":0}"))   ; anche il secondo errore
     (assert (contiene? r "\"id\":4,\"result\":[{\"uri\":\"file:///"))         ; refl: nella libreria standard
-    (assert (contiene? r "lib/std.disegno\",\"range\":{\"start\":{\"line\":5,"))
-    (assert (contiene? r (format "\"id\":5,\"result\":[{\"uri\":\"~a\",\"range\":{\"start\":{\"line\":0,\"character\":0}" uri)))   ; bene: qui
+    (assert (contiene? r "lib/prelude.disegno\",\"range\":{\"start\":{\"line\":6,"))
+    (assert (contiene? r (format "\"id\":5,\"result\":[{\"uri\":\"~a\",\"range\":{\"start\":{\"line\":1,\"character\":0}" uri)))   ; bene: qui
     (assert (contiene? r "\"name\":\"bene\",\"kind\":12"))
     (assert (contiene? r "\"name\":\"r\",\"kind\":12"))
     (assert (contiene? r "\"diagnostics\":[]"))

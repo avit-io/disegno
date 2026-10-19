@@ -9,6 +9,8 @@
 ;   disegno plan cookbook/02-go-build.disegno
 ;   disegno run  cookbook/02-go-build.disegno     scrive cookbook/bin/hello
 
+(import dagger)
+
 (def go-build : (→ Dir Dir)
   [src] (let [root /src, out /out, bin (/ out "hello")]
           (pipe (container)

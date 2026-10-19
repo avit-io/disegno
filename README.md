@@ -5,6 +5,8 @@
 Un linguaggio totale, con tipi dipendenti, per CI/CD e infrastruttura. Progetta, non esegue: un programma Disegno dichiara un piano, il type checker ne prova le proprietà, [Dagger](https://dagger.io) lo realizza.
 
 ```
+(import dagger)
+
 (def go-build : (→ Dir Dir)
   [src] (let [root /src, out /out, bin (/ out "hello")]
           (pipe (container)

@@ -7,6 +7,8 @@
 ;   disegno plan cookbook/01-files.disegno     il piano: un documento GraphQL
 ;   disegno run  cookbook/01-files.disegno     lo scrive in cookbook/out/
 
+(import dagger)
+
 (def web : Port 8080)
 
 ; Una configurazione resa come testo: concat e show calcolano sui letterali.

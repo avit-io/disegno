@@ -1,0 +1,50 @@
+(import text affine)
+
+; --- indirizzi IPv4: punti in [0, 2³²). "10.0.0.5" è un Ip, "10.0.0.0/24" un blocco Cidr ---
+; Il gruppo vero è modulo 2³²; Disegno esclude l'overflow: Ip.⊕ chiede la prova che si resti
+; nello spazio, quindi non è il + totale del record Affine.
+
+(extern show-ip : (→ Nat String) %show-ip)
+
+(record Ip
+  [n  : Nat]
+  [ok : (So (<? n 4294967296))])
+
+(def Ip.⊕ : (→ [p Ip] [o Nat] (So (<? (+ (Ip.n p) o) 4294967296)) Ip)
+  [p o h] (ip (+ (Ip.n p) o) h))
+
+(record Cidr                               ; il blocco prefisso·2^(32−len) … di lunghezza 2^(32−len)
+  [prefix : Nat]
+  [len    : Nat]
+  [ok     : (So (and (≤? len 32) (<? prefix (pow2 len))))])
+
+(def cidr-range : (→ Cidr Interval)
+  [c] (let [size (pow2 (∸ 32 (Cidr.len c))), lo (* (Cidr.prefix c) size)]
+        (interval lo (+ lo size))))
+
+(def render-ip : (→ Ip String)
+  [a] (show-ip (Ip.n a)))
+
+(def render-cidr : (→ Cidr String)
+  [c] (concat (show-ip (Interval.lo (cidr-range c))) (concat "/" (show (Cidr.len c)))))
+
+(def in? : (→ Ip Cidr Bool)
+  [a c] (within? (interval (Ip.n a) (add1 (Ip.n a))) (cidr-range c)))
+
+(data Cidr-apart : (→ Cidr Cidr Type)
+  [cidr-apart : (→ [a Cidr] [b Cidr] (So (apart? (cidr-range a) (cidr-range b))) (Cidr-apart a b))])
+
+(def Disjoint-subnets : (→ (List Cidr) Type)
+  [cs] (Pairwise Cidr-apart cs))
+
+; --- porte: punti su [0, 65535], senza spostamenti; le regioni sono intervalli ---
+
+(record Port
+  [n  : Nat]
+  [ok : (So (≤? n 65535))])
+
+(def port-range : (→ Port Port Interval)  ; [a, b] come intervallo semiaperto
+  [a b] (interval (Port.n a) (add1 (Port.n b))))
+
+(data port≠ : (→ Port Port Type)
+  [port-distinct : (→ [a Port] [b Port] (So (not (nat=? (Port.n a) (Port.n b)))) (port≠ a b))])

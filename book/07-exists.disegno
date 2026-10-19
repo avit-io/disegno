@@ -17,6 +17,8 @@
 ; pair, prende un a in A e un elemento di (B a): il tipo della seconda componente dipende dalla
 ; prima. Il primo elemento si chiama testimone.
 
+(import text)
+
 (def il-doppio-di-qualcosa : (Σ Nat (λ [n] (≡ (+ n n) 4)))
   (pair 2 refl))
 

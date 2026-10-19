@@ -8,6 +8,8 @@
 
 ; --- la politica: un predicato sulle immagini, esteso a tutto il piano con images e All ---
 
+(import dagger)
+
 (def not-latest? : (→ Image Bool)
   [i] (not (contains? (Image.raw i) ":latest")))
 

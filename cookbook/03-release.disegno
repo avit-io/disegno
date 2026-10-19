@@ -8,6 +8,8 @@
 ;
 ; (run pubblicherebbe davvero l'immagine: cambia l'indirizzo del registry prima di provarlo.)
 
+(import dagger)
+
 (def golang : (→ Dir Container)
   [src] (pipe (container) (from "golang:1.25-alpine") (with-dir /src src) (with-workdir /src)))
 

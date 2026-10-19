@@ -23,7 +23,7 @@
 ;; Un nome corto risolto dal tipo (from, with-exec…) mostra tutte le sue varianti.
 (let ([args (command-line-arguments)])
   (when (and (= (length args) 3) (member (car args) '("type" "where")))
-    (parameterize ([privileged #t]) (check-file (at-root "lib/std.disegno")))
+    (import! 'prelude)
     (guard (e [#t #f]) (check-file (cadr args)))
     (let* ([name (string->symbol (caddr args))]
            [names (if (gget name) (list name) (qualified name))]
@@ -55,7 +55,7 @@
     (exit 1)))
 
 (guard (e [#t (report e)])
-  (parameterize ([privileged #t]) (check-file (at-root "lib/std.disegno")))
+  (import! 'prelude)
   (check-file file))
 
 (define has-main (hashtable-ref sigs 'main #f))
