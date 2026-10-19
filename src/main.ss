@@ -17,17 +17,21 @@
   (serve)
   (exit 0))
 
-;; disegno type prog.disegno nome: il tipo di un nome globale (usato dall'hover dell'LSP). Il file
-;; si controlla fin dove si può: un errore più avanti non impedisce di conoscere i nomi già definiti.
+;; disegno type prog.disegno nome: il tipo di un nome globale (usato dall'hover dell'LSP);
+;; disegno where prog.disegno nome: dove è definito, file:riga:colonna (la definizione).
+;; Il file si controlla fin dove si può: un errore non impedisce di conoscere i nomi definiti.
 ;; Un nome corto risolto dal tipo (from, with-exec…) mostra tutte le sue varianti.
 (let ([args (command-line-arguments)])
-  (when (and (= (length args) 3) (equal? (car args) "type"))
+  (when (and (= (length args) 3) (member (car args) '("type" "where")))
     (parameterize ([privileged #t]) (check-file (at-root "lib/std.disegno")))
     (guard (e [#t #f]) (check-file (cadr args)))
     (let* ([name (string->symbol (caddr args))]
-           [lines (cond [(type-of-global name) => list]
-                        [(path-literal? name) (list (format "~a : Abs" name))]
-                        [else (filter values (map type-of-global (qualified name)))])])
+           [names (if (gget name) (list name) (qualified name))]
+           [lines (if (equal? (car args) "where")
+                      (filter values (map (lambda (n) (let ([p (hashtable-ref def-pos n #f)]) (and p (pos->string p)))) names))
+                      (if (and (not (gget name)) (path-literal? name))
+                          (list (format "~a : Abs" name))
+                          (filter values (map type-of-global names))))])
       (if (null? lines)
           (exit 1)
           (begin (for-each (lambda (l) (display l) (newline)) lines) (exit 0))))))

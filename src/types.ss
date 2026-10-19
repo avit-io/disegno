@@ -20,6 +20,8 @@
 (define privileged (make-parameter #f))                 ; extern solo nella libreria standard
 (define globals (make-eq-hashtable))
 (define (gget n) (and (symbol? n) (hashtable-ref globals n #f)))
+(define def-pos (make-eq-hashtable))                    ; globale → posizione della definizione (per l'LSP)
+(define (define-global! n g) (hashtable-set! globals n g) (when (here) (hashtable-set! def-pos n (here))))
 (define (con? n) (let ([g (gget n)]) (and g (eq? (g-kind g) 'con))))
 (define (fresh-name! n)
   (when (memq n '(→ Type _ pipe auto let λ the)) (oops "~a è una parola riservata" n))
@@ -824,7 +826,7 @@
             (unless (or (eq? (car r) 'type) (assq (car spec) prims)
                         (and (eq? (car h) 'glob) (not (eq? (cadr h) 'String)) (eq? (g-kind (gget (cadr h))) 'extern)))
               (oops "~a: un extern deve restituire un tipo opaco del motore" name))
-            (hashtable-set! globals name (make-g 'extern (ev '() t) (cons spec (reverse names)))))))))
+            (define-global! name (make-g 'extern (ev '() t) (cons spec (reverse names)))))))))
 
 ;; Il reader di Chez non distingue [..] da (..): prima di leggere, [ diventa (%br  fuori da stringhe e commenti.
 ;; Il reader di Chez non distingue [..] da (..): prima di leggere, [ diventa ( e se ne annota la
@@ -887,11 +889,23 @@
   (let-values ([(t opens) (brackets text)])
     (let ([sfd (make-source-file-descriptor name (open-bytevector-input-port (string->utf8 t)))]
           [p (open-string-input-port t)])
-      (let loop ([bfp 0])
+      ;; Un errore non ferma il file: la dichiarazione dopo si controlla lo stesso, e alla fine
+      ;; gli errori escono insieme, uno per riga. Un def il cui corpo è sbagliato resta noto con
+      ;; la sua firma; i "nome sconosciuto" di un nome la cui dichiarazione è fallita si tacciono.
+      (let loop ([bfp 0] [errs '()] [failed '()])
         (let-values ([(a next) (get-datum/annotations p sfd bfp)])
-          (unless (eof-object? a)
-            (let ([d (strip name opens a)]) (with-pos d (lambda () (check-decl d))))
-            (loop next)))))))
+          (if (eof-object? a)
+              (unless (null? errs)
+                (error 'disegno (fold-left (lambda (acc m) (string-append m "\n" acc)) (car errs) (cdr errs))))
+              (let* ([d (strip name opens a)]
+                     [m (guard (e [(and (who-condition? e) (eq? (condition-who e) 'disegno) (message-condition? e)) (condition-message e)])
+                          (with-pos d (lambda () (check-decl d))) #f)]
+                     [cascade? (and m (exists (lambda (n) (let ([s (format "nome sconosciuto: ~a" n)])
+                                                             (and (>= (string-length m) (string-length s))
+                                                                  (string=? s (substring m (- (string-length m) (string-length s)) (string-length m))))))
+                                              failed))])
+                (loop next (if (and m (not cascade?)) (cons m errs) errs)
+                      (if (and m (pair? d) (pair? (cdr d))) (cons (let ([n (cadr d)]) (if (pair? n) (car n) n)) failed) failed)))))))))
 
 ;; I percorsi relativi si risolvono rispetto alla cartella del file che li nomina.
 (define current-dir (make-parameter ""))
@@ -913,12 +927,13 @@
                                                  (cddr d))))])
     (fresh-name! name)
     (let* ([t (elab-sig sig)] [n (begin (k-type t) (data-level (ev '() t)))])
-      (hashtable-set! globals name (make-g 'data (ev '() t) '()))
+      (define-global! name (make-g 'data (ev '() t) '()))
       (let* ([cts (map (lambda (k) (fresh-name! (car k)) (elab-sig (cdr k))) ks)]
              [teles (map (lambda (k ct) (telescope name (car k) ct)) ks cts)]
              [params (param-positions teles)])
         (for-each (lambda (k tele) (check-con name n params (car k) tele)) ks teles)
-        (for-each (lambda (k ct) (hashtable-set! globals (car k) (make-g 'con (ev '() ct) name))) ks cts)
+        (for-each (lambda (k ct raw) (with-pos raw (lambda () (define-global! (car k) (make-g 'con (ev '() ct) name)))))
+                  ks cts (if (and (pair? (cddr d)) (eq? (caddr d) ':)) (list-tail d 4) (cddr d)))
         (g-info-set! (gget name) (map car ks))))))
 
 (define (data-level v)
@@ -993,7 +1008,7 @@
 
 (define (check-def-core name t clauses)
   (let ([ty (begin (k-type t) (ev '() t))])
-    (hashtable-set! globals name (make-g 'def ty #f))
+    (define-global! name (make-g 'def ty #f))
     (hashtable-set! sigs name t)
     (when (and (not (privileged)) (plan-type? ty)) (hashtable-set! voci name #t))
     (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
