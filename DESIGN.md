@@ -375,6 +375,7 @@ In cambio della purezza e della semplicità:
 - niente ricorsione generale e niente IO diretto;
 - niente piano dinamico: i dati del mondo non tornano mai al linguaggio;
 - snodi chiusi: l'utente non estende né gli extern né i costruttori del nucleo;
+- librerie curate: le integrazioni (file, e poi cloud e strumenti DevOps) sono moduli di `lib/` scritti e mantenuti nel repo, con uno scope che cresce nel tempo, come i pacchetti ufficiali di Elm; non si importano librerie esterne. Limita, ma tiene il controllo su ciò che un programma può dichiarare;
 - la totalità vale per la descrizione, non per l'esecuzione: un comando in container può restare non deterministico;
 - ciò che non passa da Dagger è di seconda classe, raggiungibile solo tramite comandi in container;
 - assioma K: il pattern matching unifica `x = x`;

@@ -173,7 +173,7 @@ Il controllo verifica che il nome esista e sia del genere giusto (tipo, costrutt
 
 **Perché.** Così il prelude da solo è la teoria dei tipi, e lo si vede: i capitoli 1–4 del libro si controllano senza importare nulla. Il dominio (percorsi, rete, Dagger) diventa una libreria come le altre, e il nucleo non ha nomi di dominio nel codice.
 
-**Costo.** Uno spazio di nomi solo: niente nomi qualificati né import selettivi. Un ciclo tra moduli si ferma in silenzio. In un linguaggio con una libreria chiusa basta così.
+**Costo.** Uno spazio di nomi solo: niente nomi qualificati né import selettivi. Un ciclo tra moduli si ferma in silenzio. In un linguaggio con una libreria chiusa basta così. Le librerie sono curate nel repo, con uno scope che cresce nel tempo, come i pacchetti ufficiali di Elm: non si importano librerie esterne, e una nuova integrazione (cloud, strumenti DevOps) è un nuovo modulo di `lib/`.
 
 ## 12. La superficie
 
