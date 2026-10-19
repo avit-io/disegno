@@ -14,6 +14,7 @@ Ricette brevi, ciascuna un programma a sé e commentato. Si leggono in ordine; t
 | [07-file-checks](07-file-checks.disegno) | che cosa scrive una directory, provato per ogni sorgente; `branch` sul contenuto di un file guardato da Dagger | `disegno plan` / `run` |
 | [08-release-flow](08-release-flow.disegno) | effetti in sequenza: test, deploy in staging, controllo sul mondo, deploy in prod; i teoremi «test prima del deploy» e «prod dopo staging» | `disegno plan` / `run` |
 | [09-aws-parameters](09-aws-parameters.disegno) | AWS Parameter Store: credenziali come segreti (`Host-secret`), parametri scritti dopo il test, tutti sotto `/app/prod`, nessuno due volte | `disegno plan` / `run` |
+| [10-aws-static-site](10-aws-static-site.disegno) | un sito costruito con `files` e pubblicato su S3 dopo il test; il controllo chiede a S3 se la pagina c'è; i teoremi «sito disgiunto» e «test prima della pubblicazione» | `disegno plan` / `run` |
 
 Con `nix run` al posto di `disegno`: `nix run github:avit-io/disegno -- plan cookbook/02-go-build.disegno`.
 

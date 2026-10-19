@@ -104,9 +104,38 @@
 (def parameters : (→ (Export Dir) (List Abs))
   [p] (concat-map (concat-map written) (histories p)))
 
-(def ssm? : (→ (Export Dir) Bool)               ; un'uscita che scrive un parametro
+(def ssm? : (→ (Export Dir) Bool)               ; un'uscita che scrive un parametro (come aws-command? "ssm" "put-parameter")
   [e] (any? (λ [_] true) (parameter-of e)))
 
 ; Ogni parametro che il piano può scrivere sta sotto r.
 (def Parameters-within : (→ Abs (Export Dir) Type)
   [r p] (Every (λ [q] (⊑ q r)) (parameters p)))
+
+; Un'uscita che esegue un comando della CLI: (aws-command? "s3" "sync"). Per Before e Precedes:
+; (Before test? (aws-command? "s3" "sync") p), nessuna pubblicazione prima del test.
+(def aws-command? : (→ String String (Export Dir) Bool)
+  [svc op (apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _))))] (and (same? a "aws") (and (same? b svc) (same? c op)))
+  [svc op _] false)
+
+; --- S3: un bucket e un prefisso, s3://bucket/site; si pubblica una directory del piano ---
+
+(def s3-uri : (→ Bucket Abs String)
+  [b p] (concat "s3://" (concat (Bucket.name b) (render-abs p))))
+
+(def make-bucket : (→ Aws Bucket (Export Dir))
+  [a b] (apply (cli a) ["aws" "s3" "mb" (s3-uri b root)]))
+
+; La directory va nel container in /disegno/src, e la CLI la sincronizza: --delete toglie ciò
+; che non c'è più, quindi il prefisso diventa esattamente la directory.
+(def s3-sync : (→ Aws Dir Bucket Abs (Export Dir))
+  [a d b p] (apply (with-dir (cli a) /disegno/src d) ["aws" "s3" "sync" "/disegno/src" (s3-uri b p) "--delete"]))
+
+(def s3-put : (→ Aws File Bucket Abs (Export Dir))
+  [a f b p] (apply (Container.with-file (cli a) /disegno/file f) ["aws" "s3" "cp" "/disegno/file" (s3-uri b p)]))
+
+(def s3-exists? : (→ Aws Bucket Abs (Remote Bool))
+  [a b p] (probe (cli a) ["aws" "s3" "ls" (s3-uri b p)]))
+
+; Il contenuto lo guarda il container: l'oggetto passa per una pipe, il testo come argomento.
+(def s3-includes? : (→ Aws Bucket Abs String (Remote Bool))
+  [a b p s] (probe (cli a) ["sh" "-c" "aws s3 cp \"$1\" - | grep -qF \"$2\"" "sh" (s3-uri b p) s]))

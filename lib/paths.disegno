@@ -44,6 +44,11 @@
 (def /s : (→ Segment Abs Abs)
   [s p] (/ p s))
 
+; Un punto come testo, per comporre indirizzi: /site/css → "/site/css"; la radice è "".
+(def render-abs : (→ Abs String)
+  [root]    ""
+  [(/ p s)] (concat (render-abs p) (concat "/" (Segment.name s))))
+
 ; La legge: q ⊕ (p ⊖ q) = p. Dimostrata qui una volta; chi scrive un disegno la eredita.
 (def ⊕-⊖ : (→ [p Abs] [q Abs] [h (⊑ p q)] (≡ (⊕ q (⊖ p q h)) p))
   [p       q ⊑-refl]     refl

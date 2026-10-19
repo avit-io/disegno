@@ -182,7 +182,7 @@ Il controllo verifica che il nome esista e sia del genere giusto (tipo, costrutt
 | `time` | istanti, durate, finestre | affine |
 | `net` | `Ip`, `Cidr`, `Port` | text, affine |
 | `dagger` | `Image`, `Arg`, `engine` (generato), `Host`, `Export`, i nomi corti, le proprietà del piano | text, paths, net |
-| `aws` | la CLI fissata per digest, le credenziali come segreti; `Region`, `Bucket`, `Arn` controllati mentre si tipa; il cloud o LocalStack come service (`Endpoint`); il Parameter Store: `put-parameter`, `put-secure-parameter` (effetti), `parameter-exists?`, `parameter-is?` (osservazioni), `Parameters-within` | dagger |
+| `aws` | la CLI fissata per digest, le credenziali come segreti; `Region`, `Bucket`, `Arn` controllati mentre si tipa; il cloud o LocalStack come service (`Endpoint`); il Parameter Store (`put-parameter`, `put-secure-parameter`, `parameter-exists?`, `parameter-is?`, `Parameters-within`) e S3 (`make-bucket`, `s3-sync`, `s3-put`, `s3-exists?`, `s3-includes?`); `aws-command?` riconosce un comando della CLI per `Before` e `Precedes` | dagger |
 | `files` | directory come valori (`file`, `put-file`, `merge`, `only`, `except` per glob), che cosa scrivono (`writes`, `Disjoint-writes`, `Writes-within`), osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) | dagger |
 
 **Perché.** Così il prelude da solo è la teoria dei tipi, e lo si vede: i capitoli 1–4 del libro si controllano senza importare nulla. Il dominio (percorsi, rete, Dagger) diventa una libreria come le altre, e il nucleo non ha nomi di dominio nel codice.

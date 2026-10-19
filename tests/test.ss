@@ -217,6 +217,20 @@
                   (esito-ls \"porta non scritta\\n\"))))))"
   (string-append dir "/out8")))
 (assert (= (length (all-plans 'con-localstack)) 4))
+(check-string (format "
+  (def esito-s3 : (→ String (Export Dir))
+    [t] (overlay ~s (with-file empty /esito t)))
+  (def bucket-prova : Bucket \"prova-disegno\")
+  (def con-s3 : (→ [k (Host-secret \"DISEGNO_TEST_KEY\")] (Export Dir))
+    [k] (let [a (aws k k \"eu-west-1\" (emulated localstack))]
+          (then (make-bucket a bucket-prova)
+          (then (s3-sync a (with-file empty /index.html \"<h1>ciao</h1>\\n\") bucket-prova /site)
+                (branch (s3-includes? a bucket-prova /site/index.html \"ciao\")
+                  (branch (s3-exists? a bucket-prova /site/manca.html)
+                    (esito-s3 \"trova ciò che non c'è\\n\")
+                    (esito-s3 \"pubblicato\\n\"))
+                  (esito-s3 \"pagina assente\\n\"))))))"
+  (string-append dir "/out10")))
 ;; Argomenti opzionali promossi: i permessi di un file, i glob di filter, l'entrypoint di un service.
 (check-string (format "
   (def d9 : Dir (pipe empty (with-executable /run.sh \"#!/bin/sh\\necho ok\\n\") (with-file /note.txt \"x\\n\")))
@@ -495,6 +509,8 @@
   (assert (zero? (system (format "test -x ~a/out9/run.sh" dir))))
   (assert (not (file-exists? (string-append dir "/out9/note.txt"))))
   (when (getenv "DISEGNO_TEST_KEY")
+    (run 'con-s3)
+    (assert (string=? (call-with-input-file (string-append dir "/out10/esito") get-string-all) "pubblicato\n"))
     (run 'con-localstack)
     (assert (string=? (call-with-input-file (string-append dir "/out8/esito") get-string-all) "scritto\n")))
   (system (format "rm -rf ~a" dir))

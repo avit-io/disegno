@@ -414,7 +414,7 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `lib/text`, `affine`, `paths`, `time`, `net` | stringhe; spazi affini e intervalli; percorsi e regioni; istanti e durate; IP, CIDR e porte |
 | `lib/dagger.disegno` | il piano: `Image`, `Arg`, `engine`, `Host`, `Export`, nomi corti, proprietà del piano |
 | `lib/files.disegno` | i file: `file`, `put-file`, `merge`; che cosa scrive una directory (`Disjoint-writes`, `Writes-within`); osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) |
-| `lib/aws.disegno` | AWS: la CLI fissata, credenziali come segreti, `Region`, `Bucket`, `Arn`; il cloud o LocalStack come service; il Parameter Store (`put-parameter`, `put-secure-parameter`, `parameter-exists?`, `parameter-is?`, `Parameters-within`) |
+| `lib/aws.disegno` | AWS: la CLI fissata, credenziali come segreti, `Region`, `Bucket`, `Arn`; il cloud o LocalStack come service; il Parameter Store (`put-parameter`, `put-secure-parameter`, `parameter-exists?`, `parameter-is?`, `Parameters-within`); S3 (`make-bucket`, `s3-sync`, `s3-put`, `s3-exists?`, `s3-includes?`); `aws-command?` |
 | `lib/engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes`, `chain` |
 | `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger api with-session`) |
 | `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger api with-session`, dal vivo |
@@ -459,7 +459,8 @@ In cambio della purezza e della semplicità:
 - [x] Una regex pura in `text`, `(re? pattern s)`, per i tipi raffinati di dominio (`Bucket`, `Arn` in `aws`); un pattern malformato è un errore di tipo.
 - [x] I service di Dagger come valori del piano: `as-service`, `with-service-binding`; LocalStack per provare `aws` senza account.
 - [x] Argomenti opzionali promossi campo per campo (`promoted` in `gen.ss`): i glob di `filter` (`only`, `except` in `files`), i permessi (`with-executable`), l'entrypoint di `as-service`.
-- [ ] AWS oltre il Parameter Store (S3, ECR), provati su LocalStack.
+- [x] S3 in `aws` (sync, put, controlli), provato su LocalStack; ricetta `10-aws-static-site`.
+- [ ] ECR e gli altri servizi AWS; Azure.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
 - [x] Passaggio a Dagger 1.0 (beta.18): il flake scarica il binario da dl.dagger.io, `dagger api with-session` e `DAGGER_ENGINE`. Nessun cambio nel runner; nello schema `GitRepository.latest-version` diventa `latest`, `commit` restituisce `GitCommit` (escluso), nuovi `with-run`, `with-shell`, `GitRef.contains`. Da tornare a github:dagger/nix quando esce la 1.0.
