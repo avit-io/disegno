@@ -28,7 +28,10 @@ Un linguaggio totale, con tipi dipendenti, per CI/CD e infrastruttura. Progetta,
 - **Totale**: niente ricorsione generale, copertura dei casi, universi stratificati, positività; un kernel ricontrolla ogni termine.
 - **Il piano è un dato**: le operazioni del motore sono costruttori di un tipo induttivo, generati dallo schema di Dagger. Le regole che oggi stanno in linter e policy (immagini pinnate, test prima di publish, montaggi disgiunti) sono teoremi, provati per calcolo con `auto`.
 - **I punti non si sommano**: i letterali si leggono secondo il tipo atteso (`"golang:1.25-alpine"` è un `Image`, `/out` è un punto); punto più punto è un errore di tipo.
-- **Due tempi**: `if` decide mentre si costruisce il piano, `branch` durante l'esecuzione, su osservazioni del motore.
+- **Due tempi**: `if` decide mentre si costruisce il piano, `branch` durante l'esecuzione, su osservazioni del motore. Un'osservazione è la verità di quel test, in quel momento: guida il ramo e non diventa mai un assioma.
+- **Effetti in sequenza**: `then` realizza le uscite in ordine, `apply` esegue un comando come effetto (fuori dalla cache), `probe` osserva il mondo quando lo si raggiunge. «Il test viene prima di prod» è un teorema: `Before`, `Precedes`.
+- **Segreti e service**: le credenziali entrano dalla firma di `main` (`(Host-secret "AWS_ACCESS_KEY_ID")`) e non tornano mai al linguaggio; un service di Dagger, come un database o LocalStack, è un valore del piano.
+- **Librerie curate**: il prelude è la teoria di Martin-Löf; il resto si importa, `(import files aws)`. Le integrazioni (file, AWS Parameter Store e S3) sono moduli del repo, che crescono nel tempo come i pacchetti ufficiali di Elm.
 
 ## Uso
 
@@ -49,7 +52,7 @@ In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza te
       errore: registry irraggiungibile
 ```
 
-Per imparare il linguaggio c'è [Pointless Disegno](book/README.md), un libricino sui tipi dipendenti. Per vederlo in azione c'è il [cookbook](cookbook/README.md): sette ricette brevi, dalle basi alla rete come dato. Dal repository, `nix run . -- run cookbook/02-go-build.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger api with-session scheme --script tests/test.ss`). La CI è scritta in Disegno: [ci.disegno](ci.disegno) esegue la suite in un container, e GitHub Actions ([ci.yml](.github/workflows/ci.yml)) la lancia con `nix run . -- run ci.disegno`.
+Per imparare il linguaggio c'è [Pointless Disegno](book/README.md), un libricino sui tipi dipendenti. Per vederlo in azione c'è il [cookbook](cookbook/README.md): undici ricette brevi, dalle basi alla rete come dato, fino a un rilascio in sequenza e ad AWS (Parameter Store e S3, provabili senza account su LocalStack). Dal repository, `nix run . -- run cookbook/02-go-build.disegno` compila l'esempio Go e scrive il binario in `cookbook/bin/`. In `nix develop` c'è il comando `disegno`, e i test sono `scheme --script tests/test.ss` (dal vivo: `dagger api with-session scheme --script tests/test.ss`). La CI è scritta in Disegno: [ci.disegno](ci.disegno) esegue la suite in un container, e GitHub Actions ([ci.yml](.github/workflows/ci.yml)) la lancia con `nix run . -- run ci.disegno`.
 
 ```
 src/       il nucleo e il driver          lib/    la libreria standard (engine è generata dallo schema)

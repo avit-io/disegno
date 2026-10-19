@@ -40,11 +40,14 @@ Antenati dell'idea: l'IO a richieste e risposte di Haskell 1.0, le derivazioni d
 Funziona, dal vivo su Dagger, l'intera catena: sorgente `.disegno` → type checker → valutazione di `main` a un piano → GraphQL → sessione Dagger → export sull'host. In particolare:
 
 - type checker con tipi dipendenti, famiglie induttive, pattern matching dipendente, controllo di copertura, terminazione strutturale, positività stretta e universi stratificati, ricontrollato da un kernel;
-- piano come dato induttivo generato dallo schema di Dagger (93 costruttori);
+- piano come dato induttivo generato dallo schema di Dagger (111 costruttori);
 - `branch` su osservazioni del motore, con un piano a secco per ogni esito;
 - `record` con invarianti nel tipo e `auto` per le prove calcolate;
 - i teoremi `prod-pinnate` e `test-prima-di-publish` del documento originale, provati con `auto`; il secondo per ogni sorgente;
 - letterali raffinati (`Image`, percorsi) e lo spazio affine dei percorsi, con la legge `q ⊕ (p ⊖ q) = p` dimostrata per induzione.
+- effetti in sequenza (`apply`, `then`, `skip`, `probe`) con i teoremi d'ordine `Before` e `Precedes`;
+- segreti come input di `main` (`Host-secret`) e service di Dagger come valori del piano;
+- la libreria in moduli (`import`, `builtin`): il prelude è la teoria di Martin-Löf, e sopra ci sono `files` e `aws` (Parameter Store, S3), provata dal vivo su LocalStack.
 
 ## Superficie del linguaggio
 
@@ -398,7 +401,7 @@ src/       core.ss  types.ss  plan.ss  main.ss  lsp.ss   il nucleo, il driver, i
 lib/       prelude  text  affine  paths  time  net  dagger  engine  files  aws    la libreria standard, in moduli (engine è generato)
 tools/     gen.ss                                    il generatore dallo schema
 tests/     test.ss  checks.disegno                   i test e i teoremi di controllo
-cookbook/  00-basics … 06-theorems  hello/            le ricette
+cookbook/  00-basics … 10-aws-static-site  hello/     le ricette
 editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin per Neovim
 ```
 
@@ -419,7 +422,7 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger api with-session`) |
 | `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger api with-session`, dal vivo |
 | `tests/checks.disegno` | le leggi e le garanzie come teoremi, verificate a ogni test |
-| `cookbook/` | sette ricette numerate e commentate, verificate dai test (`check`, e `plan` se hanno un main); `hello/` è il sorgente Go degli esempi |
+| `cookbook/` | undici ricette numerate e commentate, verificate dai test (`check`, e `plan` se hanno un main); `hello/` è il sorgente Go degli esempi |
 | `flake.nix` | il pacchetto `disegno` (`nix run`), la shell, il motore dedicato con le CA dell'host |
 
 **Uso.** `nix run . -- check|plan|run prog.disegno`, oppure `disegno …` nella shell `nix develop`; `disegno lsp` è il server per gli editor. nixpkgs è fissato a `nixos-25.11`. `run` apre da sé la sessione con `dagger api with-session`. I percorsi relativi di `Host` ed `Export` si risolvono rispetto alla cartella del programma, così un programma si lancia da qualunque cartella. Il motore Dagger gira in un container dedicato (`disegno-engine`) che monta il bundle CA dell'host, per attraversare un proxy TLS aziendale; il motore passa le CA anche ai container che esegue.

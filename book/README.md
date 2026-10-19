@@ -39,6 +39,8 @@ Se il capitolo passa, tutto ciò che vi è scritto è vero: tipi e teoremi compr
 | [8. Oppure, e il nulla](08-or-and-nothing.disegno) | `Either` e il ragionamento per casi, pari o dispari, `⊥` e `¬`, il pattern assurdo, De Morgan, il terzo escluso e la sua doppia negazione |
 | [9. Le prove come programmi](09-proofs-as-programs.disegno) | Curry–Howard, relazioni induttive (`≤`), decidibilità, `So` e i bit che dicono il vero, che cosa fa `auto`, e uno sguardo al piano |
 
+Il libro si ferma ai tipi e alle prove. Che cosa diventa una pipeline vera, con effetti in sequenza, segreti e service, lo mostrano le ricette del [cookbook](../cookbook/README.md), dalla 08 alla 10.
+
 ## Letture
 
 - G. Gentzen, *Untersuchungen über das logische Schließen*, 1935: le introduzioni come definizioni dei segni.
