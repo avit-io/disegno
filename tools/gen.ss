@@ -95,6 +95,12 @@
     (overlay ((path String) (dir ,(obj "directory"))) ,(obj "export"))
     (replace ((path String) (dir ,(obj "directory"))) ,(obj "export"))
     (publish ((self ,(obj "container")) (address Image)) ,(obj "export"))
+    ;; Effetti in sequenza: apply esegue un comando come effetto (fuori dalla cache), then
+    ;; realizza due uscite in ordine, skip è l'uscita vuota, probe osserva il mondo fuori dalla cache.
+    (apply ((self ,(obj "container")) (args (List Arg))) ,(obj "export"))
+    (then ((first ,(obj "export")) (second ,(obj "export"))) ,(obj "export"))
+    (skip () ,(obj "export"))
+    (probe ((self ,(obj "container")) (args (List Arg))) ,(obj "bool"))
     ;; L'unico stato che persiste tra un'esecuzione e l'altra, non indirizzato per contenuto:
     ;; per questo è uno snodo dichiarato e non un campo generato.
     (cache-volume ((key String)) ,(obj "cache-volume"))))

@@ -84,7 +84,8 @@
           [(try-exec) (method 'withExec '(expect ANY))]
           [(cache-volume) (list (field 'cacheVolume names args))]
           [(passes?) (method 'exitCode)]
-          [(overlay replace publish) (oops "un'uscita (Export) può stare solo in cima al piano")]
+          [(probe) (append (fresh-exec v resolve '(expect ANY)) '((exitCode)))]   ; il mondo, fuori dalla cache
+          [(overlay replace publish apply then skip) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
           [else (let ([segs (split-dots (symbol->string c))])
                   (if (string=? (car segs) "Query")
                       (list (field (string->symbol (camel (cadr segs))) names args))
@@ -113,10 +114,12 @@
           [(bi? (cadr v) 'slash) (let ([xs (explicit (caddr v))]) (loop (force (car xs)) (cons (gql-arg (cadr xs) resolve) acc)))]
           [else (oops "percorso non statico: ~s" (sexp '() (reify 0 v)))])))
 
-;; main : (→ [x (Host "p")] ... (Export Dir)) → catena che termina con export.
-(define (plan resolve . entry)
-  (let* ([main (if (null? entry) 'main (car entry))]
-         [sig (or (hashtable-ref sigs main #f) (oops "manca ~a" main))]
+;; main : (→ [x (Host "p")] ... (Export Dir)). Le uscite del piano si realizzano in ordine:
+;; branch si risolve quando lo si raggiunge, then realizza a e poi b, skip non fa niente; ogni
+;; uscita foglia (export, publish, effetto) è una catena che emit riceve. Dal vivo emit la esegue
+;; subito, quindi un'osservazione dopo un effetto vede il mondo dopo l'effetto.
+(define (entry-value main)
+  (let* ([sig (or (hashtable-ref sigs main #f) (oops "manca ~a" main))]
          [hosts (let loop ([t sig])
                   (if (eq? (car t) 'pi)
                       (let ([dom (cadddr t)])
@@ -124,17 +127,42 @@
                           (oops "gli argomenti di main devono essere (Host \"percorso\")"))
                         (cons (list 'vglob '%host-dir (list (cons (list 'vstr (in-dir (program-dir) (cadr (caddr dom)))) 'e)))
                               (loop (list-ref t 4))))
-                      '()))]
-         [v (pick (vapp-sp (ev '() `(glob ,main)) (map (lambda (h) (cons h 'e)) hosts)) resolve)])
+                      '()))])
+    (vapp-sp (ev '() `(glob ,main)) (map (lambda (h) (cons h 'e)) hosts))))
+
+;; Un effetto e un'osservazione del mondo non vanno in cache: una variabile d'ambiente nuova a ogni
+;; esecuzione, subito prima del comando, così la preparazione dell'ambiente resta in cache.
+(define run-id (make-parameter "<esecuzione>"))
+(define (fresh-exec v resolve . fixed)                   ; (apply c cmd) o (probe c cmd) → catena fino al withExec
+  (let* ([xs (explicit (caddr v))] [recv (chain (car xs) resolve)]
+         [ch (located v (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(run-id)))
+                                           `(withExec (args ,(gql-arg (cadr xs) resolve)) ,@fixed))))])
+    (hashtable-set! step-work (last-of ch) #t)           ; un effetto è lavoro: il resoconto mostra il comando
+    ch))
+
+(define (realize v resolve emit)
+  (let ([v (pick v resolve)])
     (case (node v)
+      [(then) (let ([xs (explicit (caddr v))]) (realize (car xs) resolve emit) (realize (cadr xs) resolve emit))]
+      [(skip) (void)]
       [(overlay replace)                                 ; export sull'host; replace è con wipe
        (let* ([path (in-dir (program-dir) (gql-arg (car (explicit (caddr v))) resolve))]
               [dir (chain (cadr (explicit (caddr v))) resolve)])
-         (append dir (list `(export (path ,path) (wipe ,(eq? (node v) 'replace))))))]
+         (emit (append dir (list `(export (path ,path) (wipe ,(eq? (node v) 'replace)))))))]
       [(publish)                                         ; pubblicazione dell'immagine su un registry
        (let* ([ctr (chain (car (explicit (caddr v))) resolve)])
-         (append ctr (list `(publish (address ,(gql-arg (cadr (explicit (caddr v))) resolve))))))]
-      [else (oops "~a deve restituire un Export" main)])))
+         (emit (append ctr (list `(publish (address ,(gql-arg (cadr (explicit (caddr v))) resolve)))))))]
+      [(apply) (emit (append (fresh-exec v resolve) '((exitCode))))]
+      [else (oops "il piano deve restituire un Export")])))
+
+(define (exits resolve . entry)                          ; → le catene delle uscite, in ordine
+  (let ([acc '()])
+    (realize (entry-value (if (null? entry) 'main (car entry))) resolve (lambda (ch) (set! acc (cons ch acc))))
+    (reverse acc)))
+
+(define (plan resolve . entry)                           ; un piano con un'uscita sola: la sua catena
+  (let ([es (apply exits resolve entry)])
+    (if (= (length es) 1) (car es) (oops "il piano ha ~a uscite: usare exits" (length es)))))
 
 ;; --- esecuzione ---
 
@@ -258,14 +286,19 @@
             (if b "vero" "falso"))
     (flush-output-port)))
 
-(define (summary p dt)                                   ; la riga finale: realizzato, e che cosa
-  (let ([last (last-of p)])
-    (printf "realizzato in ~a~@[: ~a~]\n" (secs dt)
-            (case (car last)
-              [(export) (format "esportato ~a" (cadr (assq 'path (cdr last))))]
-              [(publish) (format "pubblicato ~a" (cadr (assq 'address (cdr last))))]
-              [else #f]))
-    (flush-output-port)))
+(define (outcome ch)                                     ; che cosa ha fatto un'uscita, in parole
+  (let ([last (last-of ch)])
+    (case (car last)
+      [(export) (format "esportato ~a" (cadr (assq 'path (cdr last))))]
+      [(publish) (format "pubblicato ~a" (cadr (assq 'address (cdr last))))]
+      [(exitCode) (format "effetto ~a" (show-args (step-args (last-of (list-head ch (- (length ch) 1))))))]
+      [else "?"])))
+
+(define (outcomes done) (format "~{~a~^, ~}" (map outcome done)))
+
+(define (summary done dt)                                ; la riga finale: realizzato, e che cosa
+  (printf "realizzato in ~a~@[: ~a~]\n" (secs dt) (and (pair? done) (outcomes done)))
+  (flush-output-port))
 
 ;; --- il flusso: le righe dei comandi appena il motore le riceve (in CI, con DISEGNO_LOGS) ---
 
@@ -375,11 +408,12 @@
                                      (step-failed (cmd-pos cmd) (cdr (assoc "exitCode" x)) (show-args cmd))))])
       (dynamic-wind void
         (lambda ()
-          (let* ([t0 (now-ns)] [p (plan resolve-live entry)])
-            (log-steps p)
-            (let ([r (submit-leaf p)])
-              (when (env? "DISEGNO_LOGS") (summary p (- (now-ns) t0)))
-              r)))
+          (let ([t0 (now-ns)] [done '()])
+            (parameterize ([run-id (number->string t0)])
+              (realize (entry-value entry) resolve-live
+                       (lambda (ch) (log-steps ch) (submit-leaf ch) (set! done (cons ch done)))))
+            (when (env? "DISEGNO_LOGS") (summary (reverse done) (- (now-ns) t0)))
+            (outcomes (reverse done))))
         stop-stream!))))
 
 (define (exec-error e)                                   ; → le extensions di un EXEC_ERROR, o #f
@@ -396,15 +430,17 @@
             [else (loop (+ i 1))]))))
 
 ;; A secco: un piano per ogni combinazione di esiti dei branch, in profondità.
-;; → lista di ((catena-condizione . esito) ...) . catena
+;; → lista di ((catena-condizione . esito) ...) . eventi; gli eventi, in ordine, sono
+;; (se catena esito) per le osservazioni e (uscita catena) per le uscite.
 (define (all-plans entry)
   (let explore ([prefix '()])
-    (let* ([taken '()]
-           [p (parameterize ([observe (lambda (ch)
+    (let* ([taken '()] [events '()]
+           [_ (parameterize ([observe (lambda (ch)
                                         (let ([b (if (< (length taken) (length prefix)) (list-ref prefix (length taken)) #t)])
                                           (set! taken (append taken (list (cons ch b))))
+                                          (set! events (cons (list 'se ch b) events))
                                           b))])
-                (plan resolve-dry entry))])
-      (cons (cons taken p)
+                (realize (entry-value entry) resolve-dry (lambda (ch) (set! events (cons (list 'uscita ch) events)))))])
+      (cons (cons taken (reverse events))
             (apply append (map (lambda (i) (explore (append (map cdr (list-head taken i)) '(#f))))
                                (reverse (filter (lambda (i) (>= i (length prefix))) (iota (length taken))))))))))

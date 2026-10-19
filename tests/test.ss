@@ -140,6 +140,19 @@
                               (put /uguale (esito (same-content? f f)))))))"
   (string-append dir "/in") (string-append dir "/out4")))
 (assert (= (length (all-plans 'contenuto)) 32))
+
+;; Effetti in sequenza: then realizza in ordine, apply è un effetto fuori dalla cache (una
+;; variabile nuova a ogni esecuzione, subito prima del comando), skip non fa niente.
+(check-string (format "
+  (def sequenza : (Export Dir)
+    (then (apply (from (container) \"alpine\") [\"sh\" \"-c\" \"echo effetto\"])
+          (then skip (overlay ~s (with-file empty /dopo \"sì\\n\")))))"
+  (string-append dir "/out5")))
+(let ([es (exits resolve-dry 'sequenza)])
+  (assert (= (length es) 2))
+  (assert (contiene? (plan->graphql (car es)) "withEnvVariable(name: \"DISEGNO_RUN\", value: \"<esecuzione>\") { withExec(args: [\"sh\", \"-c\", \"echo effetto\"]) { exitCode }"))
+  (assert (contiene? (plan->graphql (cadr es)) "export(path:")))
+(rifiuta "(def dentro : Container (with-dir (from (container) \"a\") /x (overlay \"o\" empty)))" "atteso")
 (assert (contiene? (plan->graphql (car (car (car (car (all-plans 'contenuto))))))
                    "withExec(args: [\"grep\", \"-qF\", \"dati\", \"/f\"], expect: ANY) { exitCode }"))
 
@@ -387,6 +400,15 @@
       (assert (contiene? out "::group::✓ prepara     ambiente  "))
       (assert (contiene? out (format "\"\nA~a\nB\nC\n" n)))
       (assert (contiene? out "::error file=<stringa>,line=10,col=36::passo fallito (exit 3)"))))
+  ;; Un effetto si riesegue a ogni run: la seconda volta le sue righe arrivano di nuovo dal
+  ;; flusso, mentre un passo in cache tace. Le uscite vengono nell'ordine di then.
+  (let* ([r1 (begin (set! logged '()) (esegui 'sequenza))] [s1 streamed]
+         [r2 (begin (set! logged '()) (esegui 'sequenza))])
+    (assert (> streamed s1))
+    (assert (contiene? (cdr r2) "✓ sequenza    sh -c \"echo effetto\"  "))
+    (assert (contiene? (cdr r2) "realizzato in "))
+    (assert (contiene? (cdr r2) ": effetto sh -c \"echo effetto\", esportato "))
+    (assert (string=? (call-with-input-file (string-append dir "/out5/dopo") get-string-all) "sì\n")))
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

@@ -18,6 +18,10 @@
   [overlay : (→ [path String] [dir (Obj Kind.directory)] (Obj Kind.export))]
   [replace : (→ [path String] [dir (Obj Kind.directory)] (Obj Kind.export))]
   [publish : (→ [self (Obj Kind.container)] [address Image] (Obj Kind.export))]
+  [apply : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.export))]
+  [then : (→ [first (Obj Kind.export)] [second (Obj Kind.export)] (Obj Kind.export))]
+  [skip : (Obj Kind.export)]
+  [probe : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.bool))]
   [cache-volume : (→ [key String] (Obj Kind.cache-volume))]
   [Query.container : (Obj Kind.container)]
   [Query.directory : (Obj Kind.directory)]
@@ -142,6 +146,10 @@
   [(overlay x0 x1)] (:: (any (overlay x0 x1)) (++ (nodes x1) vuota))
   [(replace x0 x1)] (:: (any (replace x0 x1)) (++ (nodes x1) vuota))
   [(publish x0 x1)] (:: (any (publish x0 x1)) (++ (nodes x0) vuota))
+  [(apply x0 x1)] (:: (any (apply x0 x1)) (++ (nodes x0) vuota))
+  [(then x0 x1)] (:: (any (then x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
+  [skip] (:: (any skip) vuota)
+  [(probe x0 x1)] (:: (any (probe x0 x1)) (++ (nodes x0) vuota))
   [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)
   [Query.directory] (:: (any Query.directory) vuota)
@@ -243,6 +251,10 @@
   [(overlay x0 x1)] (:: (any (overlay x0 x1)) vuota)
   [(replace x0 x1)] (:: (any (replace x0 x1)) vuota)
   [(publish x0 x1)] (:: (any (publish x0 x1)) (chain x0))
+  [(apply x0 x1)] (:: (any (apply x0 x1)) (chain x0))
+  [(then x0 x1)] (:: (any (then x0 x1)) vuota)
+  [skip] (:: (any skip) vuota)
+  [(probe x0 x1)] (:: (any (probe x0 x1)) (chain x0))
   [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)
   [Query.directory] (:: (any Query.directory) vuota)

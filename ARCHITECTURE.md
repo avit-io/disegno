@@ -101,6 +101,15 @@ Gli strati, dal più fidato al meno:
 
 È l'analisi statica dei funtori applicativi selettivi (Mokhov e altri, 2019).
 
+**Un'osservazione non è un assioma.** L'esito di un'osservazione è vero per quell'esecuzione e decide il ramo, ma non entra mai nella logica. È garantito per costruzione:
+- non esiste una funzione da `(Remote Bool)` a `Bool` o a `Type`;
+- l'unico modo di usare un'osservazione è `branch`, che è un costruttore del piano, cioè un dato;
+- il pattern matching su `(passes? c)`, come fa `test?`, guarda quale osservazione è, non che cosa risponde.
+
+Un teorema parla quindi solo della forma del piano: «il test viene prima di prod» è vero e si dimostra. Che il test abbia risposto sì è la verità di quel test, in quel momento, non del mondo: lo staging ha risposto, non è detto che sia sano.
+
+**Effetti in sequenza.** Le uscite del piano si compongono: `(then a b)` realizza `a` e poi `b`, `skip` non fa niente, `(apply c cmd)` esegue un comando come effetto, fuori dalla cache, e `(probe c cmd)` osserva il mondo quando lo si raggiunge. Le proprietà d'ordine seguono il piano come una storia di osservazioni e uscite: `Before` («nessun deploy senza test») e `Precedes` («prod dopo staging») si provano per ogni sorgente.
+
 **Costo.** Niente piano dinamico: ciò che dipende da un risultato si esprime con `branch` su un'osservazione, non con un valore che torna indietro.
 
 ## 7. Il piano generato dallo schema

@@ -587,7 +587,7 @@
 ;; passo fallisce, il runner dice dove; il resoconto di un run parla con i nomi del programma.
 (define (at-step e t)
   (let ([p (and (pair? e) (hashtable-ref pos-of e #f))])
-    (if (and p (memq (term-head t) '(Container.with-exec try-exec))) `(at ,(pos->vector p) ,t) t)))
+    (if (and p (memq (term-head t) '(Container.with-exec try-exec apply probe))) `(at ,(pos->vector p) ,t) t)))
 
 (define (term-head t)
   (case (car t) [(app) (term-head (cadr t))] [(glob) (cadr t)] [else #f]))

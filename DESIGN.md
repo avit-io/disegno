@@ -229,9 +229,9 @@ La distinzione di fase viene gratis dai tipi: `(Remote Bool)` non è `Bool`, qui
 
 Il runner realizza `branch` chiedendo la condizione e sottomettendo il ramo scelto, nella stessa sessione. A secco stampa un piano per ogni combinazione di esiti, con la condizione che lo sceglie. Poiché entrambi i rami stanno nel piano, una proprietà del piano va provata su tutti e due: è l'analisi statica dei funtori applicativi selettivi (Mokhov e altri, 2019).
 
-## Effetti in sequenza (proposta)
+## Effetti in sequenza
 
-Proposta, non ancora implementata. È il passo che serve alle librerie per il cloud e per gli strumenti DevOps (AWS, Azure, Kubernetes): una pipeline vera fa più cose in ordine, e alcune agiscono sul mondo.
+Implementati (i segreti no, vedi sotto). Sono il passo che serve alle librerie per il cloud e per gli strumenti DevOps (AWS, Azure, Kubernetes): una pipeline vera fa più cose in ordine, e alcune agiscono sul mondo. La ricetta `cookbook/08-release-flow.disegno` li usa tutti.
 
 **Il problema.** Oggi un piano ha un'uscita sola, in cima: `overlay`, `replace` o `publish`. Un deploy si può scrivere solo come `with-exec` dentro un container, e lì è un effetto nascosto:
 - Dagger lo mette in cache, quindi la seconda esecuzione non rifà il deploy;
@@ -251,9 +251,9 @@ Proposta, non ancora implementata. È il passo che serve alle librerie per il cl
 - **L'ordine** è quello di `then`: da sinistra a destra, e ci si ferma al primo fallimento. Dentro ogni uscita Dagger resta pigro e parallelo come oggi.
 - **Le osservazioni si fanno quando le si raggiunge.** Un `branch` dentro il secondo argomento di `then` si risolve dopo che il primo è stato realizzato, quindi un `probe` vede il mondo dopo il deploy in staging. Il piano resta statico: entrambi i rami ci sono, e `disegno plan` stampa una sequenza di uscite per ogni combinazione di esiti.
 - **La cache.** Il runner aggiunge `withEnvVariable(DISEGNO_RUN, <id dell'esecuzione>)` subito prima del comando di `apply` e di `probe`. Così si rifà solo l'effetto, non la costruzione dell'ambiente. `passes?` resta in cache, perché osserva il risultato di un input, non il mondo.
-- **Il resoconto.** Una voce che contiene un `apply` lo dice: «effetto», con il comando. Le voci successive a un effetto fallito compaiono tra quelle non realizzate.
+- **Il resoconto.** La riga di una voce con un effetto mostra il comando, come per il lavoro; la riga finale elenca le uscite nell'ordine in cui sono avvenute: «realizzato in 1.5s: effetto echo deploy staging, effetto echo deploy prod». Se un effetto fallisce, le uscite dopo non avvengono.
 
-**Le proprietà.** `effects` impara a seguire `then`. Ogni uscita porta con sé le osservazioni che la proteggono e le uscite che la precedono. Così, oltre a `Before`, si scrive l'ordine:
+**Le proprietà.** Un piano, seguito per ogni esito dei `branch`, è una storia: osservazioni vere (`seen`) e uscite realizzate (`done`), nell'ordine in cui avvengono (`histories`, in `dagger.disegno`). `then` concatena le storie, `branch` le sceglie. `Before` e `Precedes` sono la stessa funzione, `earlier`: ogni uscita che soddisfa un predicato viene dopo un evento che ne soddisfa un altro. Così, oltre a `Before`, si scrive l'ordine:
 
 ```
 (def rilascio : (→ [src (Host ".")] (Export Dir))
@@ -280,9 +280,9 @@ Proposta, non ancora implementata. È il passo che serve alle librerie per il cl
 
 **Il passo dopo: i segreti.** Un `apply` verso il cloud vuole credenziali. Il modello è quello di `Host`: `main` dichiara nella firma `(Secret "AWS_SECRET_ACCESS_KEY")`, il runner lo legge con `secret(uri: "env://AWS_SECRET_ACCESS_KEY")` e lo passa con `withSecretVariable`. Il valore non torna al linguaggio e non compare nel piano stampato. Serve aggiungere `Secret` ai tipi del generatore.
 
-**Da decidere.**
-1. `apply` con l'ambiente e il comando separati, così la preparazione resta in cache. In alternativa, `(apply c)` sull'ultimo `with-exec` di `c`: si scrive meno, ma è meno chiaro che cosa sia l'effetto.
-2. Se un `probe` conta come test per `Before`, come i controlli sul contenuto. La proposta è di sì: «deploy in prod solo se lo staging risponde» è un test sul mondo.
+**Deciso.**
+1. `apply` ha l'ambiente e il comando separati: la preparazione resta in cache, e si vede che cosa è l'effetto.
+2. Un `probe` conta come test per `Before`, come i controlli sul contenuto. Ma non è una verità sul mondo: è la verità di quel test, in quel momento. Che lo staging abbia risposto non dice che sia sano, dice che quel comando è uscito con 0. Il teorema `test-prima-del-deploy` prova che il deploy è protetto da quella risposta, non che il mondo sia come il test lo descrive. È la stessa frontiera di «Cosa resta empirico» (Curry-Howard): si prova il disegno, non l'opera.
 
 ## Nucleo fidato
 
@@ -453,7 +453,8 @@ In cambio della purezza e della semplicità:
 - [x] Negazione nei teoremi: `¬`, pattern assurdi `()`, refutazione con `auto`.
 - [ ] IaC: come recuperare tipi utili quando l'infrastruttura passa da comandi in container.
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
-- [ ] Effetti in sequenza (`apply`, `then`, `skip`, `probe`) e segreti come input di `main`: proposta nella sezione «Effetti in sequenza».
+- [x] Effetti in sequenza (`apply`, `then`, `skip`, `probe`), con `Before` e `Precedes` sulle storie del piano.
+- [ ] Segreti come input di `main` (`(Secret "NOME")`, sul modello di `Host`).
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
 - [x] Passaggio a Dagger 1.0 (beta.18): il flake scarica il binario da dl.dagger.io, `dagger api with-session` e `DAGGER_ENGINE`. Nessun cambio nel runner; nello schema `GitRepository.latest-version` diventa `latest`, `commit` restituisce `GitCommit` (escluso), nuovi `with-run`, `with-shell`, `GitRef.contains`. Da tornare a github:dagger/nix quando esce la 1.0.

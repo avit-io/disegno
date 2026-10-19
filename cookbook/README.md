@@ -12,6 +12,7 @@ Ricette brevi, ciascuna un programma a sé e commentato. Si leggono in ordine; t
 | [05-network](05-network.disegno) | una rete come dato: subnet disgiunte e nella VPC, porte, finestre, la configurazione generata | `disegno plan` / `run` |
 | [06-theorems](06-theorems.disegno) | scrivere una propria politica sul piano, provarla e provarne la violazione, una legge per induzione | `disegno check` |
 | [07-file-checks](07-file-checks.disegno) | che cosa scrive una directory, provato per ogni sorgente; `branch` sul contenuto di un file guardato da Dagger | `disegno plan` / `run` |
+| [08-release-flow](08-release-flow.disegno) | effetti in sequenza: test, deploy in staging, controllo sul mondo, deploy in prod; i teoremi «test prima del deploy» e «prod dopo staging» | `disegno plan` / `run` |
 
 Con `nix run` al posto di `disegno`: `nix run github:avit-io/disegno -- plan cookbook/02-go-build.disegno`.
 

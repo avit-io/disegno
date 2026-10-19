@@ -88,31 +88,59 @@
 (def pinned? : (→ Image Bool)
   [i] (contains? (Image.raw i) "@sha256:"))
 
-; Proprietà d'ordine. Le uscite del piano (export, publish) si scelgono con branch: effects le
-; elenca, ciascuna con le osservazioni che devono essere vere perché avvenga. Non scende nelle
-; directory, quindi vale anche per un input astratto: (→ [src Dir] (Before … (release src))).
+; Proprietà d'ordine. Un piano, seguito per ogni esito dei branch, è una storia: osservazioni
+; vere (seen) e uscite realizzate (done), nell'ordine in cui avvengono; then concatena, branch
+; sceglie. Non si scende nelle directory, quindi le proprietà valgono anche per un input astratto:
+; (→ [src Dir] (Before … (release src))). Un'osservazione nella storia dice che quel test ha
+; risposto sì in quel momento: è la verità di quel test, non del mondo, e non diventa un assioma.
 
-(data Effect
-  [effect (List (Remote Bool)) (Export Dir)])
+(data Event
+  [seen (Remote Bool)]
+  [done (Export Dir)])
 
-(def effects : (→ (List (Remote Bool)) (Export Dir) (List Effect))
-  [gs (branch c a b)] (++ (effects (:: c gs) a) (effects gs b))
-  [gs e]              [(effect gs e)])
+(def histories : (→ (Export Dir) (List (List Event)))
+  [(branch c a b)] (++ (map (:: (seen c)) (histories a)) (histories b))
+  [(then a b)]     (concat-map (λ [h] (map (++ h) (histories b))) (histories a))
+  [skip]           [[]]
+  [e]              [[(done e)]])
 
-(def guarded? : (→ (→ (Remote Bool) Bool) (→ (Export Dir) Bool) Effect Bool)
-  [t? e? (effect gs x)] (if (e? x) (any? t? gs) true))
+; (earlier w? e? g h): in h, ogni uscita che soddisfa e? viene dopo un evento che soddisfa w?.
+(def allowed? : (→ (→ (Export Dir) Bool) Bool Event Bool)
+  [e? g (seen _)] true
+  [e? g (done x)] (if (e? x) g true))
 
-; (Before t? e? p): ogni uscita che soddisfa e? avviene solo se un'osservazione che soddisfa t? è vera.
+(def earlier : (→ (→ Event Bool) (→ (Export Dir) Bool) Bool (List Event) Bool)
+  [w? e? g vuota]     true
+  [w? e? g (:: x xs)] (and (allowed? e? g x) (earlier w? e? (or g (w? x)) xs)))
+
+(def seen? : (→ (→ (Remote Bool) Bool) Event Bool)
+  [t? (seen c)] (t? c)
+  [t? (done _)] false)
+
+(def done? : (→ (→ (Export Dir) Bool) Event Bool)
+  [s? (done x)] (s? x)
+  [s? (seen _)] false)
+
+; (Before t? e? p): ogni uscita che soddisfa e? avviene dopo un'osservazione vera che soddisfa t?.
 (def Before : (→ (→ (Remote Bool) Bool) (→ (Export Dir) Bool) (Export Dir) Type)
-  [t? e? p] (So (all (guarded? t? e?) (effects vuota p))))
+  [t? e? p] (So (all (earlier (seen? t?) e? false) (histories p))))
 
-(def test? : (→ (Remote Bool) Bool)
+; (Precedes s? e? p): ogni uscita che soddisfa e? avviene dopo un'uscita che soddisfa s?.
+(def Precedes : (→ (→ (Export Dir) Bool) (→ (Export Dir) Bool) (Export Dir) Type)
+  [s? e? p] (So (all (earlier (done? s?) e? false) (histories p))))
+
+(def test? : (→ (Remote Bool) Bool)        ; un test, nel container o sul mondo
   [(passes? _)] true
+  [(probe _ _)] true
   [_]           false)
 
 (def publish? : (→ (Export Dir) Bool)
   [(publish _ _)] true
   [_]             false)
+
+(def apply? : (→ (Export Dir) Bool)
+  [(apply _ _)] true
+  [_]           false)
 
 ; Montaggi lungo la catena di un container: dove vengono collocati directory, file e cache.
 ; Due container diversi non si contendono il file system, quindi si guarda solo la catena (chain),
