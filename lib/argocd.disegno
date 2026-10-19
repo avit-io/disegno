@@ -1,0 +1,35 @@
+; ArgoCD: sincronizzare un'applicazione e aspettare che sia sana. Il server può essere in chiaro o
+; in un segreto (Setting), il token è un segreto: tutti e due arrivano alla CLI come variabili.
+; Sincronizzare è un effetto; «l'applicazione è sana?» è un'osservazione, la verità di quel momento.
+
+(import dagger delivery)
+
+(record Argocd
+  [server : Setting]                       ; argocd.example.com, senza https://
+  [token  : Secret])
+
+(def argocd-cli : (→ Argocd Container)
+  [ac] (pipe (container)
+             (from "quay.io/argoproj/argocd@sha256:19ba7f44cba487c4a0c98ac336327c4df04383dff84f87ea1a578972eb62dd17")   ; v3.1.8
+             (with-setting "ARGOCD_SERVER" (Argocd.server ac))
+             (with-secret-variable "ARGOCD_AUTH_TOKEN" (Argocd.token ac))
+             (with-env "ARGOCD_OPTS" "--grpc-web")))
+
+(def argocd-sync : (→ Argocd String (Export Dir))
+  [ac app] (apply (argocd-cli ac) ["argocd" "app" "sync" app]))
+
+; Aspetta che l'applicazione sia sana, fino a timeout secondi; se non lo diventa, fallisce.
+(def argocd-wait : (→ Argocd String Nat (Export Dir))
+  [ac app timeout] (apply (argocd-cli ac) ["argocd" "app" "wait" app "--health" "--timeout" (show timeout)]))
+
+(def argocd-healthy? : (→ Argocd String (Remote Bool))
+  [ac app] (probe (argocd-cli ac) ["argocd" "app" "wait" app "--health" "--timeout" "30"]))
+
+(def argocd-command? : (→ String (Export Dir) Bool)   ; (argocd-command? "sync"): per Before e Precedes
+  [op (apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _))))] (and (same? a "argocd") (and (same? b "app") (same? c op)))
+  [op _] false)
+
+; ArgoCD come Deployer (delivery): deploy sincronizza e aspetta che l'applicazione sia sana.
+(def argocd-deployer : (→ Argocd Nat Deployer)          ; timeout in secondi
+  [ac timeout] (deployer (λ [app] (then (argocd-sync ac app) (argocd-wait ac app timeout)))
+                         (argocd-healthy? ac)))

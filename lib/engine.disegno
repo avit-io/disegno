@@ -27,6 +27,7 @@
   [otherwise : (→ [first (Obj Kind.export)] [second (Obj Kind.export)] (Obj Kind.export))]
   [start : (→ [self (Obj Kind.service)] (Obj Kind.export))]
   [probe : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.bool))]
+  [with-fresh-exec : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.container))]
   [secret-from : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.secret))]
   [cache-volume : (→ [key String] (Obj Kind.cache-volume))]
   [Query.container : (Obj Kind.container)]
@@ -172,6 +173,7 @@
   [(otherwise x0 x1)] (:: (any (otherwise x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [(start x0)] (:: (any (start x0)) (++ (nodes x0) vuota))
   [(probe x0 x1)] (:: (any (probe x0 x1)) (++ (nodes x0) vuota))
+  [(with-fresh-exec x0 x1)] (:: (any (with-fresh-exec x0 x1)) (++ (nodes x0) vuota))
   [(secret-from x0 x1)] (:: (any (secret-from x0 x1)) (++ (nodes x0) vuota))
   [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)
@@ -288,6 +290,7 @@
   [(otherwise x0 x1)] (:: (any (otherwise x0 x1)) vuota)
   [(start x0)] (:: (any (start x0)) (chain x0))
   [(probe x0 x1)] (:: (any (probe x0 x1)) (chain x0))
+  [(with-fresh-exec x0 x1)] (:: (any (with-fresh-exec x0 x1)) (chain x0))
   [(secret-from x0 x1)] (:: (any (secret-from x0 x1)) (chain x0))
   [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)

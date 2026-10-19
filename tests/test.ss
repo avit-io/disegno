@@ -23,7 +23,7 @@
 ;; --- type checker ---
 
 (import! 'prelude)
-(for-each import! '(dagger time net files aws))            ; per i frammenti qui sotto; le ricette importano da sé
+(for-each import! '(dagger time net files aws git argocd)) ; per i frammenti qui sotto; le ricette importano da sé
 ;; L'accelerazione è fidata: su numeri piccoli deve coincidere con le clausole unarie.
 (for-each
   (lambda (f)
@@ -150,14 +150,18 @@
   (string-append dir "/out5")))
 (let ([es (exits resolve-dry 'sequenza)])
   (assert (= (length es) 2))
-  (assert (contiene? (plan->graphql (car es)) "withEnvVariable(name: \"DISEGNO_RUN\", value: \"<esecuzione>\") { withExec(args: [\"sh\", \"-c\", \"echo effetto\"]) { exitCode }"))
+  (assert (contiene? (plan->graphql (car es)) "withEnvVariable(name: \"DISEGNO_RUN\", value: \"<esecuzione>-"))
+  (assert (contiene? (plan->graphql (car es)) "\") { withExec(args: [\"sh\", \"-c\", \"echo effetto\"]) { exitCode }"))
   (assert (contiene? (plan->graphql (cadr es)) "export(path:")))
 ;; Fuori dalla cache: due esecuzioni danno a DISEGNO_RUN valori diversi, quindi per Dagger il
 ;; comando è un altro; la costruzione prima della variabile resta la stessa, e resta in cache.
 (let ([a (parameterize ([run-id "1"]) (plan->graphql (car (exits resolve-dry 'sequenza))))]
       [b (parameterize ([run-id "2"]) (plan->graphql (car (exits resolve-dry 'sequenza))))])
   (assert (not (string=? a b)))
-  (assert (contiene? a "value: \"1\"")) (assert (contiene? b "value: \"2\"")))
+  (assert (contiene? a "value: \"1-")) (assert (contiene? b "value: \"2-")))
+;; E dentro la stessa esecuzione due comandi freschi identici restano due: valori diversi.
+(check-string "(def due-volte : (Export Dir) (then (apply (from (container) \"alpine\") [\"true\"]) (apply (from (container) \"alpine\") [\"true\"])))")
+(let ([es (exits resolve-dry (quote due-volte))]) (assert (not (string=? (plan->graphql (car es)) (plan->graphql (cadr es))))))
 (rifiuta "(def dentro : Container (with-dir (from (container) \"a\") /x (overlay \"o\" empty)))" "atteso")
 
 ;; Segreti: (Host-secret "NOME") nella firma, letto da una variabile d'ambiente. Il piano nomina la
@@ -288,6 +292,46 @@
   (assert (contiene? obs "secretFrom(args: [\\\"sh\\\", \\\"-c\\\""))   ; dentro la stringa GraphQL del segnaposto
   (assert (contiene? obs "\\\"cicd/test/argocd\\\", \\\"token\\\"]"))
   (assert (not (contiene? obs "argocd.example"))))                   ; il valore del segreto non è nel piano
+
+;; delivery: Registry, Gitops e Deployer, con le loro implementazioni. Un registro e un server git
+;; come service, per provare push, «c'è?», clone, kustomize, commit e push senza servizi esterni.
+(check-string (format "
+  (def esito-d : (→ Segment String (Export Dir))
+    [p t] (overlay ~s (with-file empty (/ root p) t)))
+  (def immagine-prova : Container
+    (pipe (container) (from \"busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\")))
+  (def con-registro : (Export Dir)
+    (then (start registry-service)
+    (then (Registry.push (local-registry registry-service) immagine-prova \"prova/app\" \"v1\")
+          (branch (Registry.has? (local-registry registry-service) \"prova/app\" \"v1\")
+            (esito-d \"registro\" \"pubblicata\\n\")
+            (esito-d \"registro\" \"assente\\n\")))))
+  (def server-git : Service
+    (pipe git-tool
+          (with-exec [\"sh\" \"-c\" \"apk add -q --no-cache git-daemon && git init -q --bare -b main /srv/app.git && git init -q -b main /tmp/w && cd /tmp/w && mkdir -p console/test/app && printf 'resources: []\\\\n' > console/test/app/kustomization.yaml && git add -A && git -c user.name=t -c user.email=t@t commit -qm init && git push -q /srv/app.git main\"])
+          (with-exposed-port 9418)
+          (with-default-args [\"git\" \"daemon\" \"--reuseaddr\" \"--export-all\" \"--enable=receive-pack\" \"--base-path=/srv\" \"/srv\"])
+          (as-service false)))
+  (def repo-prova : Gitops
+    (kustomize-gitops \"git://git:9418/app.git\" \"main\" anonymous (through \"git\" server-git) (author \"Disegno\" \"ci@disegno.invalid\")))
+  (def con-gitops : (Export Dir)
+    (then (start server-git)
+    (then (Gitops.set-image repo-prova \"console/test/app\" \"registry:5000/prova/app:v2\" \"immagine v2\")
+          (branch (probe (with-dir immagine-prova /r (clone \"git://git:9418/app.git\" \"main\" anonymous (through \"git\" server-git)))
+                         [\"grep\" \"-q\" \"newTag: v2\" \"/r/console/test/app/kustomization.yaml\"])
+            (esito-d \"gitops\" \"aggiornato\\n\")
+            (esito-d \"gitops\" \"invariato\\n\")))))
+  (def con-argocd : (→ [s (Host-secret \"PATH\")] (Export Dir))
+    [s] (branch (probe (argocd-cli (argocd (public \"argocd.invalid\") s)) [\"argocd\" \"version\" \"--client\"])
+          (esito-d \"argocd\" \"risponde\\n\")
+          (esito-d \"argocd\" \"no\\n\")))
+  (def rilascio-prova : (→ Secret (Export Dir))
+    [s] (then (Gitops.set-image repo-prova \"console/test/app\" \"registry:5000/prova/app:v3\" \"v3\")
+              (Deployer.deploy (argocd-deployer (argocd (public \"argocd.invalid\") s) 300) \"app\")))
+  (def sync-dopo-push : (→ [s Secret] (Precedes (git-command? \"push\") (argocd-command? \"sync\") (rilascio-prova s)))
+    [s] auto)"
+  (string-append dir "/out14")))
+(rifiuta "(def push-dopo-sync : (→ [s Secret] (Precedes (argocd-command? \"sync\") (git-command? \"push\") (rilascio-prova s))) [s] auto)" "auto")
 
 ;; Argomenti opzionali promossi: i permessi di un file, i glob di filter, l'entrypoint di un service.
 (check-string (format "
@@ -567,6 +611,8 @@
     (assert (and (car r) (contiene? (car r) "passo fallito (exit 3)")))
     (assert (file-exists? (string-append dir "/out13/prima")))
     (assert (file-exists? (string-append dir "/out13/riserva"))))
+  (for-each (lambda (e f t) (run e) (assert (string=? (call-with-input-file (string-append dir "/out14/" f) get-string-all) t)))
+            '(con-registro con-gitops con-argocd) '("registro" "gitops" "argocd") '("pubblicata\n" "aggiornato\n" "risponde\n"))
   (run 'filtri)
   (assert (zero? (system (format "test -x ~a/out9/run.sh" dir))))
   (assert (not (file-exists? (string-append dir "/out9/note.txt"))))

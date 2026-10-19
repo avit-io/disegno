@@ -92,6 +92,16 @@
 (def dir-of : (→ Container Abs Dir)
   [c path] (Container.directory c path))
 
+; Un valore di configurazione, in chiaro o segreto: l'host di un servizio a volte sta in un
+; segreto. Nel container diventa una variabile d'ambiente in entrambi i casi.
+(data Setting
+  [public String]
+  [private Secret])
+
+(def with-setting : (→ Container String Setting Container)
+  [c name (public s)]  (with-env c name s)
+  [c name (private s)] (Container.with-secret-variable c name s))
+
 ; --- proprietà del piano: si calcolano sul dato ---
 
 (def image-of : (→ Any (List Image))

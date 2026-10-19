@@ -87,6 +87,7 @@
           [(passes?) (method 'exitCode)]
           [(probe) (append (fresh-exec v resolve '(expect ANY)) '((exitCode)))]   ; il mondo, fuori dalla cache
           [(secret-from) ((fetch-secret) v resolve)]                          ; a secco il comando, dal vivo setSecret
+          [(with-fresh-exec) (fresh-exec v resolve)]                        ; with-exec fuori dalla cache
           [(overlay replace publish apply then skip start otherwise) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
           [else (let ([segs (split-dots (symbol->string c))])
                   (if (string=? (car segs) "Query")
@@ -152,6 +153,11 @@
 ;; esecuzione, subito prima del comando, così la preparazione dell'ambiente resta in cache.
 (define run-id (make-parameter "<esecuzione>"))
 
+;; Unico per ogni occorrenza: due comandi freschi identici nella stessa esecuzione (due clone dello
+;; stesso branch, un probe ripetuto dopo un effetto) restano due comandi, non uno in cache.
+(define fresh-count 0)
+(define (fresh-nonce) (set! fresh-count (+ fresh-count 1)) (format "~a-~a" (run-id) fresh-count))
+
 ;; Segreti letti a esecuzione: (secret-from c cmd). A secco il piano mostra il comando, mai il
 ;; valore. Dal vivo, quando un passo usa il segreto, cmd gira in c fuori dalla cache, con l'output
 ;; su un file (non nei log); il runner legge il file e lo passa a Dagger con setSecret, che da lì
@@ -168,7 +174,7 @@
   (let* ([xs (explicit (caddr v))] [recv (chain (car xs) resolve)] [cmd (gql-arg (cadr xs) resolve)]
          [key (plan->graphql (append recv (list `(withExec (args ,cmd)))))])
     (or (hashtable-ref secret-memo key #f)
-        (let* ([text (submit-leaf (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(run-id)))
+        (let* ([text (submit-leaf (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(fresh-nonce)))
                                                      `(withExec (args ("sh" "-c" "\"$@\" > /tmp/disegno-segreto" "sh" ,@cmd)))
                                                      '(file (path "/tmp/disegno-segreto")) '(contents))))]
                [n (string-length text)]
@@ -188,7 +194,7 @@
          (for-all (lambda (c) (or (char-alphabetic? c) (char-numeric? c) (char=? c #\_))) cs))))
 (define (fresh-exec v resolve . fixed)                   ; (apply c cmd) o (probe c cmd) → catena fino al withExec
   (let* ([xs (explicit (caddr v))] [recv (chain (car xs) resolve)]
-         [ch (located v (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(run-id)))
+         [ch (located v (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(fresh-nonce)))
                                            `(withExec (args ,(gql-arg (cadr xs) resolve)) ,@fixed))))])
     (hashtable-set! step-work (last-of ch) #t)           ; un effetto è lavoro: il resoconto mostra il comando
     ch))

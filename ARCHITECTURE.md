@@ -186,8 +186,13 @@ Il controllo verifica che il nome esista e sia del genere giusto (tipo, costrutt
 | `time` | istanti, durate, finestre | affine |
 | `net` | `Ip`, `Cidr`, `Port` | text, affine |
 | `dagger` | `Image`, `Arg`, `engine` (generato), `Host`, `Export`, i nomi corti, le proprietà del piano | text, paths, net |
-| `aws` | la CLI fissata per digest, le credenziali come segreti; `Region`, `Bucket`, `Arn` controllati mentre si tipa; il cloud o LocalStack come service (`Endpoint`); il Parameter Store (`put-parameter`, `put-secure-parameter`, `parameter-exists?`, `parameter-is?`, `Parameters-within`) e S3 (`make-bucket`, `s3-sync`, `s3-put`, `s3-exists?`, `s3-includes?`); `aws-command?` riconosce un comando della CLI per `Before` e `Precedes` | dagger |
+| `aws` | la CLI fissata per digest, le credenziali come segreti; `Region`, `Bucket`, `Arn` controllati mentre si tipa; il cloud o LocalStack come service (`Endpoint`); il Parameter Store (`put-parameter`, `put-secure-parameter`, `parameter-exists?`, `parameter-is?`, `Parameters-within`), S3 (`make-bucket`, `s3-sync`, `s3-put`, `s3-exists?`, `s3-includes?`), ECR come `Registry` (`(ecr a account)`), i segreti di Secrets Manager e del Parameter Store; `aws-command?` riconosce un comando della CLI per `Before` e `Precedes` | dagger, delivery |
 | `files` | directory come valori (`file`, `put-file`, `merge`, `only`, `except` per glob), che cosa scrivono (`writes`, `Disjoint-writes`, `Writes-within`), osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) | dagger |
+| `delivery` | il vocabolario di un rilascio, come interfacce (record di funzioni): `Registry` (dove vivono le immagini), `Gitops` (dove si scrive lo stato desiderato), `Deployer` (chi lo porta nel cluster); `Reach` (diretto, o attraverso un service); `local-registry` e `login-registry`, con crane | dagger |
+| `git` | `clone` fuori dalla cache, `kustomize-set-image`, `commit-and-push`; `kustomize-gitops`, un `Gitops` | dagger, delivery |
+| `argocd` | `argocd-sync`, `argocd-wait`, `argocd-healthy?`; `argocd-deployer`, un `Deployer` | dagger, delivery |
+
+**Interfacce, non elenchi di strumenti.** Le integrazioni non ricopiano gli strumenti operazione per operazione: una pipeline di rilascio parla di `Registry`, `Gitops` e `Deployer`, e ECR, git con kustomize, ArgoCD ne sono implementazioni. Un'interfaccia è un record di funzioni, come `Affine`, senza type class. I teoremi si provano sulle istanze concrete, dove le funzioni si riducono ai loro effetti: «la sync viene dopo il push» vale per `(argocd-deployer …)` dopo `(kustomize-gitops …)`. Costa un livello in più, ma cambiare strumento non cambia la pipeline.
 
 **Perché.** Così il prelude da solo è la teoria dei tipi, e lo si vede: i capitoli 1–4 del libro si controllano senza importare nulla. Il dominio (percorsi, rete, Dagger) diventa una libreria come le altre, e il nucleo non ha nomi di dominio nel codice.
 

@@ -251,11 +251,12 @@ Implementati (i segreti no, vedi sotto). Sono il passo che serve alle librerie p
 | `(probe c cmd)` | `(→ Container (List Arg) (Remote Bool))` | un'osservazione del mondo, non in cache: «lo staging risponde?» |
 | `(otherwise a b)` | `(→ (Export Dir) (Export Dir) (Export Dir))` | se `a` fallisce realizza `b` (un report, un rollback), poi fallisce con l'errore di `a`; per `Before` e `Precedes` le storie di `b` contano da sole, il caso peggiore |
 | `(start svc)` | `(→ Service (Export Dir))` | un service in background, vivo fino alla fine della sessione |
+| `(with-fresh-exec c cmd)` | `(→ Container (List Arg) Container)` | come `with-exec`, fuori dalla cache: per leggere il mondo, come il clone di un branch che si muove |
 
 **Semantica.**
 - **L'ordine** è quello di `then`: da sinistra a destra, e ci si ferma al primo fallimento. Dentro ogni uscita Dagger resta pigro e parallelo come oggi.
 - **Le osservazioni si fanno quando le si raggiunge.** Un `branch` dentro il secondo argomento di `then` si risolve dopo che il primo è stato realizzato, quindi un `probe` vede il mondo dopo il deploy in staging. Il piano resta statico: entrambi i rami ci sono, e `disegno plan` stampa una sequenza di uscite per ogni combinazione di esiti.
-- **La cache.** Il runner aggiunge `withEnvVariable(DISEGNO_RUN, <id dell'esecuzione>)` subito prima del comando di `apply` e di `probe`. Così si rifà solo l'effetto, non la costruzione dell'ambiente. `passes?` resta in cache, perché osserva il risultato di un input, non il mondo.
+- **La cache.** Il runner aggiunge `withEnvVariable(DISEGNO_RUN, <esecuzione>-<n>)` subito prima del comando di `apply`, `probe`, `with-fresh-exec` e `secret-from`. Così si rifà solo l'effetto, non la costruzione dell'ambiente. Il contatore `n` conta le occorrenze: due comandi freschi identici nella stessa esecuzione (due clone dello stesso branch, un `probe` ripetuto dopo un effetto) restano due comandi, e il secondo vede il mondo dopo il primo. `passes?` resta in cache, perché osserva il risultato di un input, non il mondo.
 - **Il resoconto.** La riga di una voce con un effetto mostra il comando, come per il lavoro; la riga finale elenca le uscite nell'ordine in cui sono avvenute: «realizzato in 1.5s: effetto echo deploy staging, effetto echo deploy prod». Se un effetto fallisce, le uscite dopo non avvengono.
 
 **Le proprietà.** Un piano, seguito per ogni esito dei `branch`, è una storia: osservazioni vere (`seen`) e uscite realizzate (`done`), nell'ordine in cui avvengono (`histories`, in `dagger.disegno`). `then` concatena le storie, `branch` le sceglie. `Before` e `Precedes` sono la stessa funzione, `earlier`: ogni uscita che soddisfa un predicato viene dopo un evento che ne soddisfa un altro. Così, oltre a `Before`, si scrive l'ordine:
@@ -406,7 +407,7 @@ Precedente sul lato Dagger: Dang, il linguaggio nativo di Dagger 1.0, conferma c
 ```
 README.md  DESIGN.md  ARCHITECTURE.md  flake.nix
 src/       core.ss  types.ss  plan.ss  main.ss  lsp.ss   il nucleo, il driver, il server LSP
-lib/       prelude  text  affine  paths  time  net  dagger  engine  files  aws    la libreria standard, in moduli (engine è generato)
+lib/       prelude  text  affine  paths  time  net  dagger  engine  files  aws  delivery  git  argocd    la libreria standard, in moduli (engine è generato)
 tools/     gen.ss                                    il generatore dallo schema
 tests/     test.ss  checks.disegno                   i test e i teoremi di controllo
 cookbook/  00-basics … 10-aws-static-site  hello/     le ricette
@@ -426,6 +427,8 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `lib/dagger.disegno` | il piano: `Image`, `Arg`, `engine`, `Host`, `Export`, nomi corti, proprietà del piano |
 | `lib/files.disegno` | i file: `file`, `put-file`, `merge`; che cosa scrive una directory (`Disjoint-writes`, `Writes-within`); osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) |
 | `lib/aws.disegno` | AWS: la CLI fissata, credenziali come segreti, `Region`, `Bucket`, `Arn`; il cloud o LocalStack come service; il Parameter Store (`put-parameter`, `put-secure-parameter`, `parameter-exists?`, `parameter-is?`, `Parameters-within`); S3 (`make-bucket`, `s3-sync`, `s3-put`, `s3-exists?`, `s3-includes?`); `aws-command?` |
+| `lib/delivery.disegno` | il vocabolario di un rilascio come interfacce: `Registry`, `Gitops`, `Deployer`; `Reach`; `local-registry` e `login-registry` (crane) |
+| `lib/git.disegno`, `lib/argocd.disegno` | `clone` fuori dalla cache, `kustomize-set-image`, `commit-and-push`, `kustomize-gitops`; `argocd-sync`, `argocd-wait`, `argocd-healthy?`, `argocd-deployer` |
 | `lib/engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes`, `chain` |
 | `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger api with-session`) |
 | `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger api with-session`, dal vivo |
@@ -473,7 +476,8 @@ In cambio della purezza e della semplicità:
 - [x] S3 in `aws` (sync, put, controlli), provato su LocalStack; ricetta `10-aws-static-site`.
 - [x] Segreti letti a esecuzione (`secret-from`; in `aws`: `secrets-manager`, `secrets-manager-key`, `ssm-secure`) e service in background (`start`), provati su LocalStack.
 - [x] Parametri del piano (`Host-env`) e `otherwise` per i fallimenti.
-- [ ] ECR, git e kustomize, ArgoCD, DORA: quanto serve per una pipeline di rilascio su Kubernetes.
+- [x] Le librerie per un rilascio su Kubernetes, come interfacce (`delivery`): ECR come `Registry`, git e kustomize come `Gitops`, ArgoCD come `Deployer`; provate dal vivo con un registro e un server git come service.
+- [ ] Un prototipo della Release di un servizio, solo con `plan`, da confrontare con gli effetti della pipeline esistente; la build da Dockerfile con argomenti e segreti (`docker-build` ha solo argomenti opzionali, non promossi); un report di rilascio (DORA o simili) resta fuori, per scelta.
 - [ ] Azure.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.

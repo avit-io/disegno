@@ -121,6 +121,8 @@
     ;; che lo legano usano questa istanza. Senza start, Dagger lo ferma quando nessuno lo usa.
     (start ((self ,(obj "service"))) ,(obj "export"))
     (probe ((self ,(obj "container")) (args (List Arg))) ,(obj "bool"))
+    ;; Come with-exec, ma fuori dalla cache: per leggere il mondo, come un git clone di un branch.
+    (with-fresh-exec ((self ,(obj "container")) (args (List Arg))) ,(obj "container"))
     ;; Un segreto letto a esecuzione: cmd, in self, lo stampa; il runner lo passa a Dagger
     ;; (setSecret) quando un passo lo usa. Il valore non torna mai al linguaggio.
     (secret-from ((self ,(obj "container")) (args (List Arg))) ,(obj "secret"))

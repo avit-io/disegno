@@ -1,0 +1,65 @@
+; Git e kustomize: il repo GitOps come una directory del piano. Il clone legge il mondo (un branch
+; si muove) e quindi non va in cache; la modifica è un calcolo sulla directory; commit e push sono
+; un effetto. Chi scrive il programma dice l'autore dei commit: è una convenzione sua.
+; Per una pipeline di rilascio: (kustomize-gitops url branch auth reach autore), un Gitops (delivery).
+
+(import dagger delivery)
+
+(def git-tool : Container
+  (pipe (container) (from "alpine/git@sha256:c0280cf9572316299b08544065d3bf35db65043d5e3963982ec50647d2746e26")))   ; 2.49.1
+
+; Come ci si autentica: niente (un repo pubblico, un server di prova) o una chiave SSH, che è un
+; segreto montato come file.
+(data Git-auth
+  [anonymous]
+  [ssh-key Secret])
+
+(def with-git-auth : (→ Container Git-auth Container)
+  [c anonymous]   c
+  [c (ssh-key k)] (pipe c
+                        (with-mounted-secret /run/disegno/ssh-key k)
+                        (with-env "GIT_SSH_COMMAND" "ssh -i /run/disegno/ssh-key -o StrictHostKeyChecking=accept-new")))
+
+(def git-in : (→ Git-auth Reach Container)
+  [auth r] (reach (with-git-auth git-tool auth) r))
+
+(record Author
+  [name  : String]
+  [email : String])
+
+; Il branch com'è adesso: un clone poco profondo, fuori dalla cache.
+(def clone : (→ String String Git-auth Reach Dir)                 ; url, branch
+  [url branch auth r] (dir-of (with-fresh-exec (git-in auth r) ["git" "clone" "--depth" "1" "--branch" branch url "/repo"])
+                              /repo))
+
+; Commit di tutto ciò che è cambiato e push sul branch. Se non è cambiato niente (lo stesso tag
+; rilasciato di nuovo) non c'è commit, e il push non fa niente.
+(def commit-and-push : (→ Dir Author String String Git-auth Reach (Export Dir))   ; repo, autore, messaggio, branch
+  [repo who msg branch auth r]
+  (apply (pipe (git-in auth r) (with-dir /repo repo) (with-workdir /repo))
+         ["sh" "-c" "git add -A && (git diff --cached --quiet || git -c user.name=\"$3\" -c user.email=\"$4\" commit -m \"$1\") && git push origin HEAD:\"$2\""
+          "sh" msg branch (Author.name who) (Author.email who)]))
+
+(def git-command? : (→ String (Export Dir) Bool)  ; (git-command? "push"): per Before e Precedes
+  [op (apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _))))] (and (same? a "sh") (contains? c (concat "git " op)))
+  [op _] false)
+
+; --- kustomize: l'immagine di un'applicazione, nel suo kustomization.yaml ---
+
+(def kustomize-tool : Container
+  (pipe (container) (from "registry.k8s.io/kustomize/kustomize@sha256:937e7832dc0b09288b1398399dadb97382a27bbc35bee8fdcac47c7de4fff14d")))   ; v5.7.1
+
+; In repo, nella cartella p (relativa: "console/dev/app"), l'immagine diventa image.
+(def kustomize-set-image : (→ Dir Rel String Dir)
+  [repo p image] (dir-of (pipe kustomize-tool
+                               (with-dir /w repo)
+                               (with-workdir (⊕ /w p))
+                               (with-exec ["kustomize" "edit" "set" "image" image]))
+                         /w))
+
+; --- Gitops: clone, kustomize, commit e push, dietro l'interfaccia di delivery ---
+
+(def kustomize-gitops : (→ String String Git-auth Reach Author Gitops)   ; url, branch, autenticazione, raggiungimento, autore
+  [url branch auth r who]
+  (gitops (λ [p image msg] (commit-and-push (kustomize-set-image (clone url branch auth r) p image)
+                                       who msg branch auth r))))
