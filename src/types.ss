@@ -240,8 +240,89 @@
 (define (nat->ip n)                                      ; 167772165 → "10.0.0.5"
   (format "~a.~a.~a.~a" (quotient n 16777216) (remainder (quotient n 65536) 256) (remainder (quotient n 256) 256) (remainder n 256)))
 
+;; Espressioni regolari (primitiva pura, sui letterali): la corrispondenza è con l'intera stringa.
+;; Sintassi: caratteri, . [a-z] [^…] \d \w \s \x, gruppi ( ), alternative |, * + ? {n} {n,} {n,m}.
+;; Una ripetizione continua solo se consuma, quindi il calcolo termina anche su (a*)*.
+;; ponytail: backtracking, esponenziale nei casi patologici; bastano pattern su nomi e ARN.
+(define (re-parse pat)                                   ; → albero, o errore di tipo se malformata
+  (define cs (list->vector (string->list pat)))
+  (define n (vector-length cs))
+  (define i 0)
+  (define (bad) (oops "re?: espressione regolare malformata: ~s" pat))
+  (define (peek) (and (< i n) (vector-ref cs i)))
+  (define (next!) (let ([c (peek)]) (unless c (bad)) (set! i (+ i 1)) c))
+  (define (esc c)                                        ; \d \w \s, o il carattere stesso
+    (case c
+      [(#\d) '(cls #f ((#\0 . #\9)))]
+      [(#\w) '(cls #f ((#\a . #\z) (#\A . #\Z) (#\0 . #\9) (#\_ . #\_)))]
+      [(#\s) '(cls #f ((#\space . #\space) (#\tab . #\tab) (#\newline . #\newline) (#\return . #\return)))]
+      [else `(chr ,c)]))
+  (define (number)
+    (let loop ([v #f]) (let ([c (peek)]) (if (and c (char-numeric? c)) (begin (next!) (loop (+ (* 10 (or v 0)) (- (char->integer c) 48)))) v))))
+  (define (klass)                                        ; dopo [
+    (let ([neg (and (eqv? (peek) #\^) (next!) #t)])
+      (let loop ([rs '()])
+        (let ([c (next!)])
+          (cond [(and (char=? c #\]) (pair? rs)) `(cls ,neg ,(reverse rs))]
+                [(char=? c #\\) (let ([e (esc (next!))]) (loop (if (eq? (car e) 'cls) (append (reverse (caddr e)) rs) (cons (cons (cadr e) (cadr e)) rs))))]
+                [(and (eqv? (peek) #\-) (< (+ i 1) n) (not (char=? (vector-ref cs (+ i 1)) #\])))
+                 (next!) (let ([hi (next!)]) (when (char<? hi c) (bad)) (loop (cons (cons c hi) rs)))]
+                [else (loop (cons (cons c c) rs))])))))
+  (define (atom)
+    (let ([c (next!)])
+      (case c
+        [(#\() (let ([r (alt)]) (unless (eqv? (next!) #\)) (bad)) r)]
+        [(#\[) (klass)]
+        [(#\.) '(any)]
+        [(#\\) (esc (next!))]
+        [(#\* #\+ #\? #\{ #\)) (bad)]
+        [else `(chr ,c)])))
+  (define (quant r)
+    (case (peek)
+      [(#\*) (next!) (quant `(rep ,r 0 #f))]
+      [(#\+) (next!) (quant `(rep ,r 1 #f))]
+      [(#\?) (next!) (quant `(rep ,r 0 1))]
+      [(#\{) (next!)
+       (let* ([lo (or (number) (bad))]
+              [hi (if (eqv? (peek) #\,) (begin (next!) (number)) lo)])
+         (unless (eqv? (next!) #\}) (bad))
+         (when (and hi (< hi lo)) (bad))
+         (quant `(rep ,r ,lo ,hi)))]
+      [else r]))
+  (define (seq)
+    (let loop ([acc '()])
+      (if (memv (peek) '(#f #\| #\)))
+          `(seq ,@(reverse acc))
+          (loop (cons (quant (atom)) acc)))))
+  (define (alt)
+    (let ([l (seq)]) (if (eqv? (peek) #\|) (begin (next!) `(alt ,l ,(alt))) l)))
+  (let ([r (alt)]) (when (< i n) (bad)) r))
+
+(define (re-match? r s)
+  (define n (string-length s))
+  (define (m r i k)                                      ; k: la continuazione, dall'indice raggiunto
+    (case (car r)
+      [(chr) (and (< i n) (char=? (string-ref s i) (cadr r)) (k (+ i 1)))]
+      [(any) (and (< i n) (k (+ i 1)))]
+      [(cls) (and (< i n)
+                  (let* ([c (string-ref s i)] [in (exists (lambda (p) (char<=? (car p) c (cdr p))) (caddr r))])
+                    (and (if (cadr r) (not in) in) (k (+ i 1)))))]
+      [(seq) (let loop ([rs (cdr r)] [i i]) (if (null? rs) (k i) (m (car rs) i (lambda (j) (loop (cdr rs) j)))))]
+      [(alt) (or (m (cadr r) i k) (m (caddr r) i k))]
+      [(rep) (let ([x (cadr r)] [lo (caddr r)] [hi (cadddr r)])
+               (let loop ([count 0] [i i])               ; avida: prima una ripetizione in più
+                 (or (and (or (not hi) (< count hi))
+                          (m x i (lambda (j) (and (or (> j i) (< count lo)) (loop (+ count 1) j)))))
+                     (and (>= count lo) (k i)))))]))
+  (m r 0 (lambda (j) (= j n))))
+
+(define re-cache (make-hashtable string-hash string=?))
+(define (re? pat s)
+  (re-match? (or (hashtable-ref re-cache pat #f) (let ([r (re-parse pat)]) (hashtable-set! re-cache pat r) r)) s))
+
 (define prims `((%concat 2 ,string-append) (%show 1 ,number->string) (%show-ip 1 ,nat->ip)
                 (%contains? 2 ,string-contains?) (%distinct? 2 ,(lambda (a b) (not (string=? a b))))
+                (%re? 2 ,re?)
                 (%image-ref? 1 ,image-ref?) (%segment? 1 ,segment?)))
 
 ;; Clausola a runtime: (pattern n corpo); pattern: (pvar livello) (pdot) (pcon c pattern...).

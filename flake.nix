@@ -84,6 +84,7 @@
         shellHook = ''
           ${engine}
           export DAGGER_ENGINE=container://disegno-engine DAGGER_NO_NAG=1
+          export DISEGNO_TEST_KEY=test                      # chiave finta per LocalStack, nei test dal vivo
         '';
       };
     };

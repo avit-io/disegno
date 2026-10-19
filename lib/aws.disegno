@@ -23,19 +23,51 @@
   [name : String]
   [ok   : (So (region? name))])
 
+; --- nomi di dominio, controllati con un'espressione regolare mentre si tipa ---
+
+(record Bucket                             ; un bucket S3: 3–63 caratteri, minuscole, cifre, . e -
+  [name : String]
+  [ok   : (So (re? "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" name))])
+
+(record Arn                                ; arn:partizione:servizio:regione:account:risorsa
+  [raw : String]
+  [ok  : (So (re? "arn:aws(-cn|-us-gov)?:[a-z0-9-]+:([a-z]{2}(-[a-z]+)+-[0-9])?:([0-9]{12})?:.+" raw))])
+
 ; --- le credenziali: due segreti dalla firma di main, e la regione ---
+
+; Dove risponde AWS: il cloud, o un service che lo emula (LocalStack) sulla porta 4566. Il service
+; è un valore del piano: Dagger lo avvia quando un comando legato a lui gira, aspetta che la porta
+; risponda e lo ferma alla fine.
+(data Endpoint
+  [cloud]
+  [emulated Service])
 
 (record Aws
   [key-id     : Secret]
   [secret-key : Secret]
-  [region     : Region])
+  [region     : Region]
+  [endpoint   : Endpoint])
+
+(def connect : (→ Endpoint Container Container)
+  [cloud          c] c
+  [(emulated svc) c] (pipe c (with-service-binding "aws" svc) (with-env "AWS_ENDPOINT_URL" "http://aws:4566")))
 
 (def cli : (→ Aws Container)
-  [a] (pipe (container)
-            (from "amazon/aws-cli@sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de")   ; 2.31.18
-            (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
-            (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
-            (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a)))))
+  [a] (connect (Aws.endpoint a)
+               (pipe (container)
+                     (from "amazon/aws-cli@sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de")   ; 2.31.18
+                     (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
+                     (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
+                     (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a))))))
+
+; LocalStack, l'emulatore di AWS, come service: per provare un piano senza un account.
+(def localstack : Service
+  (pipe (container)
+        (from "localstack/localstack@sha256:59373b4a27dba3ec15c4db0b7455f0cb68c8a42300e2cbbe362b440f9a131697")   ; 4.9
+        (with-env "LOCALSTACK_HOST" "localhost:4566")                    ; non localhost.localstack.cloud, che chiede il DNS pubblico
+        (with-exposed-port 4566)
+        (with-default-args ["docker-entrypoint.sh"])                  ; as-service non usa l'entrypoint dell'immagine
+        (as-service)))
 
 ; --- Parameter Store: i nomi sono percorsi, /app/prod/db-host ---
 ; ponytail: la CLI legge un valore che comincia con file:// da quel file; put-secure-parameter lo

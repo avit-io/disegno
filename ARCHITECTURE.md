@@ -122,6 +122,8 @@ Un teorema parla quindi solo della forma del piano: «il test viene prima di pro
 
 **Costo.** Il generatore è nella base fidata e i nomi che genera sono un contratto con il nucleo: `Kind.*`, gli snodi e `Container.with-exec` per i log. Si prendono solo gli argomenti obbligatori e un elenco consentito di tipi.
 
+**I service.** Un service di Dagger (un database, un emulatore come LocalStack) è un valore del piano come un container: `as-service` lo ricava da un container, `with-service-binding` lo lega a un altro sotto un nome. Dagger lo avvia quando un comando legato a lui gira, aspetta che le porte esposte rispondano, lo tiene per tutta la sessione e lo ferma alla fine. Non serve un effetto: la vita del service la decide il motore.
+
 ## 8. Letterali secondo il tipo: i punti non si sommano
 
 **Scelta.** Un letterale si legge secondo il tipo atteso:
@@ -159,7 +161,7 @@ Quando fallisce su una congiunzione dice quale parte non vale.
 
 Tre meccanismi, tutti riservati alla libreria tranne `import`.
 
-**`extern`: solo tipi opachi e primitive pure.** `String`, `contains?`, `concat`, `show` e pochi altri: calcolano soltanto sui letterali. Un extern non mente, perché restituisce un tipo opaco o calcola, mai una proposizione e mai un dato del mondo. Precedente: Elm 0.19, che ha riservato il codice nativo ai pacchetti ufficiali.
+**`extern`: solo tipi opachi e primitive pure.** `String`, `contains?`, `concat`, `show`, `re?` (un'espressione regolare su tutta la stringa) e pochi altri: calcolano soltanto sui letterali. Con `re?` una libreria si definisce i suoi tipi raffinati, come `Bucket` e `Arn` in `aws`, senza toccare il nucleo. Un extern non mente, perché restituisce un tipo opaco o calcola, mai una proposizione e mai un dato del mondo. Precedente: Elm 0.19, che ha riservato il codice nativo ai pacchetti ufficiali.
 
 **`builtin`: il nucleo non nomina la libreria.** Il nucleo ha un elenco chiuso di chiavi (`nat`, `zero`, `suc`, `list`, `string`, `abs`, `ip`, `obj`, `host`…). La libreria lega ciascuna a un suo nome con `(builtin chiave nome)`, come i `BUILTIN` di Agda. Passano da qui:
 - i letterali `0`, `"x"`, `/out` e `[a b]`;
@@ -180,7 +182,7 @@ Il controllo verifica che il nome esista e sia del genere giusto (tipo, costrutt
 | `time` | istanti, durate, finestre | affine |
 | `net` | `Ip`, `Cidr`, `Port` | text, affine |
 | `dagger` | `Image`, `Arg`, `engine` (generato), `Host`, `Export`, i nomi corti, le proprietà del piano | text, paths, net |
-| `aws` | la CLI fissata per digest, le credenziali come segreti, `Region` controllata mentre si tipa; il Parameter Store: `put-parameter`, `put-secure-parameter` (effetti), `parameter-exists?`, `parameter-is?` (osservazioni), `Parameters-within` | dagger |
+| `aws` | la CLI fissata per digest, le credenziali come segreti; `Region`, `Bucket`, `Arn` controllati mentre si tipa; il cloud o LocalStack come service (`Endpoint`); il Parameter Store: `put-parameter`, `put-secure-parameter` (effetti), `parameter-exists?`, `parameter-is?` (osservazioni), `Parameters-within` | dagger |
 | `files` | directory come valori (`file`, `put-file`, `merge`), che cosa scrivono (`writes`, `Disjoint-writes`, `Writes-within`), osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) | dagger |
 
 **Perché.** Così il prelude da solo è la teoria dei tipi, e lo si vede: i capitoli 1–4 del libro si controllano senza importare nulla. Il dominio (percorsi, rete, Dagger) diventa una libreria come le altre, e il nucleo non ha nomi di dominio nel codice.

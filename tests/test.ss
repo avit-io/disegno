@@ -102,9 +102,9 @@
                  auto)")
 (rifiuta "(def dev-pinnate : (All pinned? (images (from container \"alpine\"))) auto)" "auto: nessuna prova di (Holds pinned? \"alpine\")")
 (rifiuta "(def falso-branch : (All pinned? (images (branch (Directory.exists empty /x) (from container \"a@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1\") (from container \"b\")))) auto)" "auto: nessuna prova di")
-(rifiuta "(def sotto : Service (service \"api\" prod 2 auto))" "auto: la proposizione si riduce a ⊥")
+(rifiuta "(def sotto : App (app \"api\" prod 2 auto))" "auto: la proposizione si riduce a ⊥")
 (rifiuta "(def falso-auto : (≡ (+ 1 1) 3) auto)" "atteso")
-(check-string "(def nome-api : (≡ (Service.name api) \"api\") auto)")
+(check-string "(def nome-api : (≡ (App.name api) \"api\") auto)")
 (check-string "(def raddoppia : (→ Nat Nat) [n] (+ n n))
                (def otto : (≡ (pipe 2 raddoppia raddoppia) 8) refl)")
 
@@ -176,14 +176,47 @@
 (assert (contiene? (guard (e [#t (condition-message e)]) (all-plans 'segreto-male) "") "non è il nome di una variabile d'ambiente"))
 (rifiuta "(def leggi : String (Query.secret \"env://HOME\"))" "nome sconosciuto")
 
+;; re?: la corrispondenza è con tutta la stringa; termina anche sui pattern che ripetono il vuoto.
+(for-each (lambda (c) (unless (eq? (re? (car c) (cadr c)) (caddr c))
+                        (error 'prova (format "re? ~s ~s: atteso ~a" (car c) (cadr c) (caddr c)))))
+  '(("abc" "abc" #t) ("abc" "abcd" #f) ("a.c" "axc" #t) ("[a-z]+" "ciao" #t) ("[a-z]+" "Ciao" #f)
+    ("[^0-9]*" "abc" #t) ("[^0-9]*" "a1" #f) ("\\d{3}" "123" #t) ("\\d{3}" "12" #f) ("a{2,}" "aaaa" #t)
+    ("a{2,3}" "aaaa" #f) ("(ab|cd)+" "abcdab" #t) ("(ab|cd)+" "abc" #f) ("colou?r" "color" #t)
+    ("\\w+@\\w+\\.it" "x_1@dominio.it" #t) ("(a*)*" "aaaa" #t) ("(a*)*b" "aaaa" #f) ("(a?){3}" "" #t)
+    ("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" "my-bucket.logs" #t) ("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" "-bucket" #f)
+    ("a]" "a]" #t) ("" "" #t) ("" "x" #f)))
+(for-each (lambda (p) (assert (guard (e [(message-condition? e) (contiene? (condition-message e) "malformata")]) (re? p "x") #f)))
+          '("(" "a)" "[a" "*a" "a{2" "a{3,1}" "[z-a]"))
+(check-string "(def logs-bucket : Bucket \"my-app.logs\")")
+(rifiuta "(def bucket-male : Bucket \"My_Bucket\")" "«My_Bucket» non è un Bucket valido")
+
 ;; AWS: la CLI fissata, con le credenziali come segreti; dal vivo risponde, senza toccare AWS.
 (check-string (format "
   (def cli-aws : (→ [s (Host-secret \"PATH\")] (Export Dir))
-    [s] (branch (probe (cli (aws s s \"eu-west-1\")) [\"sh\" \"-c\" \"aws --version && test -n \\\"$AWS_ACCESS_KEY_ID\\\" && test \\\"$AWS_DEFAULT_REGION\\\" = eu-west-1\"])
+    [s] (branch (probe (cli (aws s s \"eu-west-1\" cloud)) [\"sh\" \"-c\" \"aws --version && test -n \\\"$AWS_ACCESS_KEY_ID\\\" && test \\\"$AWS_DEFAULT_REGION\\\" = eu-west-1\"])
           (overlay ~s (with-file empty /esito \"risponde\\n\"))
           (overlay ~s (with-file empty /esito \"no\\n\"))))"
   (string-append dir "/out7") (string-append dir "/out7")))
 (rifiuta "(def r : Region \"eu-west-9\")" "«eu-west-9» non è un Region valido")
+
+;; LocalStack come service: il Parameter Store vero, emulato. Si scrive, poi si chiede; il service
+;; è lo stesso per tutta la sessione. Dal vivo solo con DISEGNO_TEST_KEY (la shell lo esporta).
+(check-string (format "
+  (def esito-ls : (→ String (Export Dir))
+    [t] (overlay ~s (with-file empty /esito t)))
+  (def con-localstack : (→ [k (Host-secret \"DISEGNO_TEST_KEY\")] (Export Dir))
+    [k] (let [a (aws k k \"eu-west-1\" (emulated localstack))]
+          (then (put-parameter a /app/test/porta \"5432\")
+          (then (put-secure-parameter a /app/test/password k)
+                (branch (parameter-is? a /app/test/porta \"5432\")
+                  (branch (parameter-is? a /app/test/porta \"9999\")
+                    (esito-ls \"confonde i valori\\n\")
+                    (branch (parameter-exists? a /app/test/password)
+                      (esito-ls \"scritto\\n\")
+                      (esito-ls \"manca la password\\n\")))
+                  (esito-ls \"porta non scritta\\n\"))))))"
+  (string-append dir "/out8")))
+(assert (= (length (all-plans 'con-localstack)) 4))
 ;; Che cosa scrive un piano: solo le put-parameter, non gli altri effetti.
 (check-string "(def scritti : (→ [a Aws] (≡ (parameters (then (put-parameter a /app/x \"1\") (apply (from (container) \"b\") [\"echo\"])))
                                            [/app/x]))
@@ -445,6 +478,9 @@
   (assert (string=? (call-with-input-file (string-append dir "/out6/esito") get-string-all) "ricevuto\n"))
   (run 'cli-aws)
   (assert (string=? (call-with-input-file (string-append dir "/out7/esito") get-string-all) "risponde\n"))
+  (when (getenv "DISEGNO_TEST_KEY")
+    (run 'con-localstack)
+    (assert (string=? (call-with-input-file (string-append dir "/out8/esito") get-string-all) "scritto\n")))
   (system (format "rm -rf ~a" dir))
   (display "dal vivo: ok\n"))
 (display "ok\n")

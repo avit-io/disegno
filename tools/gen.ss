@@ -10,7 +10,7 @@
 (define (at-root p) (if (string=? root "") p (string-append root "/" p)))
 (load (at-root "src/core.ss"))
 
-(define allowed '("Container" "Directory" "File" "CacheVolume" "GitRepository" "GitRef" "Secret"))
+(define allowed '("Container" "Directory" "File" "CacheVolume" "GitRepository" "GitRef" "Secret" "Service"))
 
 (define typeref "type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }")
 (define schema

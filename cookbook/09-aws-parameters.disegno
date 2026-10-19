@@ -10,6 +10,9 @@
 ;
 ;   disegno plan cookbook/09-aws-parameters.disegno
 ;   disegno run  cookbook/09-aws-parameters.disegno   con AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY
+;
+; Per provarla senza un account: (aws id key "eu-west-1" (emulated localstack)) al posto di cloud.
+; LocalStack gira come service di Dagger, avviato quando serve e fermato alla fine.
 
 (import aws)
 
@@ -35,7 +38,7 @@
 
 (def main : (→ [id (Host-secret "AWS_ACCESS_KEY_ID")] [key (Host-secret "AWS_SECRET_ACCESS_KEY")]
                [password (Host-secret "DB_PASSWORD")] [src (Host "hello")] (Export Dir))
-  [id key password src] (rilascio (aws id key "eu-west-1") password src))
+  [id key password src] (rilascio (aws id key "eu-west-1" cloud) password src))
 
 ; --- i teoremi: per ogni credenziale, password e sorgente ---
 

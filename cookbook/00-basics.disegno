@@ -35,14 +35,14 @@
   [dev]  1
   [prod] 3)
 
-(record Service
+(record App
   [name     : String]
   [env      : Env]
   [replicas : Nat]
   [ok       : (≥ replicas (min-replicas env))])
 
-(def api : Service
-  (service "api" prod 3 auto))                 ; con 2 repliche: «auto: la proposizione si riduce a ⊥»
+(def api : App
+  (app "api" prod 3 auto))                 ; con 2 repliche: «auto: la proposizione si riduce a ⊥»
 
 ; --- prove per calcolo: auto ---
 
@@ -52,5 +52,5 @@
 (def testa : (≡ (head (cons 1 nil)) 1)
   auto)
 
-(def api-in-regola : (≥ (Service.replicas api) (min-replicas (Service.env api)))
+(def api-in-regola : (≥ (App.replicas api) (min-replicas (App.env api)))
   auto)

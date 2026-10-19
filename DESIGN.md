@@ -414,7 +414,7 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `lib/text`, `affine`, `paths`, `time`, `net` | stringhe; spazi affini e intervalli; percorsi e regioni; istanti e durate; IP, CIDR e porte |
 | `lib/dagger.disegno` | il piano: `Image`, `Arg`, `engine`, `Host`, `Export`, nomi corti, proprietà del piano |
 | `lib/files.disegno` | i file: `file`, `put-file`, `merge`; che cosa scrive una directory (`Disjoint-writes`, `Writes-within`); osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) |
-| `lib/aws.disegno` | AWS: la CLI fissata, credenziali come segreti, `Region`; il Parameter Store (`put-parameter`, `put-secure-parameter`, `parameter-exists?`, `parameter-is?`, `Parameters-within`) |
+| `lib/aws.disegno` | AWS: la CLI fissata, credenziali come segreti, `Region`, `Bucket`, `Arn`; il cloud o LocalStack come service; il Parameter Store (`put-parameter`, `put-secure-parameter`, `parameter-exists?`, `parameter-is?`, `Parameters-within`) |
 | `lib/engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes`, `chain` |
 | `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger api with-session`) |
 | `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger api with-session`, dal vivo |
@@ -456,7 +456,9 @@ In cambio della purezza e della semplicità:
 - [x] Proprietà d'ordine, come `test-prima-di-publish`: `publish` è un'uscita del piano, `Before` si prova per ogni input.
 - [x] Effetti in sequenza (`apply`, `then`, `skip`, `probe`), con `Before` e `Precedes` sulle storie del piano.
 - [x] Segreti come input di `main`: `(Host-secret "NOME")`, sul modello di `Host`; il generatore ammette `Secret` ma esclude `Query.secret` e `setSecret`, così un segreto entra solo dalla firma.
-- [ ] AWS oltre il Parameter Store; una regex pura in `text` per i tipi raffinati di dominio (oggi `Region` è un elenco chiuso).
+- [x] Una regex pura in `text`, `(re? pattern s)`, per i tipi raffinati di dominio (`Bucket`, `Arn` in `aws`); un pattern malformato è un errore di tipo.
+- [x] I service di Dagger come valori del piano: `as-service`, `with-service-binding`; LocalStack per provare `aws` senza account.
+- [ ] AWS oltre il Parameter Store (S3, ECR); gli argomenti opzionali dello schema (oggi `as-service` non usa l'entrypoint, si aggira con `with-default-args`).
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
 - [x] Passaggio a Dagger 1.0 (beta.18): il flake scarica il binario da dl.dagger.io, `dagger api with-session` e `DAGGER_ENGINE`. Nessun cambio nel runner; nello schema `GitRepository.latest-version` diventa `latest`, `commit` restituisce `GitCommit` (escluso), nuovi `with-run`, `with-shell`, `GitRef.contains`. Da tornare a github:dagger/nix quando esce la 1.0.

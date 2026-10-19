@@ -8,6 +8,7 @@
   [Kind.git-repository]
   [Kind.git-ref]
   [Kind.secret]
+  [Kind.service]
   [Kind.bool]
   [Kind.export])
 
@@ -30,6 +31,7 @@
   [Query.file : (→ [name String] [contents String] (Obj Kind.file))]
   [Query.git : (→ [url String] (Obj Kind.git-repository))]
   [Query.http : (→ [url String] (Obj Kind.file))]
+  [Container.as-service : (→ [self (Obj Kind.container)] (Obj Kind.service))]
   [Container.as-tarball : (→ [self (Obj Kind.container)] (Obj Kind.file))]
   [Container.directory : (→ [self (Obj Kind.container)] [path Abs] (Obj Kind.directory))]
   [Container.exists : (→ [self (Obj Kind.container)] [path Abs] (Obj Kind.bool))]
@@ -61,6 +63,7 @@
   [Container.with-rootfs : (→ [self (Obj Kind.container)] [directory (Obj Kind.directory)] (Obj Kind.container))]
   [Container.with-run : (→ [self (Obj Kind.container)] [command String] (Obj Kind.container))]
   [Container.with-secret-variable : (→ [self (Obj Kind.container)] [name String] [secret (Obj Kind.secret)] (Obj Kind.container))]
+  [Container.with-service-binding : (→ [self (Obj Kind.container)] [alias String] [service (Obj Kind.service)] (Obj Kind.container))]
   [Container.with-shell : (→ [self (Obj Kind.container)] [interactive (List String)] (Obj Kind.container))]
   [Container.with-symlink : (→ [self (Obj Kind.container)] [target String] [linkName String] (Obj Kind.container))]
   [Container.with-user : (→ [self (Obj Kind.container)] [name String] (Obj Kind.container))]
@@ -118,7 +121,9 @@
   [GitRef.as-repository : (→ [self (Obj Kind.git-ref)] (Obj Kind.git-repository))]
   [GitRef.common-ancestor : (→ [self (Obj Kind.git-ref)] [other (Obj Kind.git-ref)] (Obj Kind.git-ref))]
   [GitRef.contains : (→ [self (Obj Kind.git-ref)] [other (Obj Kind.git-ref)] (Obj Kind.bool))]
-  [GitRef.tree : (→ [self (Obj Kind.git-ref)] (Obj Kind.directory))])
+  [GitRef.tree : (→ [self (Obj Kind.git-ref)] (Obj Kind.directory))]
+  [Service.terminal : (→ [self (Obj Kind.service)] (Obj Kind.service))]
+  [Service.with-hostname : (→ [self (Obj Kind.service)] [hostname String] (Obj Kind.service))])
 (builtin obj Obj)
 
 (def Container : Type
@@ -141,6 +146,9 @@
 
 (def Secret : Type
   (Obj Kind.secret))
+
+(def Service : Type
+  (Obj Kind.service))
 
 ; Un sotto-piano qualsiasi, di qualunque tipo.
 (data Any
@@ -165,6 +173,7 @@
   [(Query.file x0 x1)] (:: (any (Query.file x0 x1)) vuota)
   [(Query.git x0)] (:: (any (Query.git x0)) vuota)
   [(Query.http x0)] (:: (any (Query.http x0)) vuota)
+  [(Container.as-service x0)] (:: (any (Container.as-service x0)) (++ (nodes x0) vuota))
   [(Container.as-tarball x0)] (:: (any (Container.as-tarball x0)) (++ (nodes x0) vuota))
   [(Container.directory x0 x1)] (:: (any (Container.directory x0 x1)) (++ (nodes x0) vuota))
   [(Container.exists x0 x1)] (:: (any (Container.exists x0 x1)) (++ (nodes x0) vuota))
@@ -196,6 +205,7 @@
   [(Container.with-rootfs x0 x1)] (:: (any (Container.with-rootfs x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [(Container.with-run x0 x1)] (:: (any (Container.with-run x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-secret-variable x0 x1 x2)] (:: (any (Container.with-secret-variable x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Container.with-service-binding x0 x1 x2)] (:: (any (Container.with-service-binding x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Container.with-shell x0 x1)] (:: (any (Container.with-shell x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-symlink x0 x1 x2)] (:: (any (Container.with-symlink x0 x1 x2)) (++ (nodes x0) vuota))
   [(Container.with-user x0 x1)] (:: (any (Container.with-user x0 x1)) (++ (nodes x0) vuota))
@@ -253,7 +263,9 @@
   [(GitRef.as-repository x0)] (:: (any (GitRef.as-repository x0)) (++ (nodes x0) vuota))
   [(GitRef.common-ancestor x0 x1)] (:: (any (GitRef.common-ancestor x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [(GitRef.contains x0 x1)] (:: (any (GitRef.contains x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
-  [(GitRef.tree x0)] (:: (any (GitRef.tree x0)) (++ (nodes x0) vuota)))
+  [(GitRef.tree x0)] (:: (any (GitRef.tree x0)) (++ (nodes x0) vuota))
+  [(Service.terminal x0)] (:: (any (Service.terminal x0)) (++ (nodes x0) vuota))
+  [(Service.with-hostname x0 x1)] (:: (any (Service.with-hostname x0 x1)) (++ (nodes x0) vuota)))
 
 (def chain : (→ (Obj k) (List Any))
   [(%host-dir x0)] (:: (any (%host-dir x0)) vuota)
@@ -274,6 +286,7 @@
   [(Query.file x0 x1)] (:: (any (Query.file x0 x1)) vuota)
   [(Query.git x0)] (:: (any (Query.git x0)) vuota)
   [(Query.http x0)] (:: (any (Query.http x0)) vuota)
+  [(Container.as-service x0)] (:: (any (Container.as-service x0)) (chain x0))
   [(Container.as-tarball x0)] (:: (any (Container.as-tarball x0)) (chain x0))
   [(Container.directory x0 x1)] (:: (any (Container.directory x0 x1)) (chain x0))
   [(Container.exists x0 x1)] (:: (any (Container.exists x0 x1)) (chain x0))
@@ -305,6 +318,7 @@
   [(Container.with-rootfs x0 x1)] (:: (any (Container.with-rootfs x0 x1)) (chain x0))
   [(Container.with-run x0 x1)] (:: (any (Container.with-run x0 x1)) (chain x0))
   [(Container.with-secret-variable x0 x1 x2)] (:: (any (Container.with-secret-variable x0 x1 x2)) (chain x0))
+  [(Container.with-service-binding x0 x1 x2)] (:: (any (Container.with-service-binding x0 x1 x2)) (chain x0))
   [(Container.with-shell x0 x1)] (:: (any (Container.with-shell x0 x1)) (chain x0))
   [(Container.with-symlink x0 x1 x2)] (:: (any (Container.with-symlink x0 x1 x2)) (chain x0))
   [(Container.with-user x0 x1)] (:: (any (Container.with-user x0 x1)) (chain x0))
@@ -362,4 +376,6 @@
   [(GitRef.as-repository x0)] (:: (any (GitRef.as-repository x0)) (chain x0))
   [(GitRef.common-ancestor x0 x1)] (:: (any (GitRef.common-ancestor x0 x1)) (chain x0))
   [(GitRef.contains x0 x1)] (:: (any (GitRef.contains x0 x1)) (chain x0))
-  [(GitRef.tree x0)] (:: (any (GitRef.tree x0)) (chain x0)))
+  [(GitRef.tree x0)] (:: (any (GitRef.tree x0)) (chain x0))
+  [(Service.terminal x0)] (:: (any (Service.terminal x0)) (chain x0))
+  [(Service.with-hostname x0 x1)] (:: (any (Service.with-hostname x0 x1)) (chain x0)))
