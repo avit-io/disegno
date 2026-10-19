@@ -23,26 +23,29 @@
         installPhase = "install -Dm755 dagger $out/bin/dagger";
       };
 
-      # Motore Dagger dedicato con il bundle CA dell'host (proxy TLS aziendale): il motore
+      # Il motore Dagger. Di norma lo decide Dagger: se non c'è, la CLI ne avvia uno sul Docker
+      # dell'host, con la versione nel nome (dagger-engine-v…), e versioni diverse convivono.
+      # Disegno ne avvia uno suo solo per montarvi un bundle CA (proxy TLS aziendale): il motore
       # installa le CA in /usr/local/share/ca-certificates e le passa ai container che esegue.
-      # Senza bundle (per esempio su Ubuntu, in CI) il motore usa le sue CA.
-      # Si ricrea se è fermo o di un'altra versione. DISEGNO_HOST_CA sceglie il bundle: un percorso
-      # dell'host, o none; nel container di Disegno vale none, perché i suoi percorsi non sono
-      # quelli dell'host su cui Docker monta i volumi.
-      # ponytail: se il bundle dell'host cambia, `docker rm -f disegno-engine` e si ricrea.
+      # DISEGNO_HOST_CA sceglie il bundle: un percorso dell'host, o none; senza, quello del sistema
+      # se c'è (/etc/ssl/certs/ca-bundle.crt: NixOS sì, Ubuntu no). Nel container di Disegno vale
+      # none, perché i suoi percorsi non sono quelli dell'host su cui Docker monta i volumi.
+      # Lo script stampa il nome del motore, o niente se basta quello di Dagger.
+      # ponytail: se il bundle dell'host cambia, `docker rm -f disegno-engine-v…` e si ricrea.
       engine = pkgs.writeShellScript "disegno-engine" ''
-        if [ "$(docker inspect -f '{{.State.Running}} {{.Config.Image}}' disegno-engine 2>/dev/null)" != "true registry.dagger.io/engine:v${d.version}" ]; then
-          docker rm -f disegno-engine >/dev/null 2>&1
-          ca="" host_ca="''${DISEGNO_HOST_CA:-}"
-          if [ -z "$host_ca" ] && [ -e /etc/ssl/certs/ca-bundle.crt ]; then
-            host_ca=$(readlink -f /etc/ssl/certs/ca-bundle.crt)
-          fi
-          if [ -n "$host_ca" ] && [ "$host_ca" != none ]; then
-            ca="-v $host_ca:/usr/local/share/ca-certificates/host-bundle.crt:ro"
-          fi
-          docker run -d --privileged --name disegno-engine $ca \
-            -v disegno-engine:/var/lib/dagger registry.dagger.io/engine:v${d.version} >/dev/null
+        host_ca="''${DISEGNO_HOST_CA:-}"
+        if [ -z "$host_ca" ] && [ -e /etc/ssl/certs/ca-bundle.crt ]; then
+          host_ca=$(readlink -f /etc/ssl/certs/ca-bundle.crt)
         fi
+        [ -n "$host_ca" ] && [ "$host_ca" != none ] || exit 0
+        name=disegno-engine-v${d.version}
+        if [ "$(docker inspect -f '{{.State.Running}}' $name 2>/dev/null)" != true ]; then
+          docker rm -f $name >/dev/null 2>&1
+          docker run -d --privileged --name $name \
+            -v "$host_ca:/usr/local/share/ca-certificates/host-bundle.crt:ro" \
+            -v $name:/var/lib/dagger registry.dagger.io/engine:v${d.version} >/dev/null
+        fi
+        echo $name
       '';
 
       # disegno [check|plan|run] programma.disegno, disegno lsp: un solo binario.
@@ -52,8 +55,8 @@
         export DISEGNO_SCHEME=${pkgs.chez}/bin/scheme      # per i controlli che lancia disegno lsp
         if [ "$1" = run ]; then
           if [ -z "$DAGGER_ENGINE" ]; then
-            ${engine}
-            export DAGGER_ENGINE=container://disegno-engine
+            name=$(${engine})
+            if [ -n "$name" ]; then export DAGGER_ENGINE=container://$name; fi
           fi
           export DAGGER_NO_NAG=1
           progress=""                                     # in CI, o senza terminale: niente TUI, log per passo
@@ -106,8 +109,9 @@
       devShells.${system}.default = pkgs.mkShell {
         packages = [ pkgs.chez d disegno ];
         shellHook = ''
-          ${engine}
-          export DAGGER_ENGINE=container://disegno-engine DAGGER_NO_NAG=1
+          name=$(${engine})                                 # un motore con le CA, o quello di Dagger
+          if [ -n "$name" ]; then export DAGGER_ENGINE=container://$name; fi
+          export DAGGER_NO_NAG=1
           export DISEGNO_TEST_KEY=test                      # chiave finta per LocalStack, nei test dal vivo
         '';
       };
