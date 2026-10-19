@@ -28,7 +28,7 @@
   [start : (→ [self (Obj Kind.service)] (Obj Kind.export))]
   [probe : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.bool))]
   [with-fresh-exec : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.container))]
-  [secret-from : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.secret))]
+  [secret-from : (→ [self (Obj Kind.container)] [args (List Arg)] [name String] (Obj Kind.secret))]
   [cache-volume : (→ [key String] (Obj Kind.cache-volume))]
   [Query.container : (Obj Kind.container)]
   [Query.directory : (Obj Kind.directory)]
@@ -56,6 +56,7 @@
   [Container.with-exec : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.container))]
   [Container.with-exposed-port : (→ [self (Obj Kind.container)] [port Port] (Obj Kind.container))]
   [Container.with-file : (→ [self (Obj Kind.container)] [path Abs] [source (Obj Kind.file)] (Obj Kind.container))]
+  [Container.with-files : (→ [self (Obj Kind.container)] [path Abs] [sources (List (Obj Kind.file))] (Obj Kind.container))]
   [Container.with-label : (→ [self (Obj Kind.container)] [name String] [value String] (Obj Kind.container))]
   [Container.with-mounted-cache : (→ [self (Obj Kind.container)] [path Abs] [cache (Obj Kind.cache-volume)] (Obj Kind.container))]
   [Container.with-mounted-directory : (→ [self (Obj Kind.container)] [path Abs] [source (Obj Kind.directory)] (Obj Kind.container))]
@@ -94,7 +95,7 @@
   [Directory.chown : (→ [self (Obj Kind.directory)] [path Abs] [owner String] (Obj Kind.directory))]
   [Directory.diff : (→ [self (Obj Kind.directory)] [other (Obj Kind.directory)] (Obj Kind.directory))]
   [Directory.directory : (→ [self (Obj Kind.directory)] [path Abs] (Obj Kind.directory))]
-  [Directory.docker-build : (→ [self (Obj Kind.directory)] (Obj Kind.container))]
+  [Directory.docker-build : (→ [self (Obj Kind.directory)] [dockerfile String] [secrets (List (Obj Kind.secret))] (Obj Kind.container))]
   [Directory.exists : (→ [self (Obj Kind.directory)] [path Abs] (Obj Kind.bool))]
   [Directory.file : (→ [self (Obj Kind.directory)] [path Abs] (Obj Kind.file))]
   [Directory.filter : (→ [self (Obj Kind.directory)] [exclude (List String)] [include (List String)] (Obj Kind.directory))]
@@ -102,6 +103,7 @@
   [Directory.with-directory : (→ [self (Obj Kind.directory)] [path Abs] [source (Obj Kind.directory)] (Obj Kind.directory))]
   [Directory.with-error : (→ [self (Obj Kind.directory)] [err String] (Obj Kind.directory))]
   [Directory.with-file : (→ [self (Obj Kind.directory)] [path Abs] [source (Obj Kind.file)] (Obj Kind.directory))]
+  [Directory.with-files : (→ [self (Obj Kind.directory)] [path Abs] [sources (List (Obj Kind.file))] (Obj Kind.directory))]
   [Directory.with-new-directory : (→ [self (Obj Kind.directory)] [path Abs] (Obj Kind.directory))]
   [Directory.with-new-file : (→ [self (Obj Kind.directory)] [path Abs] [contents String] [permissions Nat] (Obj Kind.directory))]
   [Directory.with-patch : (→ [self (Obj Kind.directory)] [patch String] (Obj Kind.directory))]
@@ -174,7 +176,7 @@
   [(start x0)] (:: (any (start x0)) (++ (nodes x0) vuota))
   [(probe x0 x1)] (:: (any (probe x0 x1)) (++ (nodes x0) vuota))
   [(with-fresh-exec x0 x1)] (:: (any (with-fresh-exec x0 x1)) (++ (nodes x0) vuota))
-  [(secret-from x0 x1)] (:: (any (secret-from x0 x1)) (++ (nodes x0) vuota))
+  [(secret-from x0 x1 x2)] (:: (any (secret-from x0 x1 x2)) (++ (nodes x0) vuota))
   [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)
   [Query.directory] (:: (any Query.directory) vuota)
@@ -202,6 +204,7 @@
   [(Container.with-exec x0 x1)] (:: (any (Container.with-exec x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-exposed-port x0 x1)] (:: (any (Container.with-exposed-port x0 x1)) (++ (nodes x0) vuota))
   [(Container.with-file x0 x1 x2)] (:: (any (Container.with-file x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Container.with-files x0 x1 x2)] (:: (any (Container.with-files x0 x1 x2)) (++ (nodes x0) vuota))
   [(Container.with-label x0 x1 x2)] (:: (any (Container.with-label x0 x1 x2)) (++ (nodes x0) vuota))
   [(Container.with-mounted-cache x0 x1 x2)] (:: (any (Container.with-mounted-cache x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Container.with-mounted-directory x0 x1 x2)] (:: (any (Container.with-mounted-directory x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
@@ -240,7 +243,7 @@
   [(Directory.chown x0 x1 x2)] (:: (any (Directory.chown x0 x1 x2)) (++ (nodes x0) vuota))
   [(Directory.diff x0 x1)] (:: (any (Directory.diff x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [(Directory.directory x0 x1)] (:: (any (Directory.directory x0 x1)) (++ (nodes x0) vuota))
-  [(Directory.docker-build x0)] (:: (any (Directory.docker-build x0)) (++ (nodes x0) vuota))
+  [(Directory.docker-build x0 x1 x2)] (:: (any (Directory.docker-build x0 x1 x2)) (++ (nodes x0) vuota))
   [(Directory.exists x0 x1)] (:: (any (Directory.exists x0 x1)) (++ (nodes x0) vuota))
   [(Directory.file x0 x1)] (:: (any (Directory.file x0 x1)) (++ (nodes x0) vuota))
   [(Directory.filter x0 x1 x2)] (:: (any (Directory.filter x0 x1 x2)) (++ (nodes x0) vuota))
@@ -248,6 +251,7 @@
   [(Directory.with-directory x0 x1 x2)] (:: (any (Directory.with-directory x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Directory.with-error x0 x1)] (:: (any (Directory.with-error x0 x1)) (++ (nodes x0) vuota))
   [(Directory.with-file x0 x1 x2)] (:: (any (Directory.with-file x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
+  [(Directory.with-files x0 x1 x2)] (:: (any (Directory.with-files x0 x1 x2)) (++ (nodes x0) vuota))
   [(Directory.with-new-directory x0 x1)] (:: (any (Directory.with-new-directory x0 x1)) (++ (nodes x0) vuota))
   [(Directory.with-new-file x0 x1 x2 x3)] (:: (any (Directory.with-new-file x0 x1 x2 x3)) (++ (nodes x0) vuota))
   [(Directory.with-patch x0 x1)] (:: (any (Directory.with-patch x0 x1)) (++ (nodes x0) vuota))
@@ -291,7 +295,7 @@
   [(start x0)] (:: (any (start x0)) (chain x0))
   [(probe x0 x1)] (:: (any (probe x0 x1)) (chain x0))
   [(with-fresh-exec x0 x1)] (:: (any (with-fresh-exec x0 x1)) (chain x0))
-  [(secret-from x0 x1)] (:: (any (secret-from x0 x1)) (chain x0))
+  [(secret-from x0 x1 x2)] (:: (any (secret-from x0 x1 x2)) (chain x0))
   [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)
   [Query.directory] (:: (any Query.directory) vuota)
@@ -319,6 +323,7 @@
   [(Container.with-exec x0 x1)] (:: (any (Container.with-exec x0 x1)) (chain x0))
   [(Container.with-exposed-port x0 x1)] (:: (any (Container.with-exposed-port x0 x1)) (chain x0))
   [(Container.with-file x0 x1 x2)] (:: (any (Container.with-file x0 x1 x2)) (chain x0))
+  [(Container.with-files x0 x1 x2)] (:: (any (Container.with-files x0 x1 x2)) (chain x0))
   [(Container.with-label x0 x1 x2)] (:: (any (Container.with-label x0 x1 x2)) (chain x0))
   [(Container.with-mounted-cache x0 x1 x2)] (:: (any (Container.with-mounted-cache x0 x1 x2)) (chain x0))
   [(Container.with-mounted-directory x0 x1 x2)] (:: (any (Container.with-mounted-directory x0 x1 x2)) (chain x0))
@@ -357,7 +362,7 @@
   [(Directory.chown x0 x1 x2)] (:: (any (Directory.chown x0 x1 x2)) (chain x0))
   [(Directory.diff x0 x1)] (:: (any (Directory.diff x0 x1)) (chain x0))
   [(Directory.directory x0 x1)] (:: (any (Directory.directory x0 x1)) (chain x0))
-  [(Directory.docker-build x0)] (:: (any (Directory.docker-build x0)) (chain x0))
+  [(Directory.docker-build x0 x1 x2)] (:: (any (Directory.docker-build x0 x1 x2)) (chain x0))
   [(Directory.exists x0 x1)] (:: (any (Directory.exists x0 x1)) (chain x0))
   [(Directory.file x0 x1)] (:: (any (Directory.file x0 x1)) (chain x0))
   [(Directory.filter x0 x1 x2)] (:: (any (Directory.filter x0 x1 x2)) (chain x0))
@@ -365,6 +370,7 @@
   [(Directory.with-directory x0 x1 x2)] (:: (any (Directory.with-directory x0 x1 x2)) (chain x0))
   [(Directory.with-error x0 x1)] (:: (any (Directory.with-error x0 x1)) (chain x0))
   [(Directory.with-file x0 x1 x2)] (:: (any (Directory.with-file x0 x1 x2)) (chain x0))
+  [(Directory.with-files x0 x1 x2)] (:: (any (Directory.with-files x0 x1 x2)) (chain x0))
   [(Directory.with-new-directory x0 x1)] (:: (any (Directory.with-new-directory x0 x1)) (chain x0))
   [(Directory.with-new-file x0 x1 x2 x3)] (:: (any (Directory.with-new-file x0 x1 x2 x3)) (chain x0))
   [(Directory.with-patch x0 x1)] (:: (any (Directory.with-patch x0 x1)) (chain x0))

@@ -1121,7 +1121,10 @@
   (or (not (mentions? d t))
       (and (eq? (car t) 'pi) (not (mentions? d (cadddr t))) (strictly-positive? d (list-ref t 4)))
       (let-values ([(h args) (spine-of t)])
-        (and (equal? h `(glob ,d)) (not (exists (lambda (a) (mentions? d a)) args))))))
+        (or (and (equal? h `(glob ,d)) (not (exists (lambda (a) (mentions? d a)) args)))
+            ;; Annidato in una lista: (List (Obj k)) va bene, perché List è strettamente positiva
+            ;; nel suo parametro (come in Coq e Agda). Solo la List del builtin.
+            (and (bi 'list) (equal? h `(glob ,(bi 'list))) (= (length args) 1) (strictly-positive? d (car args)))))))
 
 ;; (def f : T [p ...] corpo ...)  oppure  (def f : T corpo)
 ;; Una clausola con un pattern assurdo () non ha corpo: [(⊑-step ())].

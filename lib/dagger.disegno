@@ -98,6 +98,10 @@
   [public String]
   [private Secret])
 
+; Una build da Dockerfile: i segreti arrivano per nome (RUN --mount=type=secret,id=ssh-key).
+(def build-dockerfile : (→ Dir String (List Secret) Container)   ; sorgente, Dockerfile, segreti
+  [src dockerfile secrets] (Directory.docker-build src dockerfile secrets))
+
 (def with-setting : (→ Container String Setting Container)
   [c name (public s)]  (with-env c name s)
   [c name (private s)] (Container.with-secret-variable c name s))

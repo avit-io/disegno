@@ -65,7 +65,9 @@ Gli strati, dal più fidato al meno:
 
 **Perché.** Le prove scritte per casi si leggono come le dimostrazioni sulla carta, mentre gli eliminatori sono illeggibili oltre i casi semplici. Poiché gli eliminatori si derivano dal pattern matching, la teoria non perde nulla.
 
-**Costo.** Un solo argomento decrescente: Ackermann è rifiutato. Non ci sono definizioni mutue né induttivi annidati: `Rose` con `(List Rose)` è rifiutato, perché la positività non attraversa i parametri. Si aggiungono il giorno in cui servono; per ora si codificano con famiglie indicizzate, come si fa già per il piano (sezione 7).
+**Costo.** Un solo argomento decrescente: Ackermann è rifiutato. Non ci sono definizioni mutue; si codificano con famiglie indicizzate, come si fa già per il piano (sezione 7).
+
+**Induttivi annidati in una lista.** Un tipo può comparire dentro una `List` in un suo costruttore: `(data Rosa [nodo (List Rosa)])` è ammesso, perché `List` è strettamente positiva nel suo parametro (come in Coq e Agda). Sotto una freccia resta rifiutato: `(List (→ T ⊥))` no. È servito al piano: `docker-build` prende una lista di segreti, `(List (Obj Kind.secret))`. Vale solo per la `List` del builtin. La ricorsione strutturale non attraversa ancora la lista: una funzione su `Rosa` che chiama sé stessa sugli elementi viene rifiutata, e `nodes` non scende negli argomenti di tipo lista.
 
 ## 4. Universi stratificati, senza cumulatività
 

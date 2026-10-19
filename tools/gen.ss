@@ -53,7 +53,8 @@
   (let loop ([t (get a "type")])
     (let ([k (get t "kind")] [n (get t "name")])
       (cond [(equal? k "NON_NULL") (loop (get t "ofType"))]
-            [(equal? k "LIST") (and (eq? (loop (get t "ofType")) 'String) '(List String))]
+            [(equal? k "LIST") (let ([e (loop (get t "ofType"))])   ; liste di testi o di oggetti (per ID)
+                                  (cond [(eq? e 'String) '(List String)] [(and (pair? e) (eq? (car e) 'Obj)) `(List ,e)] [else #f]))]
             [(equal? n "String") 'String]
             [(equal? n "Int") 'Nat]                     ; ponytail: Int → Nat, bastano porte e conteggi
             [(equal? n "Boolean") 'Bool]
@@ -75,7 +76,8 @@
 (define promoted
   '(("Directory" "filter" "include" "exclude")           ; i glob dei file da tenere e da togliere
     ("Directory" "withNewFile" "permissions")            ; un file eseguibile
-    ("Container" "asService" "useEntrypoint")))          ; un service con l'entrypoint dell'immagine
+    ("Container" "asService" "useEntrypoint")           ; un service con l'entrypoint dell'immagine
+    ("Directory" "dockerBuild" "dockerfile" "secrets"))) ; una build da Dockerfile, con i suoi segreti (id = nome del segreto)
 
 (define (wanted? type n a)
   (or (required? a)
@@ -125,7 +127,7 @@
     (with-fresh-exec ((self ,(obj "container")) (args (List Arg))) ,(obj "container"))
     ;; Un segreto letto a esecuzione: cmd, in self, lo stampa; il runner lo passa a Dagger
     ;; (setSecret) quando un passo lo usa. Il valore non torna mai al linguaggio.
-    (secret-from ((self ,(obj "container")) (args (List Arg))) ,(obj "secret"))
+    (secret-from ((self ,(obj "container")) (args (List Arg)) (name String)) ,(obj "secret"))   ; name: l'id del segreto (un Dockerfile lo cerca così)
     ;; L'unico stato che persiste tra un'esecuzione e l'altra, non indirizzato per contenuto:
     ;; per questo è uno snodo dichiarato e non un campo generato.
     (cache-volume ((key String)) ,(obj "cache-volume"))))

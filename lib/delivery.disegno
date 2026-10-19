@@ -23,12 +23,13 @@
   [push  : (→ Container String String (Export Dir))]   ; container, repo, tag
   [has?  : (→ String String (Remote Bool))])           ; c'è già repo:tag?
 
-(record Gitops
-  [set-image : (→ Rel String String (Export Dir))])    ; dove, immagine, messaggio del commit
+(record Gitops                                         ; un solo commit per tutte le cartelle
+  [set-image : (→ (List Rel) String String (Export Dir))])   ; dove, immagine, messaggio del commit
 
 (record Deployer
   [deploy   : (→ String (Export Dir))]                 ; un'applicazione
-  [healthy? : (→ String (Remote Bool))])
+  [healthy? : (→ String (Remote Bool))]
+  [restart  : (→ String (Export Dir))])                ; riavvia, senza cambiare lo stato desiderato
 
 ; --- un registro qualsiasi, con crane, dal tarball del container ---
 

@@ -145,7 +145,8 @@
 
 (def secrets-manager : (→ Aws String Secret)    ; il SecretString intero
   [a id] (secret-from (cli a) ["aws" "secretsmanager" "get-secret-value" "--secret-id" id
-                               "--query" "SecretString" "--output" "text"]))
+                               "--query" "SecretString" "--output" "text"]
+                    id))
 
 ; Una chiave di un segreto JSON: la CLI non sa estrarla, jq sì, nello stesso container.
 ; ponytail: Alpine con apk; una toolbox costruita con Nix e fissata per digest la sostituirebbe.
@@ -161,11 +162,38 @@
 (def secrets-manager-key : (→ Aws String String Secret)
   [a id key] (secret-from (cli-jq a)
                           ["sh" "-c" "aws secretsmanager get-secret-value --secret-id \"$1\" --query SecretString --output text | jq -er --arg k \"$2\" '.[$k]'"
-                           "sh" id key]))
+                           "sh" id key]
+                          (concat id (concat ":" key))))
 
 (def ssm-secure : (→ Aws Abs Secret)            ; un parametro SecureString, decifrato
   [a name] (secret-from (cli a) ["aws" "ssm" "get-parameter" "--name" name "--with-decryption"
-                                 "--query" "Parameter.Value" "--output" "text"]))
+                                 "--query" "Parameter.Value" "--output" "text"]
+                        (render-abs name)))
+
+; Il primo segreto che esiste tra più id, in ordine: quando lo stesso segreto può stare a livelli
+; diversi (per ambiente, per piattaforma, comune). Con un nome scelto: un Dockerfile cerca il
+; segreto per id (RUN --mount=type=secret,id=ssh-key).
+(def first-secret-script : String
+  "k=\"$1\"; shift; for id in \"$@\"; do v=$(aws secretsmanager get-secret-value --secret-id \"$id\" --query SecretString --output text 2>/dev/null) || continue; if [ -z \"$k\" ]; then printf '%s' \"$v\"; else printf '%s' \"$v\" | jq -er --arg k \"$k\" '.[$k]'; fi; exit $?; done; echo \"nessuno di: $*\" >&2; exit 1")
+
+(def secrets-manager-first : (→ Aws (List String) String Secret)        ; id in ordine, nome
+  [a ids name] (secret-from (cli-jq a) (++ ["sh" "-c" first-secret-script "sh" ""] (map arg-text ids)) name))
+
+(def secrets-manager-key-first : (→ Aws (List String) String String Secret)   ; id in ordine, chiave, nome
+  [a ids key name] (secret-from (cli-jq a) (++ ["sh" "-c" first-secret-script "sh" key] (map arg-text ids)) name))
+
+; Come secrets-manager-key-first, ma se nessun segreto ha la chiave vale default.
+(def secrets-manager-key-first-or : (→ Aws (List String) String String String Secret)   ; id, chiave, default, nome
+  [a ids key default name]
+  (secret-from (with-env (cli-jq a) "DEFAULT" default)
+               (++ ["sh" "-c" (concat "(" (concat first-secret-script ") 2>/dev/null || printf '%s' \"$DEFAULT\"")) "sh" key] (map arg-text ids))
+               name))
+
+; Un'osservazione: la chiave del primo segreto esistente vale questo testo? (una modalità, un flag)
+(def secrets-manager-key-is? : (→ Aws (List String) String String (Remote Bool))   ; id in ordine, chiave, valore
+  [a ids key value] (probe (with-env (cli-jq a) "WANT" value) (++ ["sh" "-c" (concat "test \"$(" (concat first-secret-script ")\" = \"$WANT\""))
+                                           "sh" key]
+                                          (map arg-text ids))))
 
 ; --- ECR: il registro delle immagini. La password si legge a esecuzione, come un segreto ---
 
@@ -180,7 +208,7 @@
   [a acc repo tag] (concat (ecr-registry acc (Aws.region a)) (concat "/" (concat repo (concat ":" tag)))))
 
 (def ecr-password : (→ Aws Secret)
-  [a] (secret-from (cli a) ["aws" "ecr" "get-login-password"]))
+  [a] (secret-from (cli a) ["aws" "ecr" "get-login-password"] "ecr-password"))
 
 (def ensure-repository : (→ Aws String (Export Dir))  ; crea il repository se non c'è
   [a repo] (apply (cli a) ["sh" "-c" "aws ecr describe-repositories --repository-names \"$1\" >/dev/null 2>&1 || aws ecr create-repository --repository-name \"$1\""

@@ -50,6 +50,9 @@
 (rifiuta "(def assurdo : ⊥ assurdo)" "ricorsione non strutturale")
 (rifiuta "(def postulato : ⊥)" "manca la definizione")
 (rifiuta "(data Cattivo [mk (→ Cattivo ⊥)])" "strettamente positiva")
+;; Annidato in una lista va bene (List è strettamente positiva nel parametro); sotto una freccia no.
+(check-string "(data Rosa [nodo (List Rosa)])")
+(rifiuta "(data Cattivo2 [mk2 (List (→ Cattivo2 ⊥))])" "strettamente positiva")
 (rifiuta "(def tipo-in-tipo : Type Type)" "atteso")
 (rifiuta "(data U : Type [u : (→ Type U)])" "livello")
 (rifiuta "(def pred : (→ Nat Nat) [(add1 k)] k)" "manca il caso")
@@ -289,7 +292,7 @@
   (string-append dir "/out11")))
 (let* ([evs (cdr (car (all-plans 'con-segreti)))]
        [obs (plan->graphql (cadr (find (lambda (e) (eq? (car e) 'se)) evs)))])
-  (assert (contiene? obs "secretFrom(args: [\\\"sh\\\", \\\"-c\\\""))   ; dentro la stringa GraphQL del segnaposto
+  (assert (contiene? obs "secretFrom(name: \\\"cicd/test/argocd:token\\\", args: [\\\"sh\\\", \\\"-c\\\""))   ; il nome e il comando, dentro la stringa GraphQL
   (assert (contiene? obs "\\\"cicd/test/argocd\\\", \\\"token\\\"]"))
   (assert (not (contiene? obs "argocd.example"))))                   ; il valore del segreto non è nel piano
 
@@ -316,22 +319,32 @@
     (kustomize-gitops \"git://git:9418/app.git\" \"main\" anonymous (through \"git\" server-git) (author \"Disegno\" \"ci@disegno.invalid\")))
   (def con-gitops : (Export Dir)
     (then (start server-git)
-    (then (Gitops.set-image repo-prova \"console/test/app\" \"registry:5000/prova/app:v2\" \"immagine v2\")
+    (then (Gitops.set-image repo-prova [\"console/test/app\"] \"registry:5000/prova/app:v2\" \"immagine v2\")
           (branch (probe (with-dir immagine-prova /r (clone \"git://git:9418/app.git\" \"main\" anonymous (through \"git\" server-git)))
                          [\"grep\" \"-q\" \"newTag: v2\" \"/r/console/test/app/kustomization.yaml\"])
             (esito-d \"gitops\" \"aggiornato\\n\")
             (esito-d \"gitops\" \"invariato\\n\")))))
   (def con-argocd : (→ [s (Host-secret \"PATH\")] (Export Dir))
-    [s] (branch (probe (argocd-cli (argocd (public \"argocd.invalid\") s)) [\"argocd\" \"version\" \"--client\"])
+    [s] (branch (probe (argocd-cli (argocd (public \"argocd.invalid\") (token s) false)) (argocd-args [\"version\" \"--client\"]))
           (esito-d \"argocd\" \"risponde\\n\")
           (esito-d \"argocd\" \"no\\n\")))
   (def rilascio-prova : (→ Secret (Export Dir))
-    [s] (then (Gitops.set-image repo-prova \"console/test/app\" \"registry:5000/prova/app:v3\" \"v3\")
-              (Deployer.deploy (argocd-deployer (argocd (public \"argocd.invalid\") s) 300) \"app\")))
+    [s] (then (Gitops.set-image repo-prova [\"console/test/app\"] \"registry:5000/prova/app:v3\" \"v3\")
+              (Deployer.deploy (argocd-deployer (argocd (public \"argocd.invalid\") (token s) false) 300) \"app\")))
   (def sync-dopo-push : (→ [s Secret] (Precedes (git-command? \"push\") (argocd-command? \"sync\") (rilascio-prova s)))
     [s] auto)"
   (string-append dir "/out14")))
 (rifiuta "(def push-dopo-sync : (→ [s Secret] (Precedes (argocd-command? \"sync\") (git-command? \"push\") (rilascio-prova s))) [s] auto)" "auto")
+
+;; Una build da Dockerfile con un segreto per nome: RUN --mount=type=secret,id=ssh-key lo vede.
+(check-string (format "
+  (def contesto : Dir
+    (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nRUN --mount=type=secret,id=ssh-key mkdir /out && test \\\"$(cat /run/secrets/ssh-key)\\\" = chiave && echo letto > /out/esito\\n\"))
+  (def con-dockerfile : (Export Dir)
+    (overlay ~s (dir-of (build-dockerfile contesto \"Dockerfile\"
+                          [(secret-from (from (container) \"busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\") [\"echo\" \"chiave\"] \"ssh-key\")])
+                        /out)))"
+  (string-append dir "/out15")))
 
 ;; Argomenti opzionali promossi: i permessi di un file, i glob di filter, l'entrypoint di un service.
 (check-string (format "
@@ -613,6 +626,8 @@
     (assert (file-exists? (string-append dir "/out13/riserva"))))
   (for-each (lambda (e f t) (run e) (assert (string=? (call-with-input-file (string-append dir "/out14/" f) get-string-all) t)))
             '(con-registro con-gitops con-argocd) '("registro" "gitops" "argocd") '("pubblicata\n" "aggiornato\n" "risponde\n"))
+  (run 'con-dockerfile)
+  (assert (string=? (call-with-input-file (string-append dir "/out15/esito") get-string-all) "letto\n"))
   (run 'filtri)
   (assert (zero? (system (format "test -x ~a/out9/run.sh" dir))))
   (assert (not (file-exists? (string-append dir "/out9/note.txt"))))

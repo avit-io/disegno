@@ -57,9 +57,14 @@
                                (with-exec ["kustomize" "edit" "set" "image" image]))
                          /w))
 
+(def kustomize-set-images : (→ Dir (List Rel) String Dir)   ; la stessa immagine in più cartelle
+  [repo vuota     image] repo
+  [repo (:: p ps) image] (kustomize-set-images (kustomize-set-image repo p image) ps image))
+
 ; --- Gitops: clone, kustomize, commit e push, dietro l'interfaccia di delivery ---
+; Un clone, tutte le cartelle, un commit: come chi aggiorna a mano blu e verde insieme.
 
 (def kustomize-gitops : (→ String String Git-auth Reach Author Gitops)   ; url, branch, autenticazione, raggiungimento, autore
   [url branch auth r who]
-  (gitops (λ [p image msg] (commit-and-push (kustomize-set-image (clone url branch auth r) p image)
-                                       who msg branch auth r))))
+  (gitops (λ [ps image msg] (commit-and-push (kustomize-set-images (clone url branch auth r) ps image)
+                                             who msg branch auth r))))

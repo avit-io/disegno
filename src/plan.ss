@@ -168,20 +168,20 @@
 
 (define (fetch-dry v resolve)
   (let ([xs (explicit (caddr v))])
-    (list `(secretFrom (args ,(gql-arg (cadr xs) resolve))))))
+    (list `(secretFrom (name ,(gql-arg (caddr xs) resolve)) (args ,(gql-arg (cadr xs) resolve))))))
 
 (define (fetch-live v resolve)
   (let* ([xs (explicit (caddr v))] [recv (chain (car xs) resolve)] [cmd (gql-arg (cadr xs) resolve)]
-         [key (plan->graphql (append recv (list `(withExec (args ,cmd)))))])
+         [key (string-append (gql-arg (caddr xs) resolve) " " (plan->graphql (append recv (list `(withExec (args ,cmd))))))])
     (or (hashtable-ref secret-memo key #f)
         (let* ([text (submit-leaf (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(fresh-nonce)))
                                                      `(withExec (args ("sh" "-c" "\"$@\" > /tmp/disegno-segreto" "sh" ,@cmd)))
                                                      '(file (path "/tmp/disegno-segreto")) '(contents))))]
                [n (string-length text)]
                [text (if (and (> n 0) (char=? (string-ref text (- n 1)) #\newline)) (substring text 0 (- n 1)) text)]
-               [ch (list `(setSecret (name ,(format "disegno-~a" (hashtable-size secret-memo))) (plaintext ,text)))])
+               [ch (list `(setSecret (name ,(gql-arg (caddr xs) resolve)) (plaintext ,text)))])
           (when (env? "DISEGNO_LOGS")
-            (printf "↳ ~a segreto letto: ~a\n" (pad (or (v-name v) (entry-name))) (show-args cmd))
+            (printf "↳ ~a segreto ~a letto: ~a\n" (pad (or (v-name v) (entry-name))) (gql-arg (caddr xs) resolve) (show-args cmd))
             (flush-output-port))
           (hashtable-set! secret-memo key ch)
           ch))))

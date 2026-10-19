@@ -277,7 +277,7 @@ Implementati (i segreti no, vedi sotto). Sono il passo che serve alle librerie p
 
 `Precedes` dice che ogni effetto che soddisfa `prod?` ha davanti, nella sua sequenza, un effetto che soddisfa `staging?`. Come `Before`, vale per ogni sorgente, perché `effects` non scende nelle directory.
 
-**Perché `then` è binario.** Una sequenza `(sequence [a b c])` sarebbe più comoda, ma un costruttore di `Obj` con un argomento `(List (Obj k))` è un induttivo annidato, e la positività lo rifiuta. Il binario con `skip` basta, ed è un monoide: le librerie possono offrire una forma più comoda come `def`.
+**Perché `then` è binario.** Una sequenza `(sequence [a b c])` sarebbe più comoda. Oggi la positività ammette `(List (Obj k))` in un costruttore (vedi ARCHITECTURE.md, induttivi annidati), ma la ricorsione strutturale non attraversa ancora le liste, quindi `histories` non potrebbe scendere in una sequenza. Il binario con `skip` basta, ed è un monoide: le librerie possono offrire una forma più comoda come `def`.
 
 **Che cosa non si fa, per ora.**
 - uscite in parallelo: Dagger parallelizza già dentro ogni uscita;
@@ -477,7 +477,8 @@ In cambio della purezza e della semplicità:
 - [x] Segreti letti a esecuzione (`secret-from`; in `aws`: `secrets-manager`, `secrets-manager-key`, `ssm-secure`) e service in background (`start`), provati su LocalStack.
 - [x] Parametri del piano (`Host-env`) e `otherwise` per i fallimenti.
 - [x] Le librerie per un rilascio su Kubernetes, come interfacce (`delivery`): ECR come `Registry`, git e kustomize come `Gitops`, ArgoCD come `Deployer`; provate dal vivo con un registro e un server git come service.
-- [ ] Un prototipo della Release di un servizio, solo con `plan`, da confrontare con gli effetti della pipeline esistente; la build da Dockerfile con argomenti e segreti (`docker-build` ha solo argomenti opzionali, non promossi); un report di rilascio (DORA o simili) resta fuori, per scelta.
+- [x] Quanto serve per riprodurre la Release di un servizio a parità di effetti: segreti con un nome (`secret-from c cmd nome`, per il `id=` di un Dockerfile), `build-dockerfile` con segreti, segreti dal primo di più id (`secrets-manager-first`, `-key-first`, `-key-first-or`, `-key-is?`), login di ArgoCD con utente e password, `Deployer.restart`, `Gitops.set-image` su più cartelle con un solo commit, induttivi annidati in una `List`. Provato a secco su un servizio vero (in un repo aziendale, fuori da qui): stessi comandi, indirizzi e ordine della pipeline esistente.
+- [ ] La stessa pipeline eseguita in un ambiente di sviluppo, e poi in CI al posto della vecchia.
 - [ ] Azure.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
