@@ -225,7 +225,7 @@ Il programma produce un piano statico, noto per intero prima dell'esecuzione. Ne
           (overlay "reports" (report src))))
 ```
 
-La distinzione di fase viene gratis dai tipi: `(Remote Bool)` non è `Bool`, quindi un'osservazione dentro un `if` è un errore di tipo, e `branch` su un `Bool` pure. Le osservazioni sono un elenco chiuso: `passes?` (exit code 0, dopo `try-exec`, che è `withExec` con `expect: ANY`) e i campi `Boolean` dello schema, come `Directory.exists`.
+La distinzione di fase viene gratis dai tipi: `(Remote Bool)` non è `Bool`, quindi un'osservazione dentro un `if` è un errore di tipo, e `branch` su un `Bool` pure. Le osservazioni sono un elenco chiuso: `passes?` (exit code 0, dopo `try-exec`, che è `withExec` con `expect: ANY`) e i campi `Boolean` dello schema, come `Directory.exists`. Sopra `passes?` la libreria `files` costruisce le osservazioni sul contenuto dei file: `(includes? f "PASS")` fa girare `grep` in un container fissato per digest, e il programma riceve solo l'esito. Il contenuto non torna mai al linguaggio, e i controlli contano come test per `Before`.
 
 Il runner realizza `branch` chiedendo la condizione e sottomettendo il ramo scelto, nella stessa sessione. A secco stampa un piano per ogni combinazione di esiti, con la condizione che lo sceglie. Poiché entrambi i rami stanno nel piano, una proprietà del piano va provata su tutti e due: è l'analisi statica dei funtori applicativi selettivi (Mokhov e altri, 2019).
 
@@ -340,7 +340,7 @@ Precedente sul lato Dagger: Dang, il linguaggio nativo di Dagger 1.0, conferma c
 ```
 README.md  DESIGN.md  ARCHITECTURE.md  flake.nix
 src/       core.ss  types.ss  plan.ss  main.ss  lsp.ss   il nucleo, il driver, il server LSP
-lib/       prelude  text  affine  paths  time  net  dagger  engine    la libreria standard, in moduli (engine è generato)
+lib/       prelude  text  affine  paths  time  net  dagger  engine  files    la libreria standard, in moduli (engine è generato)
 tools/     gen.ss                                    il generatore dallo schema
 tests/     test.ss  checks.disegno                   i test e i teoremi di controllo
 cookbook/  00-basics … 06-theorems  hello/            le ricette
@@ -358,6 +358,7 @@ editors/   tree-sitter-disegno/  nvim/              la grammatica e il plugin pe
 | `lib/prelude.disegno` | la logica, sempre caricata: uguaglianza, `⊥`, `⊤`, `Bool`, `So`, `Nat`, `≤`, liste, `Σ`, `Either`, `Every`, `Pairwise`; niente extern |
 | `lib/text`, `affine`, `paths`, `time`, `net` | stringhe; spazi affini e intervalli; percorsi e regioni; istanti e durate; IP, CIDR e porte |
 | `lib/dagger.disegno` | il piano: `Image`, `Arg`, `engine`, `Host`, `Export`, nomi corti, proprietà del piano |
+| `lib/files.disegno` | i file: `file`, `put-file`, `merge`; che cosa scrive una directory (`Disjoint-writes`, `Writes-within`); osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) |
 | `lib/engine.disegno` | generato: `Kind`, `Obj`, alias, `nodes`, `chain` |
 | `tools/gen.ss` | generatore di `lib/engine.disegno` dallo schema (sotto `dagger api with-session`) |
 | `tests/test.ss` | test: nucleo, tipi, rifiuti, accelerazione, piani a secco e, sotto `dagger api with-session`, dal vivo |

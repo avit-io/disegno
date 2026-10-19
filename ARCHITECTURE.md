@@ -97,6 +97,7 @@ Gli strati, dal più fidato al meno:
 - `if` decide su valori noti, mentre si costruisce il piano, ed è una `def` del prelude.
 - `branch` decide su osservazioni durante l'esecuzione, ed è un costruttore del piano che contiene entrambi i rami.
 - `(Remote Bool)` non è `Bool`: la distinzione di fase la fanno i tipi.
+- Il contenuto di un file non torna al linguaggio. `includes?`, `matches?`, `empty?` e `same-content?` (modulo `files`) sono osservazioni che Dagger calcola in un container, come `passes?`; al runner arriva un exit code, al programma un `(Remote Bool)`. Per `Before` contano come test.
 
 È l'analisi statica dei funtori applicativi selettivi (Mokhov e altri, 2019).
 
@@ -168,6 +169,7 @@ Il controllo verifica che il nome esista e sia del genere giusto (tipo, costrutt
 | `time` | istanti, durate, finestre | affine |
 | `net` | `Ip`, `Cidr`, `Port` | text, affine |
 | `dagger` | `Image`, `Arg`, `engine` (generato), `Host`, `Export`, i nomi corti, le proprietà del piano | text, paths, net |
+| `files` | directory come valori (`file`, `put-file`, `merge`), che cosa scrivono (`writes`, `Disjoint-writes`, `Writes-within`), osservazioni sul contenuto guardate da Dagger (`includes?`, `matches?`, `empty?`, `same-content?`) | dagger |
 
 **Perché.** Così il prelude da solo è la teoria dei tipi, e lo si vede: i capitoli 1–4 del libro si controllano senza importare nulla. Il dominio (percorsi, rete, Dagger) diventa una libreria come le altre, e il nucleo non ha nomi di dominio nel codice.
 

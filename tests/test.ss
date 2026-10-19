@@ -23,7 +23,7 @@
 ;; --- type checker ---
 
 (import! 'prelude)
-(for-each import! '(dagger time net))                  ; per i frammenti qui sotto; le ricette importano da sé
+(for-each import! '(dagger time net files))            ; per i frammenti qui sotto; le ricette importano da sé
 ;; L'accelerazione è fidata: su numeri piccoli deve coincidere con le clausole unarie.
 (for-each
   (lambda (f)
@@ -127,6 +127,21 @@
 (assert (equal? (map (lambda (p) (map cdr (car p))) piani) '((#t #t) (#t #f) (#f #t) (#f #f))))
 (rifiuta "(def confuso : (→ (Remote Bool) Dir) [c] (if c empty empty))" "atteso")
 (rifiuta "(def scelta : (→ Bool Dir) [b] (branch b empty empty))" "atteso")
+
+;; Il contenuto dei file lo guarda Dagger: osservazioni come passes?, il testo non torna al linguaggio.
+(check-string (format "
+  (def contenuto : (→ [src (Host ~s)] (Export Dir))
+    [src] (let [f (file-of src /dati.txt)]
+            (replace ~s (pipe empty
+                              (put /include (esito (includes? f \"dati\")))
+                              (put /assente (esito (includes? f \"assente\")))
+                              (put /regex (esito (matches? f \"^d.t+i$\")))
+                              (put /vuoto (esito (empty? f)))
+                              (put /uguale (esito (same-content? f f)))))))"
+  (string-append dir "/in") (string-append dir "/out4")))
+(assert (= (length (all-plans 'contenuto)) 32))
+(assert (contiene? (plan->graphql (car (car (car (car (all-plans 'contenuto))))))
+                   "withExec(args: [\"grep\", \"-qF\", \"dati\", \"/f\"], expect: ANY) { exitCode }"))
 
 ;; Extern generati dallo schema, usati direttamente: Nat e oggetti per ID negli argomenti.
 (check-string "
@@ -331,6 +346,9 @@
   (run 'verifica)
   (assert (string=? (call-with-input-file (string-append dir "/out3/esito") get-string-all) "passa\n"))
   (assert (string=? (call-with-input-file (string-append dir "/out3/manca/esito") get-string-all) "fallisce\n"))
+  (run (quote contenuto))
+  (for-each (lambda (p e) (assert (string=? (call-with-input-file (string-append dir "/out4/" p "/esito") get-string-all) e)))
+            (quote ("include" "assente" "regex" "vuoto" "uguale")) (quote ("passa\n" "fallisce\n" "passa\n" "fallisce\n" "passa\n")))
   ;; Un passo fallito dice dove sta nel sorgente, con e senza il resoconto (DISEGNO_LOGS, come in
   ;; CI: una riga per voce). Prima senza: Chez non sa togliere una variabile d'ambiente.
   ;; in-diretta ha comandi nuovi a ogni prova, così non è in cache e le righe passano dal flusso.

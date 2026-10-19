@@ -344,7 +344,7 @@
     (let loop ([k 0])
       (sleep (make-time 'time-duration 50000000 0))
       (unless (or (>= (- eofs e0) 2)                     ; stdout e stderr chiusi: il comando ha finito
-                  (and (>= k 2) (null? ran) (= streamed s0) (= eofs e0))   ; niente di niente: in cache (un fallimento non lo è)
+                  (and (>= k 6) (null? ran) (= streamed s0) (= eofs e0))   ; 300 ms, la finestra del flusso, senza niente: in cache (un fallimento non lo è)
                   (> k 40))                             ; ponytail: 2 s, poi si chiude comunque
         (loop (+ k 1))))
     (flush! +inf.0)))                                     ; il passo è finito: tutto il buffer

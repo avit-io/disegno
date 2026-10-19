@@ -11,6 +11,7 @@ Ricette brevi, ciascuna un programma a sé e commentato. Si leggono in ordine; t
 | [04-literals](04-literals.disegno) | letterali tipati (immagini, percorsi, tempo, IP, porte), spazi affini, gli errori di tipo | `disegno check` |
 | [05-network](05-network.disegno) | una rete come dato: subnet disgiunte e nella VPC, porte, finestre, la configurazione generata | `disegno plan` / `run` |
 | [06-theorems](06-theorems.disegno) | scrivere una propria politica sul piano, provarla e provarne la violazione, una legge per induzione | `disegno check` |
+| [07-file-checks](07-file-checks.disegno) | che cosa scrive una directory, provato per ogni sorgente; `branch` sul contenuto di un file guardato da Dagger | `disegno plan` / `run` |
 
 Con `nix run` al posto di `disegno`: `nix run github:avit-io/disegno -- plan cookbook/02-go-build.disegno`.
 

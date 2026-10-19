@@ -5,7 +5,7 @@
 
 ; --- aritmetica e liste ---
 
-(import dagger time)
+(import dagger time files)
 
 (def +-assoc : (→ [a Nat] [b Nat] [c Nat] (≡ (+ (+ a b) c) (+ a (+ b c))))
   [zero     b c] refl
@@ -61,6 +61,22 @@
                                          (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
                                          (overlay "report" src))))
   [src] auto)
+
+; Un controllo sul contenuto, guardato da Dagger, conta come test: pubblicare solo se il
+; report dice PASS soddisfa Before.
+(def publish-se-pass : (→ [src Dir] (Before test? publish?
+                                      (branch (includes? (file-of src /report.txt) "PASS")
+                                        (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
+                                        (overlay "report" src))))
+  [src] auto)
+
+; Che cosa scrive una directory: per ogni sorgente, sotto /site e senza sovrapposizioni.
+(def scritture : (→ [src Dir] (× (Writes-within /site (put (with-file empty /site/a "1") /site/src src))
+                                 (Disjoint-writes (put (with-file empty /site/a "1") /site/src src))))
+  [src] auto)
+
+(def scritture-sovrapposte : (¬ (Disjoint-writes (put (with-file empty /site/src/a "1") /site/src empty)))
+  auto)
 
 (def montaggi : (→ [src Dir] (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /cache (cache-volume "c")))))
   [src] auto)
