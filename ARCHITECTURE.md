@@ -110,7 +110,7 @@ Un teorema parla quindi solo della forma del piano: «il test viene prima di pro
 
 **Effetti in sequenza.** Le uscite del piano si compongono: `(then a b)` realizza `a` e poi `b`, `skip` non fa niente, `(apply c cmd)` esegue un comando come effetto, fuori dalla cache, e `(probe c cmd)` osserva il mondo quando lo si raggiunge. Le proprietà d'ordine seguono il piano come una storia di osservazioni e uscite: `Before` («nessun deploy senza test») e `Precedes` («prod dopo staging») si provano per ogni sorgente.
 
-**Segreti.** Le credenziali entrano come gli input: `(Host-secret "AWS_ACCESS_KEY_ID")` nella firma di `main`, letto da una variabile d'ambiente. Il valore non torna al linguaggio e non compare nel piano, che nomina solo la variabile; un programma non può creare un segreto da sé né leggerne il testo.
+**Segreti.** Le credenziali entrano come gli input: `(Host-secret "AWS_ACCESS_KEY_ID")` nella firma di `main`, letto da una variabile d'ambiente. Il valore non torna al linguaggio e non compare nel piano, che nomina solo la variabile; un programma non può creare un segreto da sé né leggerne il testo. Gli altri segreti la pipeline li carica da sé: `(secret-from c cmd)` dice da dove viene il valore (Secrets Manager, il Parameter Store, domani Vault), e il runner lo legge a esecuzione, quando un passo lo usa, e lo passa a Dagger con `setSecret`. Il valore attraversa il runner, fidato, mai il linguaggio; il piano mostra il comando che lo legge. Così la CI fornisce al massimo la credenziale di partenza.
 
 **Costo.** Niente piano dinamico: ciò che dipende da un risultato si esprime con `branch` su un'osservazione, non con un valore che torna indietro.
 
@@ -122,7 +122,7 @@ Un teorema parla quindi solo della forma del piano: «il test viene prima di pro
 
 **Costo.** Il generatore è nella base fidata e i nomi che genera sono un contratto con il nucleo: `Kind.*`, gli snodi e `Container.with-exec` per i log. Si prendono gli argomenti obbligatori, più quelli opzionali che una tabella promuove campo per campo (`include` ed `exclude` di `filter`, `permissions` di `with-new-file`, `useEntrypoint` di `as-service`), e un elenco consentito di tipi.
 
-**I service.** Un service di Dagger (un database, un emulatore come LocalStack) è un valore del piano come un container: `as-service` lo ricava da un container, `with-service-binding` lo lega a un altro sotto un nome. Dagger lo avvia quando un comando legato a lui gira, aspetta che le porte esposte rispondano, lo tiene per tutta la sessione e lo ferma alla fine. Non serve un effetto: la vita del service la decide il motore.
+**I service.** Un service di Dagger (un database, un emulatore come LocalStack) è un valore del piano come un container: `as-service` lo ricava da un container, `with-service-binding` lo lega a un altro sotto un nome. Dagger lo avvia quando un comando legato a lui gira, aspetta che le porte esposte rispondano, e lo ferma quando nessuno lo usa più. Se lo stato deve restare tra un passo e l'altro, il service va in background: `(start svc)` è un'uscita che lo avvia e lo tiene vivo fino alla fine della sessione, e i passi dopo usano quell'istanza.
 
 ## 8. Letterali secondo il tipo: i punti non si sommano
 

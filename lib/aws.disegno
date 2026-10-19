@@ -36,8 +36,9 @@
 ; --- le credenziali: due segreti dalla firma di main, e la regione ---
 
 ; Dove risponde AWS: il cloud, o un service che lo emula (LocalStack) sulla porta 4566. Il service
-; è un valore del piano: Dagger lo avvia quando un comando legato a lui gira, aspetta che la porta
-; risponda e lo ferma alla fine.
+; è un valore del piano. Dagger lo avvia quando un comando legato a lui gira e lo ferma quando
+; nessuno lo usa più: per uno stato che deve restare tra un passo e l'altro, come un emulatore, si
+; comincia con (start localstack), che lo tiene vivo fino alla fine della sessione.
 (data Endpoint
   [cloud]
   [emulated Service])
@@ -139,3 +140,32 @@
 ; Il contenuto lo guarda il container: l'oggetto passa per una pipe, il testo come argomento.
 (def s3-includes? : (→ Aws Bucket Abs String (Remote Bool))
   [a b p s] (probe (cli a) ["sh" "-c" "aws s3 cp \"$1\" - | grep -qF \"$2\"" "sh" (s3-uri b p) s]))
+
+; --- segreti letti a esecuzione: il programma dice da dove, il runner li carica quando servono ---
+; Solo la credenziale di partenza viene dalla firma di main (o da un ruolo IAM); tutti gli altri
+; segreti li carica la pipeline. Il valore non torna al linguaggio: (secret-from c cmd) è un
+; Secret, che il runner passa a Dagger quando un passo lo usa. Il piano mostra il comando.
+
+(def secrets-manager : (→ Aws String Secret)    ; il SecretString intero
+  [a id] (secret-from (cli a) ["aws" "secretsmanager" "get-secret-value" "--secret-id" id
+                               "--query" "SecretString" "--output" "text"]))
+
+; Una chiave di un segreto JSON: la CLI non sa estrarla, jq sì, nello stesso container.
+; ponytail: Alpine con apk; una toolbox costruita con Nix e fissata per digest la sostituirebbe.
+(def cli-jq : (→ Aws Container)
+  [a] (connect (Aws.endpoint a)
+               (pipe (container)
+                     (from "alpine@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8")   ; 3.22
+                     (with-exec ["apk" "add" "--no-cache" "aws-cli" "jq"])
+                     (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
+                     (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
+                     (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a))))))
+
+(def secrets-manager-key : (→ Aws String String Secret)
+  [a id key] (secret-from (cli-jq a)
+                          ["sh" "-c" "aws secretsmanager get-secret-value --secret-id \"$1\" --query SecretString --output text | jq -er --arg k \"$2\" '.[$k]'"
+                           "sh" id key]))
+
+(def ssm-secure : (→ Aws Abs Secret)            ; un parametro SecureString, decifrato
+  [a name] (secret-from (cli a) ["aws" "ssm" "get-parameter" "--name" name "--with-decryption"
+                                 "--query" "Parameter.Value" "--output" "text"]))

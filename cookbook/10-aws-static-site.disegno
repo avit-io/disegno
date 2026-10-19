@@ -9,8 +9,8 @@
 ;   disegno plan cookbook/10-aws-static-site.disegno
 ;   disegno run  cookbook/10-aws-static-site.disegno   con AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY
 ;
-; Per provarla senza un account: (emulated localstack) al posto di cloud, e un (make-bucket a b)
-; prima della pubblicazione: LocalStack parte vuoto.
+; Per provarla senza un account: (emulated localstack) al posto di cloud, con (start localstack) e
+; un (make-bucket a b) prima della pubblicazione: LocalStack parte vuoto.
 
 (import files aws)
 

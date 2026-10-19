@@ -24,7 +24,9 @@
   [apply : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.export))]
   [then : (→ [first (Obj Kind.export)] [second (Obj Kind.export)] (Obj Kind.export))]
   [skip : (Obj Kind.export)]
+  [start : (→ [self (Obj Kind.service)] (Obj Kind.export))]
   [probe : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.bool))]
+  [secret-from : (→ [self (Obj Kind.container)] [args (List Arg)] (Obj Kind.secret))]
   [cache-volume : (→ [key String] (Obj Kind.cache-volume))]
   [Query.container : (Obj Kind.container)]
   [Query.directory : (Obj Kind.directory)]
@@ -166,7 +168,9 @@
   [(apply x0 x1)] (:: (any (apply x0 x1)) (++ (nodes x0) vuota))
   [(then x0 x1)] (:: (any (then x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [skip] (:: (any skip) vuota)
+  [(start x0)] (:: (any (start x0)) (++ (nodes x0) vuota))
   [(probe x0 x1)] (:: (any (probe x0 x1)) (++ (nodes x0) vuota))
+  [(secret-from x0 x1)] (:: (any (secret-from x0 x1)) (++ (nodes x0) vuota))
   [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)
   [Query.directory] (:: (any Query.directory) vuota)
@@ -279,7 +283,9 @@
   [(apply x0 x1)] (:: (any (apply x0 x1)) (chain x0))
   [(then x0 x1)] (:: (any (then x0 x1)) vuota)
   [skip] (:: (any skip) vuota)
+  [(start x0)] (:: (any (start x0)) (chain x0))
   [(probe x0 x1)] (:: (any (probe x0 x1)) (chain x0))
+  [(secret-from x0 x1)] (:: (any (secret-from x0 x1)) (chain x0))
   [(cache-volume x0)] (:: (any (cache-volume x0)) vuota)
   [Query.container] (:: (any Query.container) vuota)
   [Query.directory] (:: (any Query.directory) vuota)

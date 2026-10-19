@@ -86,7 +86,8 @@
           [(cache-volume) (list (field 'cacheVolume names args))]
           [(passes?) (method 'exitCode)]
           [(probe) (append (fresh-exec v resolve '(expect ANY)) '((exitCode)))]   ; il mondo, fuori dalla cache
-          [(overlay replace publish apply then skip) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
+          [(secret-from) ((fetch-secret) v resolve)]                          ; a secco il comando, dal vivo setSecret
+          [(overlay replace publish apply then skip start) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
           [else (let ([segs (split-dots (symbol->string c))])
                   (if (string=? (car segs) "Query")
                       (list (field (string->symbol (camel (cadr segs))) names args))
@@ -143,6 +144,36 @@
 ;; esecuzione, subito prima del comando, così la preparazione dell'ambiente resta in cache.
 (define run-id (make-parameter "<esecuzione>"))
 
+;; Segreti letti a esecuzione: (secret-from c cmd). A secco il piano mostra il comando, mai il
+;; valore. Dal vivo, quando un passo usa il segreto, cmd gira in c fuori dalla cache, con l'output
+;; su un file (non nei log); il runner legge il file e lo passa a Dagger con setSecret, che da lì
+;; lo maschera. Il valore attraversa solo il runner, mai il linguaggio; un segreto si legge una
+;; volta per esecuzione.
+;; ponytail: il file resta nella cache del motore (locale); un motore condiviso andrebbe ripulito.
+(define secret-memo (make-hashtable string-hash string=?))
+
+(define (fetch-dry v resolve)
+  (let ([xs (explicit (caddr v))])
+    (list `(secretFrom (args ,(gql-arg (cadr xs) resolve))))))
+
+(define (fetch-live v resolve)
+  (let* ([xs (explicit (caddr v))] [recv (chain (car xs) resolve)] [cmd (gql-arg (cadr xs) resolve)]
+         [key (plan->graphql (append recv (list `(withExec (args ,cmd)))))])
+    (or (hashtable-ref secret-memo key #f)
+        (let* ([text (submit-leaf (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(run-id)))
+                                                     `(withExec (args ("sh" "-c" "\"$@\" > /tmp/disegno-segreto" "sh" ,@cmd)))
+                                                     '(file (path "/tmp/disegno-segreto")) '(contents))))]
+               [n (string-length text)]
+               [text (if (and (> n 0) (char=? (string-ref text (- n 1)) #\newline)) (substring text 0 (- n 1)) text)]
+               [ch (list `(setSecret (name ,(format "disegno-~a" (hashtable-size secret-memo))) (plaintext ,text)))])
+          (when (env? "DISEGNO_LOGS")
+            (printf "↳ ~a segreto letto: ~a\n" (pad (or (v-name v) (entry-name))) (show-args cmd))
+            (flush-output-port))
+          (hashtable-set! secret-memo key ch)
+          ch))))
+
+(define fetch-secret (make-parameter fetch-dry))
+
 (define (env-name? s)                                    ; AWS_ACCESS_KEY_ID: lettere, cifre, _, non una cifra in testa
   (let ([cs (string->list s)])
     (and (pair? cs) (not (char-numeric? (car cs)))
@@ -167,6 +198,7 @@
        (let* ([ctr (chain (car (explicit (caddr v))) resolve)])
          (emit (append ctr (list `(publish (address ,(gql-arg (cadr (explicit (caddr v))) resolve)))))))]
       [(apply) (emit (append (fresh-exec v resolve) '((exitCode))))]
+      [(start) (emit (append (chain (car (explicit (caddr v))) resolve) '((start))))]   ; il service resta vivo per la sessione
       [else (oops "il piano deve restituire un Export")])))
 
 (define (exits resolve . entry)                          ; → le catene delle uscite, in ordine
@@ -311,6 +343,7 @@
     (case (car last)
       [(export) (format "esportato ~a" (cadr (assq 'path (cdr last))))]
       [(publish) (format "pubblicato ~a" (cadr (assq 'address (cdr last))))]
+      [(start) "service avviato"]
       [(exitCode) (format "effetto ~a" (show-args (step-args (last-of (list-head ch (- (length ch) 1))))))]
       [else "?"])))
 
@@ -429,7 +462,8 @@
       (dynamic-wind void
         (lambda ()
           (let ([t0 (now-ns)] [done '()])
-            (parameterize ([run-id (number->string t0)])
+            (hashtable-clear! secret-memo)
+            (parameterize ([run-id (number->string t0)] [fetch-secret fetch-live])
               (realize (entry-value entry) resolve-live
                        (lambda (ch) (log-steps ch) (submit-leaf ch) (set! done (cons ch done)))))
             (when (env? "DISEGNO_LOGS") (summary (reverse done) (- (now-ns) t0)))

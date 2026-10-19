@@ -205,7 +205,7 @@
   (def esito-ls : (→ String (Export Dir))
     [t] (overlay ~s (with-file empty /esito t)))
   (def con-localstack : (→ [k (Host-secret \"DISEGNO_TEST_KEY\")] (Export Dir))
-    [k] (let [a (aws k k \"eu-west-1\" (emulated localstack))]
+    [k] (then (start localstack) (let [a (aws k k \"eu-west-1\" (emulated localstack))]
           (then (put-parameter a /app/test/porta \"5432\")
           (then (put-secure-parameter a /app/test/password k)
                 (branch (parameter-is? a /app/test/porta \"5432\")
@@ -214,7 +214,7 @@
                     (branch (parameter-exists? a /app/test/password)
                       (esito-ls \"scritto\\n\")
                       (esito-ls \"manca la password\\n\")))
-                  (esito-ls \"porta non scritta\\n\"))))))"
+                  (esito-ls \"porta non scritta\\n\")))))))"
   (string-append dir "/out8")))
 (assert (= (length (all-plans 'con-localstack)) 4))
 (check-string (format "
@@ -222,15 +222,36 @@
     [t] (overlay ~s (with-file empty /esito t)))
   (def bucket-prova : Bucket \"prova-disegno\")
   (def con-s3 : (→ [k (Host-secret \"DISEGNO_TEST_KEY\")] (Export Dir))
-    [k] (let [a (aws k k \"eu-west-1\" (emulated localstack))]
+    [k] (then (start localstack) (let [a (aws k k \"eu-west-1\" (emulated localstack))]
           (then (make-bucket a bucket-prova)
           (then (s3-sync a (with-file empty /index.html \"<h1>ciao</h1>\\n\") bucket-prova /site)
                 (branch (s3-includes? a bucket-prova /site/index.html \"ciao\")
                   (branch (s3-exists? a bucket-prova /site/manca.html)
                     (esito-s3 \"trova ciò che non c'è\\n\")
                     (esito-s3 \"pubblicato\\n\"))
-                  (esito-s3 \"pagina assente\\n\"))))))"
+                  (esito-s3 \"pagina assente\\n\")))))))"
   (string-append dir "/out10")))
+;; Segreti letti a esecuzione: Secrets Manager su LocalStack. Il segreto si crea (qui, in chiaro:
+;; è un test), poi un container lo riceve da secrets-manager-key e lo confronta. Il piano del
+;; consumatore mostra il comando che lo legge, mai il valore.
+(check-string (format "
+  (def esito-sm : (→ String (Export Dir))
+    [t] (overlay ~s (with-file empty /esito t)))
+  (def con-segreti : (→ [k (Host-secret \"DISEGNO_TEST_KEY\")] (Export Dir))
+    [k] (then (start localstack) (let [a (aws k k \"eu-west-1\" (emulated localstack))]
+          (then (apply (cli a) [\"aws\" \"secretsmanager\" \"create-secret\" \"--name\" \"cicd/test/argocd\"
+                                \"--secret-string\" \"{\\\"host\\\":\\\"argocd.example\\\",\\\"token\\\":\\\"t0k\\\"}\"])
+                (branch (probe (with-secret-variable (from (container) \"alpine\") \"T\" (secrets-manager-key a \"cicd/test/argocd\" \"token\"))
+                               [\"sh\" \"-c\" \"test \\\"$T\\\" = t0k\"])
+                  (esito-sm \"ricevuto\\n\")
+                  (esito-sm \"diverso\\n\"))))))"
+  (string-append dir "/out11")))
+(let* ([evs (cdr (car (all-plans 'con-segreti)))]
+       [obs (plan->graphql (cadr (find (lambda (e) (eq? (car e) 'se)) evs)))])
+  (assert (contiene? obs "secretFrom(args: [\\\"sh\\\", \\\"-c\\\""))   ; dentro la stringa GraphQL del segnaposto
+  (assert (contiene? obs "\\\"cicd/test/argocd\\\", \\\"token\\\"]"))
+  (assert (not (contiene? obs "argocd.example"))))                   ; il valore del segreto non è nel piano
+
 ;; Argomenti opzionali promossi: i permessi di un file, i glob di filter, l'entrypoint di un service.
 (check-string (format "
   (def d9 : Dir (pipe empty (with-executable /run.sh \"#!/bin/sh\\necho ok\\n\") (with-file /note.txt \"x\\n\")))
@@ -509,6 +530,8 @@
   (assert (zero? (system (format "test -x ~a/out9/run.sh" dir))))
   (assert (not (file-exists? (string-append dir "/out9/note.txt"))))
   (when (getenv "DISEGNO_TEST_KEY")
+    (run 'con-segreti)
+    (assert (string=? (call-with-input-file (string-append dir "/out11/esito") get-string-all) "ricevuto\n"))
     (run 'con-s3)
     (assert (string=? (call-with-input-file (string-append dir "/out10/esito") get-string-all) "pubblicato\n"))
     (run 'con-localstack)

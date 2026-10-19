@@ -283,6 +283,10 @@ Implementati (i segreti no, vedi sotto). Sono il passo che serve alle librerie p
 
 **I segreti.** Un `apply` verso il cloud vuole credenziali. Il modello è quello di `Host`: `main` dichiara nella firma `(Host-secret "AWS_SECRET_ACCESS_KEY")`, il runner lo legge con `secret(uri: "env://AWS_SECRET_ACCESS_KEY")` e lo passa ai container con `with-secret-variable` o `with-mounted-secret`. Il valore non torna al linguaggio e non compare nel piano stampato, che nomina solo la variabile. Il generatore ammette il tipo `Secret` ma esclude `Query.secret` e `setSecret`: un programma non crea segreti da sé, né legge l'host fuori dalla firma; e `Secret.plaintext`, che dà una `String`, non si genera. Il primo uso è `lib/aws.disegno` (Parameter Store), nella ricetta `09-aws-parameters`.
 
+**Segreti letti a esecuzione.** Mettere ogni segreto nella CI non regge, e ogni CI lo farebbe a modo suo: la pipeline li carica da sé. Il programma dice da dove viene un segreto, `(secret-from c cmd)`: il comando `cmd`, nel container `c`, ne stampa il valore. Le librerie offrono le sorgenti come semplici `def`: `secrets-manager`, `secrets-manager-key` (una chiave di un segreto JSON), `ssm-secure`, e domani Vault o Azure Key Vault. Il valore si legge a esecuzione, quando un passo lo usa e non prima, fuori dalla cache, con l'output su un file e non nei log; il runner lo passa a Dagger con `setSecret`, che da lì lo maschera. Lo schema di Dagger non permette altro: un `Secret` nasce solo da `Query.secret`, da `setSecret` o da `Address.secret`, quindi un container non può darne uno a un altro. Il valore attraversa il runner, fidato, mai il linguaggio; a secco il piano mostra il comando, il resoconto dice «segreto letto». Resta nella cache del motore come file di un passo: per un motore condiviso va saputo. Dalla CI basta la credenziale di partenza, o un ruolo IAM.
+
+**I service in background.** Dagger ferma un service quando nessun comando lo usa più. Se lo stato deve restare tra un passo e l'altro, come per un emulatore, `(start svc)` è un'uscita che lo avvia e lo tiene vivo fino alla fine della sessione.
+
 **Deciso.**
 1. `apply` ha l'ambiente e il comando separati: la preparazione resta in cache, e si vede che cosa è l'effetto.
 2. Un `probe` conta come test per `Before`, come i controlli sul contenuto. Ma non è una verità sul mondo: è la verità di quel test, in quel momento. Che lo staging abbia risposto non dice che sia sano, dice che quel comando è uscito con 0. Il teorema `test-prima-del-deploy` prova che il deploy è protetto da quella risposta, non che il mondo sia come il test lo descrive. È la stessa frontiera di «Cosa resta empirico» (Curry-Howard): si prova il disegno, non l'opera.
@@ -463,7 +467,9 @@ In cambio della purezza e della semplicità:
 - [x] I service di Dagger come valori del piano: `as-service`, `with-service-binding`; LocalStack per provare `aws` senza account.
 - [x] Argomenti opzionali promossi campo per campo (`promoted` in `gen.ss`): i glob di `filter` (`only`, `except` in `files`), i permessi (`with-executable`), l'entrypoint di `as-service`.
 - [x] S3 in `aws` (sync, put, controlli), provato su LocalStack; ricetta `10-aws-static-site`.
-- [ ] ECR e gli altri servizi AWS; Azure.
+- [x] Segreti letti a esecuzione (`secret-from`; in `aws`: `secrets-manager`, `secrets-manager-key`, `ssm-secure`) e service in background (`start`), provati su LocalStack.
+- [ ] Input di piano (`Host-env`) e `otherwise` per i fallimenti; poi ECR, git e kustomize, ArgoCD, DORA: quanto serve per una pipeline di rilascio su Kubernetes.
+- [ ] Azure.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
 - [x] Passaggio a Dagger 1.0 (beta.18): il flake scarica il binario da dl.dagger.io, `dagger api with-session` e `DAGGER_ENGINE`. Nessun cambio nel runner; nello schema `GitRepository.latest-version` diventa `latest`, `commit` restituisce `GitCommit` (escluso), nuovi `with-run`, `with-shell`, `GitRef.contains`. Da tornare a github:dagger/nix quando esce la 1.0.

@@ -115,7 +115,13 @@
     (apply ((self ,(obj "container")) (args (List Arg))) ,(obj "export"))
     (then ((first ,(obj "export")) (second ,(obj "export"))) ,(obj "export"))
     (skip () ,(obj "export"))
+    ;; Un service in background: avviato qui, resta vivo fino alla fine della sessione, e i passi
+    ;; che lo legano usano questa istanza. Senza start, Dagger lo ferma quando nessuno lo usa.
+    (start ((self ,(obj "service"))) ,(obj "export"))
     (probe ((self ,(obj "container")) (args (List Arg))) ,(obj "bool"))
+    ;; Un segreto letto a esecuzione: cmd, in self, lo stampa; il runner lo passa a Dagger
+    ;; (setSecret) quando un passo lo usa. Il valore non torna mai al linguaggio.
+    (secret-from ((self ,(obj "container")) (args (List Arg))) ,(obj "secret"))
     ;; L'unico stato che persiste tra un'esecuzione e l'altra, non indirizzato per contenuto:
     ;; per questo è uno snodo dichiarato e non un campo generato.
     (cache-volume ((key String)) ,(obj "cache-volume"))))
