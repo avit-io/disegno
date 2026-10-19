@@ -220,6 +220,12 @@
       (cdr v))
     (report-voce #t name (what (cdr v)) #f (- (now-ns) t0) proof "" '())))
 
+;; Un effetto o un'osservazione del mondo (fresh-exec): il comando subito dopo DISEGNO_RUN, mai in cache.
+(define (fresh? pre)
+  (let ([n (length pre)])
+    (and (>= n 2)
+         (let ([s (list-ref pre (- n 2))]) (and (eq? (car s) 'withEnvVariable) (equal? (assq 'name (cdr s)) '(name "DISEGNO_RUN")))))))
+
 ;; Un passo: le righe arrivano dal flusso mentre gira. Un passo in cache non esegue niente e il
 ;; flusso tace: allora la prova è combinedOutput, stdout e stderr nell'ordine d'arrivo al motore.
 ;; ponytail: un passo fallito senza flusso ha stdout e stderr separati (le extensions
@@ -234,9 +240,9 @@
                       (define (ext k) (cond [(assoc k x) => cdr] [else ""]))
                       (settle! before e0 #t)
                       (when (= streamed before) (out (lines (ext "stdout") (ext "stderr"))))
-                      (list (lines (get-output-string p)) (ext "exitCode")))])
+                      (list (lines (ext "stdout") (ext "stderr")) (ext "exitCode")))])   ; le ultime righe dall'errore: complete, senza le righe tardive di altri passi
         (let ([o (submit-leaf (append pre '((combinedOutput))))])
-          (settle! before e0)
+          (apply settle! before e0 (if (fresh? pre) '(#t) '()))   ; un effetto ha girato: si aspettano le sue righe
           (when (= streamed before) (out o))
           (list (lines (get-output-string p))))))))
 

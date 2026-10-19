@@ -152,6 +152,12 @@
   (assert (= (length es) 2))
   (assert (contiene? (plan->graphql (car es)) "withEnvVariable(name: \"DISEGNO_RUN\", value: \"<esecuzione>\") { withExec(args: [\"sh\", \"-c\", \"echo effetto\"]) { exitCode }"))
   (assert (contiene? (plan->graphql (cadr es)) "export(path:")))
+;; Fuori dalla cache: due esecuzioni danno a DISEGNO_RUN valori diversi, quindi per Dagger il
+;; comando è un altro; la costruzione prima della variabile resta la stessa, e resta in cache.
+(let ([a (parameterize ([run-id "1"]) (plan->graphql (car (exits resolve-dry 'sequenza))))]
+      [b (parameterize ([run-id "2"]) (plan->graphql (car (exits resolve-dry 'sequenza))))])
+  (assert (not (string=? a b)))
+  (assert (contiene? a "value: \"1\"")) (assert (contiene? b "value: \"2\"")))
 (rifiuta "(def dentro : Container (with-dir (from (container) \"a\") /x (overlay \"o\" empty)))" "atteso")
 (assert (contiene? (plan->graphql (car (car (car (car (all-plans 'contenuto))))))
                    "withExec(args: [\"grep\", \"-qF\", \"dati\", \"/f\"], expect: ANY) { exitCode }"))
@@ -400,11 +406,8 @@
       (assert (contiene? out "::group::✓ prepara     ambiente  "))
       (assert (contiene? out (format "\"\nA~a\nB\nC\n" n)))
       (assert (contiene? out "::error file=<stringa>,line=10,col=36::passo fallito (exit 3)"))))
-  ;; Un effetto si riesegue a ogni run: la seconda volta le sue righe arrivano di nuovo dal
-  ;; flusso, mentre un passo in cache tace. Le uscite vengono nell'ordine di then.
-  (let* ([r1 (begin (set! logged '()) (esegui 'sequenza))] [s1 streamed]
-         [r2 (begin (set! logged '()) (esegui 'sequenza))])
-    (assert (> streamed s1))
+  ;; Le uscite vengono nell'ordine di then, e il resoconto mostra l'effetto con il suo comando.
+  (let ([r2 (begin (set! logged '()) (esegui 'sequenza))])
     (assert (contiene? (cdr r2) "✓ sequenza    sh -c \"echo effetto\"  "))
     (assert (contiene? (cdr r2) "realizzato in "))
     (assert (contiene? (cdr r2) ": effetto sh -c \"echo effetto\", esportato "))
