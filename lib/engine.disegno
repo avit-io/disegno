@@ -31,7 +31,7 @@
   [Query.file : (→ [name String] [contents String] (Obj Kind.file))]
   [Query.git : (→ [url String] (Obj Kind.git-repository))]
   [Query.http : (→ [url String] (Obj Kind.file))]
-  [Container.as-service : (→ [self (Obj Kind.container)] (Obj Kind.service))]
+  [Container.as-service : (→ [self (Obj Kind.container)] [useEntrypoint Bool] (Obj Kind.service))]
   [Container.as-tarball : (→ [self (Obj Kind.container)] (Obj Kind.file))]
   [Container.directory : (→ [self (Obj Kind.container)] [path Abs] (Obj Kind.directory))]
   [Container.exists : (→ [self (Obj Kind.container)] [path Abs] (Obj Kind.bool))]
@@ -93,13 +93,13 @@
   [Directory.docker-build : (→ [self (Obj Kind.directory)] (Obj Kind.container))]
   [Directory.exists : (→ [self (Obj Kind.directory)] [path Abs] (Obj Kind.bool))]
   [Directory.file : (→ [self (Obj Kind.directory)] [path Abs] (Obj Kind.file))]
-  [Directory.filter : (→ [self (Obj Kind.directory)] (Obj Kind.directory))]
+  [Directory.filter : (→ [self (Obj Kind.directory)] [exclude (List String)] [include (List String)] (Obj Kind.directory))]
   [Directory.terminal : (→ [self (Obj Kind.directory)] (Obj Kind.directory))]
   [Directory.with-directory : (→ [self (Obj Kind.directory)] [path Abs] [source (Obj Kind.directory)] (Obj Kind.directory))]
   [Directory.with-error : (→ [self (Obj Kind.directory)] [err String] (Obj Kind.directory))]
   [Directory.with-file : (→ [self (Obj Kind.directory)] [path Abs] [source (Obj Kind.file)] (Obj Kind.directory))]
   [Directory.with-new-directory : (→ [self (Obj Kind.directory)] [path Abs] (Obj Kind.directory))]
-  [Directory.with-new-file : (→ [self (Obj Kind.directory)] [path Abs] [contents String] (Obj Kind.directory))]
+  [Directory.with-new-file : (→ [self (Obj Kind.directory)] [path Abs] [contents String] [permissions Nat] (Obj Kind.directory))]
   [Directory.with-patch : (→ [self (Obj Kind.directory)] [patch String] (Obj Kind.directory))]
   [Directory.with-patch-file : (→ [self (Obj Kind.directory)] [patch (Obj Kind.file)] (Obj Kind.directory))]
   [Directory.with-symlink : (→ [self (Obj Kind.directory)] [target String] [linkName String] (Obj Kind.directory))]
@@ -173,7 +173,7 @@
   [(Query.file x0 x1)] (:: (any (Query.file x0 x1)) vuota)
   [(Query.git x0)] (:: (any (Query.git x0)) vuota)
   [(Query.http x0)] (:: (any (Query.http x0)) vuota)
-  [(Container.as-service x0)] (:: (any (Container.as-service x0)) (++ (nodes x0) vuota))
+  [(Container.as-service x0 x1)] (:: (any (Container.as-service x0 x1)) (++ (nodes x0) vuota))
   [(Container.as-tarball x0)] (:: (any (Container.as-tarball x0)) (++ (nodes x0) vuota))
   [(Container.directory x0 x1)] (:: (any (Container.directory x0 x1)) (++ (nodes x0) vuota))
   [(Container.exists x0 x1)] (:: (any (Container.exists x0 x1)) (++ (nodes x0) vuota))
@@ -235,13 +235,13 @@
   [(Directory.docker-build x0)] (:: (any (Directory.docker-build x0)) (++ (nodes x0) vuota))
   [(Directory.exists x0 x1)] (:: (any (Directory.exists x0 x1)) (++ (nodes x0) vuota))
   [(Directory.file x0 x1)] (:: (any (Directory.file x0 x1)) (++ (nodes x0) vuota))
-  [(Directory.filter x0)] (:: (any (Directory.filter x0)) (++ (nodes x0) vuota))
+  [(Directory.filter x0 x1 x2)] (:: (any (Directory.filter x0 x1 x2)) (++ (nodes x0) vuota))
   [(Directory.terminal x0)] (:: (any (Directory.terminal x0)) (++ (nodes x0) vuota))
   [(Directory.with-directory x0 x1 x2)] (:: (any (Directory.with-directory x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Directory.with-error x0 x1)] (:: (any (Directory.with-error x0 x1)) (++ (nodes x0) vuota))
   [(Directory.with-file x0 x1 x2)] (:: (any (Directory.with-file x0 x1 x2)) (++ (nodes x0) (++ (nodes x2) vuota)))
   [(Directory.with-new-directory x0 x1)] (:: (any (Directory.with-new-directory x0 x1)) (++ (nodes x0) vuota))
-  [(Directory.with-new-file x0 x1 x2)] (:: (any (Directory.with-new-file x0 x1 x2)) (++ (nodes x0) vuota))
+  [(Directory.with-new-file x0 x1 x2 x3)] (:: (any (Directory.with-new-file x0 x1 x2 x3)) (++ (nodes x0) vuota))
   [(Directory.with-patch x0 x1)] (:: (any (Directory.with-patch x0 x1)) (++ (nodes x0) vuota))
   [(Directory.with-patch-file x0 x1)] (:: (any (Directory.with-patch-file x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota)))
   [(Directory.with-symlink x0 x1 x2)] (:: (any (Directory.with-symlink x0 x1 x2)) (++ (nodes x0) vuota))
@@ -286,7 +286,7 @@
   [(Query.file x0 x1)] (:: (any (Query.file x0 x1)) vuota)
   [(Query.git x0)] (:: (any (Query.git x0)) vuota)
   [(Query.http x0)] (:: (any (Query.http x0)) vuota)
-  [(Container.as-service x0)] (:: (any (Container.as-service x0)) (chain x0))
+  [(Container.as-service x0 x1)] (:: (any (Container.as-service x0 x1)) (chain x0))
   [(Container.as-tarball x0)] (:: (any (Container.as-tarball x0)) (chain x0))
   [(Container.directory x0 x1)] (:: (any (Container.directory x0 x1)) (chain x0))
   [(Container.exists x0 x1)] (:: (any (Container.exists x0 x1)) (chain x0))
@@ -348,13 +348,13 @@
   [(Directory.docker-build x0)] (:: (any (Directory.docker-build x0)) (chain x0))
   [(Directory.exists x0 x1)] (:: (any (Directory.exists x0 x1)) (chain x0))
   [(Directory.file x0 x1)] (:: (any (Directory.file x0 x1)) (chain x0))
-  [(Directory.filter x0)] (:: (any (Directory.filter x0)) (chain x0))
+  [(Directory.filter x0 x1 x2)] (:: (any (Directory.filter x0 x1 x2)) (chain x0))
   [(Directory.terminal x0)] (:: (any (Directory.terminal x0)) (chain x0))
   [(Directory.with-directory x0 x1 x2)] (:: (any (Directory.with-directory x0 x1 x2)) (chain x0))
   [(Directory.with-error x0 x1)] (:: (any (Directory.with-error x0 x1)) (chain x0))
   [(Directory.with-file x0 x1 x2)] (:: (any (Directory.with-file x0 x1 x2)) (chain x0))
   [(Directory.with-new-directory x0 x1)] (:: (any (Directory.with-new-directory x0 x1)) (chain x0))
-  [(Directory.with-new-file x0 x1 x2)] (:: (any (Directory.with-new-file x0 x1 x2)) (chain x0))
+  [(Directory.with-new-file x0 x1 x2 x3)] (:: (any (Directory.with-new-file x0 x1 x2 x3)) (chain x0))
   [(Directory.with-patch x0 x1)] (:: (any (Directory.with-patch x0 x1)) (chain x0))
   [(Directory.with-patch-file x0 x1)] (:: (any (Directory.with-patch-file x0 x1)) (chain x0))
   [(Directory.with-symlink x0 x1 x2)] (:: (any (Directory.with-symlink x0 x1 x2)) (chain x0))

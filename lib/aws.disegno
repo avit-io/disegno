@@ -66,8 +66,7 @@
         (from "localstack/localstack@sha256:59373b4a27dba3ec15c4db0b7455f0cb68c8a42300e2cbbe362b440f9a131697")   ; 4.9
         (with-env "LOCALSTACK_HOST" "localhost:4566")                    ; non localhost.localstack.cloud, che chiede il DNS pubblico
         (with-exposed-port 4566)
-        (with-default-args ["docker-entrypoint.sh"])                  ; as-service non usa l'entrypoint dell'immagine
-        (as-service)))
+        (as-service true)))                                           ; con l'entrypoint dell'immagine
 
 ; --- Parameter Store: i nomi sono percorsi, /app/prod/db-host ---
 ; ponytail: la CLI legge un valore che comincia con file:// da quel file; put-secure-parameter lo

@@ -4,7 +4,8 @@
 ;; Il piano è un dato: ogni campo del motore diventa un costruttore della famiglia
 ;; (data Obj : (→ Kind Type) ...), indicizzata dal tipo GraphQL (Kind.container, ...).
 ;; Il nome del costruttore dà il campo (Container.with-exec → withExec), i binder gli argomenti.
-;; Solo i tipi in `allowed`, solo gli argomenti obbligatori; i campi non esprimibili si saltano.
+;; Solo i tipi in `allowed`, solo gli argomenti obbligatori e quelli promossi (`promoted`); i campi
+;; non esprimibili si saltano.
 ;; Un risultato Boolean diventa un'osservazione, (Obj Kind.bool).
 (define root (path-parent (path-parent (car (command-line)))))   ; <root>/tools/gen.ss
 (define (at-root p) (if (string=? root "") p (string-append root "/" p)))
@@ -68,10 +69,23 @@
 
 (define (required? a) (and (equal? (get (get a "type") "kind") "NON_NULL") (eq? (get a "defaultValue") 'null)))
 
+;; Argomenti opzionali promossi: per questi campi il costruttore li chiede, nell'ordine dello
+;; schema. Chi non ne ha bisogno usa un nome curato della libreria, che passa il default.
+;; ponytail: un elenco a mano, campo per campo; si allunga quando una libreria ne ha bisogno.
+(define promoted
+  '(("Directory" "filter" "include" "exclude")           ; i glob dei file da tenere e da togliere
+    ("Directory" "withNewFile" "permissions")            ; un file eseguibile
+    ("Container" "asService" "useEntrypoint")))          ; un service con l'entrypoint dell'immagine
+
+(define (wanted? type n a)
+  (or (required? a)
+      (let ([p (find (lambda (p) (and (equal? (car p) type) (equal? (cadr p) n))) promoted)])
+        (and p (member (get a "name") (cddr p)) #t))))
+
 ;; Costruttore: (nome ((argomento tipo) ...) risultato), o #f se il campo non è esprimibile.
 (define (constructor type f)
   (let* ([n (get f "name")]
-         [args (filter required? (get f "args"))]
+         [args (filter (lambda (a) (wanted? type n a)) (get f "args"))]
          [ats (map arg-type args)]
          [res (result-type (get f "type"))])
     (and res (not (get f "isDeprecated")) (for-all values ats) (not (and (equal? type "Query") (member n excluded)))

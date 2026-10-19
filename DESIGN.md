@@ -107,7 +107,7 @@ Il linguaggio non ha primitive di IO. Le operazioni del motore sono **costruttor
 
 - **Una famiglia sola, indicizzata dal tipo GraphQL**: `Container`, `Directory`, `File` si richiamano a vicenda; con un indice non servono data mutuamente ricorsivi, e positività, copertura e universi funzionano senza casi speciali.
 - **Il nome del costruttore è il campo**: `Container.with-exec` è `withExec` su `Container`; `Query.git` è un campo radice. I nomi dei binder espliciti sono gli argomenti GraphQL; `self` è l'oggetto su cui si chiama il metodo.
-- **Generazione** (`tools/gen.ss`): introspezione sulla sessione; solo i tipi in un elenco consentito (per non invadere lo spazio dei nomi dell'utente), solo gli argomenti obbligatori. Gli argomenti oggetto sono `ID` generici nello schema: il tipo vero si legge dalla direttiva `@expectedType`. `Int` diventa `Nat`, `Boolean` diventa `Bool` negli argomenti e un'osservazione `(Obj Kind.bool)` nei risultati. Il file generato, `lib/engine.disegno`, si committa: il type checking non richiede una sessione.
+- **Generazione** (`tools/gen.ss`): introspezione sulla sessione; solo i tipi in un elenco consentito (per non invadere lo spazio dei nomi dell'utente), gli argomenti obbligatori, più quelli opzionali che la tabella `promoted` promuove campo per campo; chi non ne ha bisogno usa un nome curato che passa il default (`with-file` dà 0644, `with-executable` 0755). Gli argomenti oggetto sono `ID` generici nello schema: il tipo vero si legge dalla direttiva `@expectedType`. `Int` diventa `Nat`, `Boolean` diventa `Bool` negli argomenti e un'osservazione `(Obj Kind.bool)` nei risultati. Il file generato, `lib/engine.disegno`, si committa: il type checking non richiede una sessione.
 - **Nomi curati**: i campi si scrivono senza prefisso (vedi Superficie); `dagger.disegno` aggiunge solo i nomi che rinominano davvero, come `with-file` (`withNewFile`), `with-dir`, `dir-of`, `put`, `exists?`.
 - **Attraversamento generato**: `nodes : (→ (Obj k) (List Any))` elenca tutti i sotto-piani per ricorsione strutturale, un caso per costruttore. Sopra di esso le proprietà si scrivono in poche righe, senza ricorsione annidata:
 
@@ -437,7 +437,7 @@ In cambio della purezza e della semplicità:
 - assioma K: il pattern matching unifica `x = x`;
 - un tipo che non si ricava è `Type₀`; niente polimorfismo di universo né cumulatività (`Nat : Type 1` è rifiutato, quindi `(≡ Nat Nat)` non si scrive);
 - terminazione con un solo argomento decrescente fisso (Ackermann è rifiutato);
-- solo gli argomenti obbligatori dei campi del motore; i tipi del motore sono un elenco consentito;
+- solo gli argomenti obbligatori dei campi del motore, più quelli promossi a mano (`promoted` in `gen.ss`); i tipi del motore sono un elenco consentito;
 - l'argomento di `Remote` ed `Export` è per ora documentazione: esistono solo osservazioni booleane ed export di directory;
 - `auto` calcola su dati concreti e cerca prove componendo costruttori, in profondità limitata e solo su obiettivi senza metavariabili; un exit code vale vero se è 0 (convenzione nel runner).
 
@@ -458,7 +458,8 @@ In cambio della purezza e della semplicità:
 - [x] Segreti come input di `main`: `(Host-secret "NOME")`, sul modello di `Host`; il generatore ammette `Secret` ma esclude `Query.secret` e `setSecret`, così un segreto entra solo dalla firma.
 - [x] Una regex pura in `text`, `(re? pattern s)`, per i tipi raffinati di dominio (`Bucket`, `Arn` in `aws`); un pattern malformato è un errore di tipo.
 - [x] I service di Dagger come valori del piano: `as-service`, `with-service-binding`; LocalStack per provare `aws` senza account.
-- [ ] AWS oltre il Parameter Store (S3, ECR); gli argomenti opzionali dello schema (oggi `as-service` non usa l'entrypoint, si aggira con `with-default-args`).
+- [x] Argomenti opzionali promossi campo per campo (`promoted` in `gen.ss`): i glob di `filter` (`only`, `except` in `files`), i permessi (`with-executable`), l'entrypoint di `as-service`.
+- [ ] AWS oltre il Parameter Store (S3, ECR), provati su LocalStack.
 - [ ] Teoremi generali sui piani (`pin-corretto`): principio d'induzione generato per `Obj`, o lemmi sopra `nodes`.
 - [x] Errori con file:riga:colonna (formato dei compilatori, letto da `:make` e dalla quickfix di Neovim) e messaggi di `auto` che indicano la parte che non vale: `nessuna prova di (Cidr-apart "10.0.1.0/24" "10.0.1.128/25")`.
 - [x] Passaggio a Dagger 1.0 (beta.18): il flake scarica il binario da dl.dagger.io, `dagger api with-session` e `DAGGER_ENGINE`. Nessun cambio nel runner; nello schema `GitRepository.latest-version` diventa `latest`, `commit` restituisce `GitCommit` (escluso), nuovi `with-run`, `with-shell`, `GitRef.contains`. Da tornare a github:dagger/nix quando esce la 1.0.

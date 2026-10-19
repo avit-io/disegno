@@ -76,7 +76,7 @@
   (string-append dir "/in") (string-append dir "/out")))
 
 (define secco (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))))))
-(assert (contiene? secco "directory { withNewFile(path: \"/LEGGIMI\", contents: \"ciao\\n\") { withDirectory(path: \"/cfg\", source: \"<host { directory(path:"))
+(assert (contiene? secco "directory { withNewFile(path: \"/LEGGIMI\", contents: \"ciao\\n\", permissions: 420) { withDirectory(path: \"/cfg\", source: \"<host { directory(path:"))
 (assert (contiene? secco "withNewFile(path: \\\"/config/app.toml\\\""))
 (assert (contiene? secco "} }>\") { export(path:"))
 (assert (contiene? secco "wipe: true"))
@@ -217,6 +217,19 @@
                   (esito-ls \"porta non scritta\\n\"))))))"
   (string-append dir "/out8")))
 (assert (= (length (all-plans 'con-localstack)) 4))
+;; Argomenti opzionali promossi: i permessi di un file, i glob di filter, l'entrypoint di un service.
+(check-string (format "
+  (def d9 : Dir (pipe empty (with-executable /run.sh \"#!/bin/sh\\necho ok\\n\") (with-file /note.txt \"x\\n\")))
+  (def filtri : (Export Dir)
+    (branch (passes? (try-exec (with-dir (from (container) \"alpine\") /w d9) [\"sh\" \"-c\" \"test -x /w/run.sh && test ! -x /w/note.txt\"]))
+      (overlay ~s (only d9 [\"*.sh\"]))
+      (overlay ~s (with-file empty /errore \"permessi\\n\"))))"
+  (string-append dir "/out9") (string-append dir "/out9")))
+(let ([p (plan->graphql (cadr (cadr (cdr (car (all-plans 'filtri))))))])
+  (assert (contiene? p "withNewFile(path: \"/run.sh\", contents: \"#!/bin/sh\\necho ok\\n\", permissions: 493)"))
+  (assert (contiene? p "filter(exclude: [], include: [\"*.sh\"])")))
+(assert (contiene? (plan->graphql (chain (ev '() '(glob localstack)) resolve-dry)) "asService(useEntrypoint: true)"))
+
 ;; Che cosa scrive un piano: solo le put-parameter, non gli altri effetti.
 (check-string "(def scritti : (→ [a Aws] (≡ (parameters (then (put-parameter a /app/x \"1\") (apply (from (container) \"b\") [\"echo\"])))
                                            [/app/x]))
@@ -252,9 +265,9 @@
 (check-string "
   (def corto : (→ [src (Host \"/x\")] (Export Dir))
     [src] (overlay \"out\" (pipe (container) (from \"alpine\") (with-mounted-cache /c (cache-volume \"k\"))
-                                 (directory root) (with-new-file /a \"b\") (directory /sub))))")
+                                 (directory root) (with-new-file /a \"b\" 420) (directory /sub))))")
 (define secco4 (plan->graphql (plan resolve-dry 'corto)))
-(assert (contiene? secco4 "withMountedCache(path: \"/c\", cache: \"<cacheVolume(key: \\\"k\\\")>\") { directory(path: \"/\") { withNewFile(path: \"/a\", contents: \"b\") { directory(path: \"/sub\")"))
+(assert (contiene? secco4 "withMountedCache(path: \"/c\", cache: \"<cacheVolume(key: \\\"k\\\")>\") { directory(path: \"/\") { withNewFile(path: \"/a\", contents: \"b\", permissions: 420) { directory(path: \"/sub\")"))
 (rifiuta "(def sbagliato : Dir (with-exec empty [\"x\"]))" "with-exec non esiste per")
 (rifiuta "(def pinna : Dir (Query.cache-volume \"k\"))" "nome sconosciuto")
 
@@ -478,6 +491,9 @@
   (assert (string=? (call-with-input-file (string-append dir "/out6/esito") get-string-all) "ricevuto\n"))
   (run 'cli-aws)
   (assert (string=? (call-with-input-file (string-append dir "/out7/esito") get-string-all) "risponde\n"))
+  (run 'filtri)
+  (assert (zero? (system (format "test -x ~a/out9/run.sh" dir))))
+  (assert (not (file-exists? (string-append dir "/out9/note.txt"))))
   (when (getenv "DISEGNO_TEST_KEY")
     (run 'con-localstack)
     (assert (string=? (call-with-input-file (string-append dir "/out8/esito") get-string-all) "scritto\n")))

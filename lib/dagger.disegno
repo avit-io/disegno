@@ -54,8 +54,11 @@
 (def empty : Dir
   Query.directory)
 
-(def with-file : (→ Dir Abs String Dir)
-  [d path contents] (Directory.with-new-file d path contents))
+(def with-file : (→ Dir Abs String Dir)        ; rw-r--r--, 0644
+  [d path contents] (Directory.with-new-file d path contents 420))
+
+(def with-executable : (→ Dir Abs String Dir)  ; rwxr-xr-x, 0755: uno script
+  [d path contents] (Directory.with-new-file d path contents 493))
 
 (def without : (→ Dir Abs Dir)
   [d path] (Directory.without-file d path))

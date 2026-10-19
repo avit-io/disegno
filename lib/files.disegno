@@ -19,12 +19,20 @@
 (def merge : (→ Dir Dir Dir)                   ; b sopra a, dalla radice
   [a b] (Directory.with-directory a root b))
 
+; Selezionare per glob, come Dagger: (only src ["**/*.go" "go.mod"]), (except src ["**/*_test.go"]).
+; ponytail: i glob non si controllano mentre si tipa; un Glob raffinato con re? se servirà.
+(def only : (→ Dir (List String) Dir)
+  [d globs] (Directory.filter d [] globs))
+
+(def except : (→ Dir (List String) Dir)
+  [d globs] (Directory.filter d globs []))
+
 ; --- che cosa scrive una directory: i percorsi lungo la sua catena di costruzione ---
 ; Come i montaggi di un container, si guarda solo la catena (chain), che non scende negli
 ; argomenti: le proprietà valgono per ogni sorgente.
 
 (def write-of : (→ Any (List Abs))
-  [(any (Directory.with-new-file _ path _))]      [path]
+  [(any (Directory.with-new-file _ path _ _))]    [path]
   [(any (Directory.with-file _ path _))]          [path]
   [(any (Directory.with-directory _ path _))]     [path]
   [(any (Directory.with-new-directory _ path))]   [path]
