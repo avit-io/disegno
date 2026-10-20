@@ -346,8 +346,10 @@
                              \"--secret-binary\" \"dW5vCmR1ZQo=\"))
         (branch (probe (pipe (from (container) \"alpine\")
                              (with-secret-variable \"T\" (secrets-manager-key a \"cicd/test/argocd\" \"token\"))
-                             (with-secret-variable \"K\" (secrets-manager-first a (list \"cicd/test/assente\" \"cicd/test/chiave\") \"chiave\")))
-                       (list \"sh\" \"-c\" \"test \\\"$T\\\" = t0k && test \\\"$K\\\" = \\\"$(printf 'uno\\\\ndue')\\\"\"))
+                             (with-secret-variable \"K\" (secrets-manager-first a (list \"cicd/test/assente\" \"cicd/test/chiave\") \"chiave\"))
+                             ;; il segreto c'è ma la chiave no: vale il default, e nient'altro
+                             (with-secret-variable \"D\" (secrets-manager-key-first-or a (list \"cicd/test/argocd\") \"server\" \"riserva\" \"argocd-server\")))
+                       (list \"sh\" \"-c\" \"test \\\"$T\\\" = t0k && test \\\"$K\\\" = \\\"$(printf 'uno\\\\ndue')\\\" && test \\\"$D\\\" = riserva\"))
                 (esito-sm \"ricevuto\\n\")
                 (esito-sm \"diverso\\n\"))))))"
   (string-append dir "/out11")))
@@ -432,6 +434,9 @@
   (assert (contiene? p "withNewFile(path: \"/run.sh\", contents: \"#!/bin/sh\\necho ok\\n\", permissions: 493)"))
   (assert (contiene? p "filter(exclude: [], include: [\"*.sh\"])")))
 (assert (contiene? (plan->graphql (chain (ev '() '(glob localstack)) resolve-dry)) "asService(useEntrypoint: true)"))
+;; Nel resoconto uno script lungo di una libreria si legge dai suoi argomenti; uno corto resta.
+(assert (string=? (show-args (list "sh" "-c" (make-string 130 #\x) "sh" "MODE" "cicd/deploy")) "sh -c … sh MODE cicd/deploy"))
+(assert (string=? (show-args (list "sh" "-c" "echo effetto")) "sh -c \"echo effetto\""))
 
 ;; Che cosa scrive un piano: solo le put-parameter, non gli altri effetti.
 (check-string "(claim scritti (Π ((a Aws)) (≡ (parameters (begin

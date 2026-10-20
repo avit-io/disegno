@@ -325,7 +325,12 @@
     (if (null? work) "ambiente" (show-args (step-args (last-of (last-of work)))))))
 
 (define (show-args args)                                ; il comando, con le virgolette dove servono
-  (format "~{~a~^ ~}" (map (lambda (a) (if (memv #\space (string->list a)) (format "~s" a) a)) args)))
+  ;; uno script lungo di una libreria (sh -c "…" argomenti) si legge dai suoi argomenti: il testo
+  ;; intero sta in disegno plan, e un passo fallito dice dove sta nel sorgente
+  (let ([args (if (and (>= (length args) 3) (equal? (car args) "sh") (equal? (cadr args) "-c") (> (string-length (caddr args)) 120))
+                  (cons* "sh" "-c" "…" (cdddr args))
+                  args)])
+    (format "~{~a~^ ~}" (map (lambda (a) (if (memv #\space (string->list a)) (format "~s" a) a)) args))))
 
 (define (lines . ss)                                     ; testi uno dopo l'altro, ciascuno chiuso da un a capo
   (apply string-append (map (lambda (s) (if (or (string=? s "") (char=? (string-ref s (- (string-length s) 1)) #\newline)) s (string-append s "\n"))) ss)))

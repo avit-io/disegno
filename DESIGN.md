@@ -1,6 +1,6 @@
 # Disegno — un linguaggio totale su Dagger
 
-Oct 15, 2026 · @Alvise Vitturi — rivisto alla fine della prima giornata di implementazione. Le scelte del linguaggio, con le ragioni e i costi, sono in [ARCHITECTURE.md](ARCHITECTURE.md).
+Aggiornato al 20 ottobre 2026. Le scelte del linguaggio, con le ragioni e i costi, sono in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Il nome
 
@@ -40,14 +40,17 @@ Antenati dell'idea: l'IO a richieste e risposte di Haskell 1.0, le derivazioni d
 Funziona, dal vivo su Dagger, l'intera catena: sorgente `.disegno` → type checker → valutazione di `main` a un piano → GraphQL → sessione Dagger → export sull'host. In particolare:
 
 - type checker con tipi dipendenti, famiglie induttive, pattern matching dipendente, controllo di copertura, terminazione strutturale, positività stretta e universi stratificati, ricontrollato da un kernel;
-- piano come dato induttivo generato dallo schema di Dagger (111 costruttori);
+- piano come dato induttivo generato dallo schema di Dagger (117 costruttori);
 - `branch` su osservazioni del motore, con un piano a secco per ogni esito;
 - `record` con invarianti nel tipo e `auto` per le prove calcolate;
 - i teoremi `prod-pinnate` e `test-prima-di-publish` del documento originale, provati con `auto`; il secondo per ogni sorgente;
 - letterali raffinati (`Image`, percorsi) e lo spazio affine dei percorsi, con la legge `q ⊕ (p ⊖ q) = p` dimostrata per induzione.
 - effetti in sequenza (`apply`, `then`, `skip`, `probe`) con i teoremi d'ordine `Before` e `Precedes`;
 - segreti come input di `main` (`Host-secret`) e service di Dagger come valori del piano;
-- la libreria in moduli (`import`, `builtin`): il prelude è la teoria di Martin-Löf, e sopra ci sono `files` e `aws` (Parameter Store, S3), provata dal vivo su LocalStack.
+- la libreria in moduli (`import`, `builtin`): il prelude è la teoria di Martin-Löf, e sopra ci sono `files`, `aws` (Parameter Store, S3, ECR, Secrets Manager, provati dal vivo su LocalStack), `delivery`, `git` e `argocd`;
+- segreti letti dalla pipeline a esecuzione (`secret-from`), parametri del piano (`Host-env`), `otherwise` per i fallimenti;
+- la sintassi in stile Pie, Scheme con i tipi;
+- un'immagine, `ghcr.io/avit-io/disegno`, per le CI senza Nix; il primo servizio aziendale (be-tsid) ha la sua pipeline in Disegno, a parità di effetti con la vecchia, in prova su Jenkins.
 
 ## Superficie del linguaggio
 
@@ -63,7 +66,7 @@ Il linguaggio è Scheme con i tipi, nella forma di Pie (*The Little Typer*): chi
 - **Letterali secondo il tipo**: `"golang:1.25-alpine"` è un `Image`, `/out` è un punto (vedi I punti non si sommano).
 - **Nomi dello schema senza prefisso**: lo schema non affiora nel programma. `(with-mounted-cache c …)` si risolve in `Container.with-mounted-cache` perché `c` è un `Container`: le collisioni tra tipi le risolve il checker, non il programmatore. Un nome senza metodo adatto è un campo radice, cioè una funzione di primo livello: `(container)`, `(cache-volume "go-mod")`. Il primo argomento si elabora una volta sola, quindi dentro `pipe` la risoluzione resta lineare.
 - **`auto`**: prova per calcolo (vedi Curry-Howard).
-- Parole riservate: `→ Type _ pipe auto let`.
+- Parole riservate: `→ Type _ pipe auto the`, e le forme della superficie: `claim define Π ∀ λ let list match match* cond when unless begin`.
 - Programmi e prove si scrivono nello stesso modo: cambia solo il tipo.
 
 ```
@@ -249,7 +252,7 @@ Il runner realizza `branch` chiedendo la condizione e sottomettendo il ramo scel
 
 ## Effetti in sequenza
 
-Implementati (i segreti no, vedi sotto). Sono il passo che serve alle librerie per il cloud e per gli strumenti DevOps (AWS, Azure, Kubernetes): una pipeline vera fa più cose in ordine, e alcune agiscono sul mondo. La ricetta `cookbook/08-release-flow.disegno` li usa tutti.
+Implementati. Sono il passo che serve alle librerie per il cloud e per gli strumenti DevOps (AWS, Azure, Kubernetes): una pipeline vera fa più cose in ordine, e alcune agiscono sul mondo. La ricetta `cookbook/08-release-flow.disegno` li usa tutti.
 
 **Il problema.** Oggi un piano ha un'uscita sola, in cima: `overlay`, `replace` o `publish`. Un deploy si può scrivere solo come `with-exec` dentro un container, e lì è un effetto nascosto:
 - Dagger lo mette in cache, quindi la seconda esecuzione non rifà il deploy;
@@ -299,7 +302,7 @@ Implementati (i segreti no, vedi sotto). Sono il passo che serve alle librerie p
 
 **Che cosa non si fa, per ora.**
 - uscite in parallelo: Dagger parallelizza già dentro ogni uscita;
-- compensazioni e rollback: un `(otherwise a b)`, che realizza `b` se `a` fallisce, si aggiungerebbe allo stesso modo;
+- compensazioni per ogni effetto: c'è `otherwise`, che realizza un'uscita di riserva quando la prima fallisce, ma non un rollback automatico;
 - attese e tentativi ripetuti, come «aspetta che lo staging sia pronto»: un `probe` con un numero massimo di tentativi resterebbe totale, ma va deciso dove sta il conteggio.
 
 **I segreti.** Un `apply` verso il cloud vuole credenziali. Il modello è quello di `Host`: `main` dichiara nella firma `(Host-secret "AWS_SECRET_ACCESS_KEY")`, il runner lo legge con `secret(uri: "env://AWS_SECRET_ACCESS_KEY")` e lo passa ai container con `with-secret-variable` o `with-mounted-secret`. Il valore non torna al linguaggio e non compare nel piano stampato, che nomina solo la variabile. Il generatore ammette il tipo `Secret` ma esclude `Query.secret` e `setSecret`: un programma non crea segreti da sé, né legge l'host fuori dalla firma; e `Secret.plaintext`, che dà una `String`, non si genera. Il primo uso è `lib/aws.disegno` (Parameter Store), nella ricetta `09-aws-parameters`.
