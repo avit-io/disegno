@@ -75,6 +75,17 @@
   (assert (contiene? out "prepara il container"))
   (assert (contiene? out "2.0s"))
   (assert (contiene? out "\n    ↳ segreto a letto\n")))
+;; Una domanda, voce che restituisce (Remote Bool), dà la docstring all'osservazione; i suoi passi
+;; restano della voce che la pone.
+(check-string "(claim c-e-file? (→ String (Remote Bool)))
+(define (c-e-file? p) \"c'è il file?\" (probe (pipe (container) (from \"alpine\")) (list \"test\" \"-f\" p)))
+(claim chiede (Export Dir))
+(define chiede \"controlla\" (unless (c-e-file? \"/x\") (apply (pipe (container) (from \"alpine\")) (list \"true\"))))")
+(let ([seen #f])
+  (parameterize ([observe (lambda (ch) (set! seen ch) #f)]) (exits resolve-dry 'chiede))
+  (let ([exec (list-ref seen (- (length seen) 2))])
+    (assert (eq? (hashtable-ref step-question exec #f) 'c-e-file?))
+    (assert (eq? (voce-of exec) 'chiede))))
 ;; TODO, come in Pie: ogni buco della define con il suo contesto e l'obiettivo, risolto dopo
 ;; l'unificazione; la define è rifiutata.
 (let ([m (guard (e [(message-condition? e) (condition-message e)])

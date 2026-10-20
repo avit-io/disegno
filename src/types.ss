@@ -87,7 +87,7 @@
     [(num) `(vnum ,(cadr t))]
     [(ann) (ev env (cadr t))]                            ; (ann t T): l'annotazione non calcola
     [(at) (let ([v (ev env (caddr t))])                 ; un passo ricorda dove sta nel sorgente
-            (if (and (pair? v) (eq? (car v) 'vglob)) (list 'vglob (cadr v) (caddr v) (cadr t) (current-voce)) v))]
+            (if (and (pair? v) (eq? (car v) 'vglob)) (list 'vglob (cadr v) (caddr v) (cadr t) (current-voce) (current-question)) v))]
     [(meta) (meta-val (cadr t))]
     [(imeta) (fold-left (lambda (f v) (vapp f v 'e)) (meta-val (cadr t)) (reverse env))]))
 
@@ -119,15 +119,17 @@
 ;; Un valore bloccato (su un input che il runner risolve dopo, come Host-env) ricorda la voce in
 ;; cui è nato: quando si sblocca, i suoi passi restano di quella voce.
 (define (reduce n sp)
-  (or (try-reduce n sp) (if (current-voce) `(vglob ,n ,sp #f ,(current-voce)) `(vglob ,n ,sp))))
+  (or (try-reduce n sp) (if (or (current-voce) (current-question)) `(vglob ,n ,sp #f ,(current-voce) ,(current-question)) `(vglob ,n ,sp))))
 (define (in-voce-of v thunk)
-  (if (and (> (length v) 4) (list-ref v 4)) (parameterize ([current-voce (list-ref v 4)]) (thunk)) (thunk)))
+  (if (> (length v) 4) (parameterize ([current-voce (or (list-ref v 4) (current-voce))] [current-question (or (v-question v) (current-question))]) (thunk)) (thunk)))
 (define (try-reduce n sp)
   (let* ([g (gget n)] [info (and (eq? (g-kind g) 'def) (g-info g))])
     (cond [(and info (accelerate) (let ([f (assq (hashtable-ref builtin-of n #f) fast)]) (and f (fast-apply f sp))))]   ; prima: numeri nativi
           [info (and (>= (length sp) (car info))
                      (let ([r (if (hashtable-ref voci n #f)     ; il corpo di una voce: i suoi passi
-                                  (parameterize ([current-voce (enter-voce n)]) (match-clauses (cdr info) (list-head sp (car info))))
+                                  (if (question? n)               ; una domanda: i passi restano della voce che la pone
+                                      (parameterize ([current-question n]) (match-clauses (cdr info) (list-head sp (car info))))
+                                      (parameterize ([current-voce (enter-voce n)]) (match-clauses (cdr info) (list-head sp (car info)))))
                                   (match-clauses (cdr info) (list-head sp (car info))))])
                        (and r (vapp-sp r (list-tail sp (car info))))))]
           [(and (eq? (g-kind g) 'extern) (assq (car (car (g-info g))) prims))
@@ -682,6 +684,8 @@
 ;; Un nodo del piano porta, oltre a costruttore e argomenti, la posizione del passo e la voce.
 (define (v-pos v) (and (> (length v) 3) (cadddr v)))
 (define (v-name v) (and (> (length v) 4) (list-ref v 4)))
+(define (v-question v) (and (> (length v) 5) (list-ref v 5)))
+(define current-question (make-parameter #f))           ; la domanda (voce che restituisce Remote Bool) in corso
 
 ;; Una voce è una definizione del programma (non della libreria standard) che produce un pezzo di
 ;; piano: mentre se ne valuta il corpo, current-voce ne porta il nome. Gli argomenti li ha già
@@ -698,6 +702,18 @@
       [(vpi) (loop (force (pi-cod t (vvar l))) (+ l 1))]
       [(vglob) (bi? (cadr t) 'obj)]
       [else #f])))
+
+;; Una domanda è una voce che restituisce un'osservazione, (Remote Bool): nel resoconto la sua
+;; docstring sta al posto del comando che osserva, sotto la voce che la pone.
+(define domande (make-eq-hashtable))
+(define (question-type? ty)
+  (let loop ([t (force ty)] [l 0])
+    (case (car t)
+      [(vpi) (loop (force (pi-cod t (vvar l))) (+ l 1))]
+      [(vglob) (and (bi? (cadr t) 'obj) (pair? (caddr t))
+                    (let ([k (force (caar (caddr t)))]) (and (eq? (car k) 'vglob) (eq? (cadr k) 'Kind.bool))))]
+      [else #f])))
+(define (question? n) (and (symbol? n) (hashtable-ref domande n #f) (voce-doc n)))
 
 (define (check* c e ty)
   (let ([want (force ty)])
@@ -1267,6 +1283,7 @@
     (define-global! name (make-g 'def ty #f))
     (hashtable-set! sigs name t)
     (when (and (not (privileged)) (plan-type? ty)) (hashtable-set! voci name (hashtable-ref docs name #t)))
+    (hashtable-set! domande name (question-type? ty))
     (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
            [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
            [checked (parameterize ([todos (box '())])

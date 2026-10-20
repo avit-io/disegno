@@ -52,11 +52,13 @@
 (define step-pos (make-eq-hashtable))
 (define step-voce (make-eq-hashtable))
 (define step-work (make-eq-hashtable))
+(define step-question (make-eq-hashtable))               ; un'osservazione: la domanda con docstring che la pone
 (define (located v ch)
   (let ([last (list-ref ch (- (length ch) 1))])
     (cond [(v-pos v) => (lambda (p) (hashtable-set! step-pos last p))])
     (hashtable-set! step-work last (on-input? v))
-    (cond [(v-name v) => (lambda (n) (hashtable-set! step-voce last n))]))
+    (cond [(v-name v) => (lambda (n) (hashtable-set! step-voce last n))])
+    (cond [(v-question v) => (lambda (q) (hashtable-set! step-question last q))]))
   ch)
 
 (define input-memo (make-eq-hashtable))
@@ -397,8 +399,10 @@
 ;; Un'osservazione (la condizione di un branch): che cosa si è chiesto al mondo, e la risposta.
 (define (report-observation ch b)
   (let* ([last (last-of ch)] [exec (and (eq? (car last) 'exitCode) (last-of (list-head ch (- (length ch) 1))))])
-    (sub-line (voce-of (or exec last))
-              (format "~a → ~a" (if exec (format "passa? ~a" (show-args (step-args exec))) (gql-field last)) (if b "vero" "falso")))))
+    (let ([n (voce-of (or exec last))] [q (hashtable-ref step-question (or exec last) #f)])
+      (if q
+          (let ([text (format "~a ~a" (voce-doc q) (if b "sì" "no"))]) (if (and held (eq? (car held) n)) (attach! text) (sub-line #f text)))
+          (sub-line n (format "~a → ~a" (if exec (format "passa? ~a" (show-args (step-args exec))) (gql-field last)) (if b "vero" "falso")))))))
 
 (define (outcome ch)                                     ; che cosa ha fatto un'uscita, in parole
   (let ([last (last-of ch)])
