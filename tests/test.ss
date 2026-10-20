@@ -387,6 +387,8 @@
 (assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'per-amb) "") "«collaudo» non è uno tra sviluppo, produzione"))
 (assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'scelta-male) "") "soli costruttori senza argomenti"))
 (putenv "DISEGNO_PROVA_AMB" "")
+(check-string "(claim amb-nome (≡ (Amb.name produzione) \"produzione\"))
+(define amb-nome refl)")   ; D.name, l'inverso di Host-choice, generato con il data
 ;; Un valore bloccato (qui le credenziali lette da Secrets Manager) ricorda la voce in cui è nato,
 ;; e la riprende quando il runner lo sblocca: i passi di ECR restano di lavora, non di main.
 (check-string "(import aws delivery)

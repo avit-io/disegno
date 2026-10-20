@@ -1150,6 +1150,15 @@
                   (cddr body))))))]
     [else (list (cons pats (sx body)))]))
 
+;; Un data di soli costruttori senza argomenti ha il suo D.name : (→ D String), il nome del
+;; costruttore: l'inverso di Host-choice. Solo dove String c'è già (dopo il prelude).
+(define (name-def d ks)
+  (let ([ks (map (lambda (k) (if (and (pair? k) (null? (cdr k))) (car k) k)) ks)])
+    (if (and (pair? ks) (for-all symbol? ks) (bi 'string))
+        (list `(def ,(string->symbol (format "~a.name" d)) : (→ ,d ,(bi 'string))
+                 ,@(apply append (map (lambda (k) (list `(%br ,k) (symbol->string k))) ks))))
+        '())))
+
 (define claims (make-parameter (make-eq-hashtable)))      ; claim → firma, in attesa della define; uno per file
 
 (define (desugar-decl d)                                 ; → dichiarazioni interne
@@ -1179,11 +1188,12 @@
                          ,@(map (lambda (k) (unless (and (list? k) (= (length k) 3) (eq? (cadr k) ':)) (oops "costruttore malformato: ~s" k))
                                   (keep `(%br ,(car k) : ,(sx (caddr k))) k))
                                 (list-tail d 4)))))
-         (list `(data ,(cadr d)
+         (cons `(data ,(cadr d)
                   ,@(map (lambda (k) (cond [(symbol? k) `(%br ,k)]
                                            [(and (list? k) (pair? k) (symbol? (car k))) (keep `(%br ,(car k) ,@(map sx (cdr k))) k)]
                                            [else (oops "costruttore malformato: ~s" k)]))
-                         (cddr d)))))]
+                         (cddr d)))
+               (name-def (cadr d) (cddr d))))]
     [(record) (need 2)
      (let ([h (cadr d)])
        (list `(record ,(if (pair? h)
