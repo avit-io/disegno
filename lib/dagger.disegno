@@ -53,6 +53,13 @@
 (define (Host-env _ _) String)
 (builtin host-env Host-env)
 
+; Un parametro scelto fra i costruttori di un data: (Host-choice "ENVIRONMENT" Env dev). Il valore
+; è il costruttore che si chiama come la variabile; un nome che non c'è ferma la costruzione del
+; piano. Così il programma non conosce valori sconosciuti, e non deve inventarne uno.
+(claim Host-choice (Π ((name String) (A Type)) (→ A Type)))
+(define (Host-choice _ A _) A)
+(builtin host-choice Host-choice)
+
 ; --- nomi corti: file system del motore, valori immutabili; scrivere è costruire una nuova directory ---
 
 (claim Dir Type)

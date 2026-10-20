@@ -120,6 +120,8 @@
     (skip () ,(obj "export"))
     ;; Se a fallisce si realizza b (un report, un rollback), poi si fallisce lo stesso.
     (otherwise ((first ,(obj "export")) (second ,(obj "export"))) ,(obj "export"))
+    ;; Un'uscita che fallisce con un messaggio: un controllo sui parametri, un rifiuto.
+    (fail ((message String)) ,(obj "export"))
     ;; Un service in background: avviato qui, resta vivo fino alla fine della sessione, e i passi
     ;; che lo legano usano questa istanza. Senza start, Dagger lo ferma quando nessuno lo usa.
     (start ((self ,(obj "service"))) ,(obj "export"))

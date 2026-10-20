@@ -37,7 +37,7 @@
     (abs . data) (root . con) (slash . con) (rel . data) (here . con) (step . con) (segment . data)   ; /out, "bin/x"
     (duration . data) (instant . data) (ip . data) (cidr . data)   ; letterali letti secondo il tipo
     (plus . def) (monus . def) (times . def) (leq? . def) (lt? . def) (nat-eq? . def) (pow2 . def)   ; accelerati
-    (obj . data) (host . def) (host-secret . def) (host-env . def)))   ; il piano, e gli input di main
+    (obj . data) (host . def) (host-secret . def) (host-env . def) (host-choice . def)))   ; il piano, e gli input di main
 (define builtins (make-eq-hashtable))                   ; chiave → nome
 (define builtin-of (make-eq-hashtable))                 ; nome → chiave
 (define (bi k) (hashtable-ref builtins k #f))

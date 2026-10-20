@@ -90,7 +90,7 @@
           [(probe) (append (fresh-exec v resolve '(expect ANY)) '((exitCode)))]   ; il mondo, fuori dalla cache
           [(secret-from) ((fetch-secret) v resolve)]                          ; a secco il comando, dal vivo setSecret
           [(with-fresh-exec) (fresh-exec v resolve)]                        ; with-exec fuori dalla cache
-          [(overlay replace publish apply then skip start otherwise) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
+          [(overlay replace publish apply then skip start otherwise fail) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
           [else (let ([segs (split-dots (symbol->string c))])
                   (if (string=? (car segs) "Query")
                       (list (field (string->symbol (camel (cadr segs))) names args))
@@ -143,7 +143,31 @@
      (let ([s (cadr (caddr (cadr dom)))] [default (cadr (caddr dom))])
        (unless (env-name? s) (oops "Host-env: «~a» non è il nome di una variabile d'ambiente" s))
        (list 'vstr (let ([v (getenv s)]) (if (and v (not (string=? v ""))) v default))))]
-    [else (oops "gli argomenti di main devono essere (Host \"percorso\"), (Host-secret \"NOME\") o (Host-env \"NOME\" \"default\")")]))
+    [(let ([sp (spine dom)]) (and (= (length sp) 4) (head-is? (car sp) 'host-choice) (str? (cadr sp)) sp))
+     => (lambda (sp) (choice (cadr (cadr sp)) (caddr sp) (cadddr sp)))]
+    [else (oops "gli argomenti di main devono essere (Host \"percorso\"), (Host-secret \"NOME\"), (Host-env \"NOME\" \"default\") o (Host-choice \"NOME\" Tipo default)")]))
+
+(define (spine t)                                        ; (f a b c) → (f a b c), dai nodi app
+  (let loop ([t t] [as '()])
+    (if (and (pair? t) (eq? (car t) 'app)) (loop (cadr t) (cons (caddr t) as)) (cons t as))))
+
+;; (Host-choice "NOME" Tipo default): il valore è il costruttore di Tipo che si chiama come la
+;; variabile; un nome che non c'è ferma la costruzione del piano, prima di eseguire qualsiasi cosa.
+(define (choice s ty default)
+  (unless (env-name? s) (oops "Host-choice: «~a» non è il nome di una variabile d'ambiente" s))
+  (let* ([d (and (eq? (car ty) 'glob) (gget (cadr ty)))]
+         [ks (and d (eq? (g-kind d) 'data) (g-info d))])
+    (unless (and ks (for-all (lambda (k) (eq? (car (force (g-type (gget k)))) 'vglob)) ks))
+      (oops "Host-choice ~a: il tipo dev'essere un data di soli costruttori senza argomenti" s))
+    (let ([v (getenv s)])
+      (if (or (not v) (string=? v ""))
+          (ev '() default)
+          (let ([k (find (lambda (k) (string=? (symbol->string k) v)) ks)])
+            (unless k (oops "~a: «~a» non è uno tra ~a" s v (join-names ks)))
+            (ev '() `(glob ,k)))))))
+
+(define (join-names ks)
+  (fold-left (lambda (acc k) (string-append acc ", " (symbol->string k))) (symbol->string (car ks)) (cdr ks)))
 
 (define (entry-value main)
   (let* ([sig (or (hashtable-ref sigs main #f) (oops "manca ~a" main))]
@@ -219,6 +243,9 @@
              (guard (e [#t (realize (cadr xs) resolve emit) (raise e)])
                (realize (car xs) resolve emit))))]
       [(skip) (void)]
+      [(fail)                                            ; a secco una riga del piano, dal vivo l'errore, con la posizione
+       (let ([msg (gql-arg (car (explicit (caddr v))) resolve)])
+         (if (realize-dry) (emit msg) (parameterize ([here (v-pos v)]) (oops "~a" msg))))]
       [(overlay replace)                                 ; export sull'host; replace è con wipe
        (let* ([path (in-dir (program-dir) (gql-arg (car (explicit (caddr v))) resolve))]
               [dir (chain (cadr (explicit (caddr v))) resolve)])
@@ -572,7 +599,10 @@
                                           (set! events (cons (list 'se ch b) events))
                                           b))])
                 (realize (entry-value entry) resolve-dry
-                         (lambda (ch) (set! events (cons (if (pair? ch) (list 'uscita ch) (list 'altrimenti)) events)))))])
+                         (lambda (ch) (set! events (cons (cond [(pair? ch) (list 'uscita ch)]
+                                                               [(string? ch) (list 'fallisce ch)]
+                                                               [else (list 'altrimenti)])
+                                                         events)))))])
       (cons (cons taken (reverse events))
             (apply append (map (lambda (i) (explore (append (map cdr (list-head taken i)) '(#f))))
                                (reverse (filter (lambda (i) (>= i (length prefix))) (iota (length taken))))))))))

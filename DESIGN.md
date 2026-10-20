@@ -315,6 +315,8 @@ Implementati. Sono il passo che serve alle librerie per il cloud e per gli strum
 
 **Parametri del piano.** `(Host-env "DEPLOYMENT_TYPE" "release")` nella firma di `main` è una `String` letta dall'ambiente quando si costruisce il piano, con un default: i parametri di una CI (il tipo di rilascio, un tag) senza passare da un file. È un input, non un'osservazione: decide anche gli `if`, perché il piano è una funzione dei suoi parametri, e i teoremi valgono per ogni valore. Un segreto invece non è mai un parametro né un letterale: gli argomenti di un `apply` si stampano nel piano e nel resoconto.
 
+Un parametro che sceglie fra pochi valori si tipa con un `data`: `(Host-choice "ENVIRONMENT" Env dev)` è il costruttore di `Env` che si chiama come la variabile (il tipo deve avere solo costruttori senza argomenti). Un nome che non c'è ferma la costruzione del piano, con l'elenco dei nomi validi, prima di eseguire qualsiasi cosa: il programma non vede mai un valore sconosciuto e non deve inventarne uno per restare totale. Per un rifiuto che dipende da più parametri c'è `(fail "messaggio")`, un'uscita del piano: a secco è una riga `# fallisce:`, dal vivo un errore con la posizione nel sorgente, e dentro `otherwise` fa realizzare la riserva come ogni altro fallimento.
+
 **Deciso.**
 1. `apply` ha l'ambiente e il comando separati: la preparazione resta in cache, e si vede che cosa è l'effetto.
 2. Un `probe` conta come test per `Before`, come i controlli sul contenuto. Ma non è una verità sul mondo: è la verità di quel test, in quel momento. Che lo staging abbia risposto non dice che sia sano, dice che quel comando è uscito con 0. Il teorema `test-prima-del-deploy` prova che il deploy è protetto da quella risposta, non che il mondo sia come il test lo descrive. È la stessa frontiera di «Cosa resta empirico» (Curry-Howard): si prova il disegno, non l'opera.
@@ -502,7 +504,7 @@ In cambio della purezza e della semplicità:
 - [x] Argomenti opzionali promossi campo per campo (`promoted` in `gen.ss`): i glob di `filter` (`only`, `except` in `files`), i permessi (`with-executable`), l'entrypoint di `as-service`.
 - [x] S3 in `aws` (sync, put, controlli), provato su LocalStack; ricetta `10-aws-static-site`.
 - [x] Segreti letti a esecuzione (`secret-from`; in `aws`: `secrets-manager`, `secrets-manager-key`, `ssm-secure`) e service in background (`start`), provati su LocalStack.
-- [x] Parametri del piano (`Host-env`) e `otherwise` per i fallimenti.
+- [x] Parametri del piano (`Host-env`, `Host-choice` su un `data`), `otherwise` e `fail` per i fallimenti.
 - [x] Le librerie per un rilascio su Kubernetes, come interfacce (`delivery`): ECR come `Registry`, git e kustomize come `Gitops`, ArgoCD come `Deployer`; provate dal vivo con un registro e un server git come service.
 - [x] Quanto serve per riprodurre la Release di un servizio a parità di effetti: segreti con un nome (`secret-from c cmd nome`, per il `id=` di un Dockerfile), `build-dockerfile` con argomenti (`build-arg`, l'input `BuildArg` dello schema) e segreti, segreti dal primo di più id (`secrets-manager-first`, `-key-first`, `-key-first-or`, `-key-is?`), login di ArgoCD con utente e password, `Deployer.restart`, `Gitops.set-image` su più cartelle con un solo commit, induttivi annidati in una `List`. Provato a secco su un servizio vero (in un repo aziendale, fuori da qui): stessi comandi, indirizzi e ordine della pipeline esistente.
 - [ ] La stessa pipeline eseguita in un ambiente di sviluppo, e poi in CI al posto della vecchia.

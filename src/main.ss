@@ -72,6 +72,7 @@
                                       (case (car ev)
                                         [(se) (format #t "# se ~a → ~a~%" (plan->graphql (cadr ev)) (if (caddr ev) "vero" "falso"))]
                                         [(altrimenti) (display "# se qualcosa prima fallisce:\n")]
+                                        [(fallisce) (format #t "# fallisce: ~a~%" (cadr ev))]
                                         [else (display (plan->graphql (cadr ev))) (newline)]))
                                     (cdr p)))
                         ps (iota (length ps))))]

@@ -350,6 +350,25 @@
   (assert (contiene? (p) "withNewFile(path: \"/rollback\", contents: \"10.0.42\""))
   (putenv "DISEGNO_PROVA_TIPO" "") (putenv "DISEGNO_PROVA_TAG" ""))   ; vuota vale come assente
 (assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'param-male) "") "non è il nome di una variabile d'ambiente"))
+;; (Host-choice "NOME" Tipo default): il costruttore con quel nome; un nome sconosciuto ferma il
+;; piano. (fail "msg"): a secco un evento del piano, dal vivo l'errore.
+(check-string (format "
+(data Amb (sviluppo) (produzione))
+(claim per-amb (Π ((a (Host-choice \"DISEGNO_PROVA_AMB\" Amb sviluppo))) (Export Dir)))
+(define (per-amb a)
+  (match a
+    (sviluppo (overlay ~s (with-file empty /sviluppo \"\")))
+    (produzione (fail \"niente prod da qui\"))))
+(claim scelta-male (Π ((a (Host-choice \"DISEGNO_PROVA_AMB\" Nat zero))) (Export Dir)))
+(define (scelta-male a) skip)"
+  (string-append dir "/out12")))
+(assert (contiene? (plan->graphql (plan resolve-dry 'per-amb)) "/sviluppo"))
+(putenv "DISEGNO_PROVA_AMB" "produzione")
+(assert (equal? (cdr (car (all-plans 'per-amb))) '((fallisce "niente prod da qui"))))
+(putenv "DISEGNO_PROVA_AMB" "collaudo")
+(assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'per-amb) "") "«collaudo» non è uno tra sviluppo, produzione"))
+(assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'scelta-male) "") "soli costruttori senza argomenti"))
+(putenv "DISEGNO_PROVA_AMB" "")
 ;; Un valore bloccato (qui le credenziali lette da Secrets Manager) ricorda la voce in cui è nato,
 ;; e la riprende quando il runner lo sblocca: i passi di ECR restano di lavora, non di main.
 (check-string "(import aws delivery)
