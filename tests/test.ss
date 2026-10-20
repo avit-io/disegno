@@ -601,6 +601,13 @@
       (assert (contiene? out (format "\n      male~a\n" n)))
       (assert (not (contiene? out (format "A~a" n))))         ; la prova di ciò che è andato non si stampa
       (assert (and msg (contiene? msg "<stringa>:10:36: passo fallito (exit 3)"))))
+    ;; Un RUN di Dockerfile fallito non è una voce: le sue ultime righe vengono dall'errore.
+    (check-string (format "(def contesto-rotto : Dir
+      (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nRUN echo docker~a >&2 && exit 4\\n\"))
+    (def build-rotta : (Export Dir) (overlay \"rotto\" (dir-of (build-dockerfile contesto-rotto \"Dockerfile\" []) /tmp)))" n))
+    (let ([r (esegui 'build-rotta)])
+      (assert (contiene? (cdr r) (format "│ docker~a\n" n)))
+      (assert (and (car r) (contiene? (car r) "passo fallito (exit 4)"))))
     ;; In CI la prova sta nel gruppo della voce: stdout e stderr intrecciati. Il primo passo ora è
     ;; in cache: il flusso tace, e la prova è combinedOutput.
     (set! logged '())                                         ; un run nuovo, come un processo nuovo

@@ -172,7 +172,10 @@
 
 (define (fetch-live v resolve)
   (let* ([xs (explicit (caddr v))] [recv (chain (car xs) resolve)] [cmd (gql-arg (cadr xs) resolve)]
-         [key (string-append (gql-arg (caddr xs) resolve) " " (plan->graphql (append recv (list `(withExec (args ,cmd))))))])
+         ;; la chiave dal piano a secco: gli ID vivi cambiano a ogni risoluzione, e il segreto si rileggerebbe
+         [key (string-append (gql-arg (caddr xs) resolve) " "
+                (parameterize ([fetch-secret fetch-dry])
+                  (plan->graphql (append (chain (car xs) resolve-dry) (list `(withExec (args ,cmd)))))))])
     (or (hashtable-ref secret-memo key #f)
         (let* ([text (submit-leaf (append recv (list `(withEnvVariable (name "DISEGNO_RUN") (value ,(fresh-nonce)))
                                                      `(withExec (args ("sh" "-c" "\"$@\" > /tmp/disegno-segreto" "sh" ,@cmd)))
@@ -181,7 +184,7 @@
                [text (if (and (> n 0) (char=? (string-ref text (- n 1)) #\newline)) (substring text 0 (- n 1)) text)]
                [ch (list `(setSecret (name ,(gql-arg (caddr xs) resolve)) (plaintext ,text)))])
           (when (env? "DISEGNO_LOGS")
-            (printf "↳ ~a segreto ~a letto: ~a\n" (pad (or (v-name v) (entry-name))) (gql-arg (caddr xs) resolve) (show-args cmd))
+            (printf "↳ ~a segreto ~a letto\n" (pad (or (v-name v) (entry-name))) (gql-arg (caddr xs) resolve))   ; il comando sta in disegno plan
             (flush-output-port))
           (hashtable-set! secret-memo key ch)
           ch))))
@@ -480,6 +483,12 @@
   (parameterize ([observe observe-live] [entry-name entry])
     (guard (e [(exec-error e) => (lambda (x)                ; anche senza log: quale passo, e dove
                                    (let ([cmd (cdr (assoc "cmd" x))])
+                                     ;; un passo che non è un nostro with-exec (un RUN di Dockerfile) non ha
+                                     ;; flusso né voce: nel resoconto la prova sono le ultime righe dell'errore
+                                     (when (env? "DISEGNO_LOGS")
+                                       (for-each (lambda (l) (printf "  │ ~a\n" l))
+                                         (last-lines (lines (cond [(assoc "stdout" x) => cdr] [else ""])
+                                                            (cond [(assoc "stderr" x) => cdr] [else ""])) 30)))
                                      (step-failed (cmd-pos cmd) (cdr (assoc "exitCode" x)) (show-args cmd))))])
       (dynamic-wind void
         (lambda ()
