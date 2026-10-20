@@ -64,6 +64,18 @@
 (assert (eq? (parameterize ([current-voce 'senza-doc]) (enter-voce 'con-doc)) 'con-doc))
 (rifiuta "(claim due Nat)
 (define due 1 2)" "define:")
+;; TODO, come in Pie: ogni buco della define con il suo contesto e l'obiettivo, risolto dopo
+;; l'unificazione; la define è rifiutata.
+(let ([m (guard (e [(message-condition? e) (condition-message e)])
+           (check-string "(claim piu-zero (Π ((n Nat)) (≡ (+ n 0) n)))
+(define (piu-zero n)
+  (match n
+    (zero TODO)
+    ((add1 k) (cong add1 TODO))))") #f)])
+  (assert (and m (contiene? m "TODO\n  ──────────\n  (≡ 0 0)")))
+  (assert (contiene? m "<stringa>:5:15: TODO\n  k : Nat\n  ──────────\n  (≡ (+ k 0) k)")))
+(rifiuta "(claim t Type)
+(define t (the TODO Nat))" "non si sa")
 (rifiuta "(data Cattivo2 (mk2 (List (→ Cattivo2 ⊥))))" "strettamente positiva")
 (rifiuta "(claim tipo-in-tipo Type)
 (define tipo-in-tipo Type)" "atteso")

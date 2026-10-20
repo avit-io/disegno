@@ -63,11 +63,12 @@ Il linguaggio è Scheme con i tipi, nella forma di Pie (*The Little Typer*): chi
 - I letterali `0, 1, 2…` sono zucchero per `zero`, `add1`; le stringhe `"…"` sono letterali di tipo `String`.
 - **Solo tonde**, come in Scheme; le quadre sono un sinonimo (R6RS). `(Π ((x A) …) B)` lega, `(→ A B)` no; `(λ (x) …)`, `(let ((x e) …) …)` in sequenza, `(list "a" "b")` per le liste. Per il piano le forme di Scheme: `cond`, `when` e `unless` sulle osservazioni, `begin` per gli effetti in sequenza, `string-append`. Sono zucchero: si traducono nelle forme interne prima dell'elaborazione.
 - **Docstring**, come in Scheme: `(define (immagine …) "costruisce l'immagine" corpo)`. Su una definizione che produce piano è l'etichetta della sua riga nel resoconto, al posto di nome e comando (che restano nella prova e in `disegno plan`); le voci senza docstring che chiama la ereditano.
+- **`TODO`**, come in Pie: un buco nel corpo di una define. Il checker stampa, per ogni buco, il contesto e l'obiettivo dopo l'unificazione, e rifiuta la define: si dimostra un passo alla volta, senza postulati.
 - **`pipe`**: `(pipe x (f a) g)` è `(g (f x a))`. Il valore passa come primo argomento esplicito, come l'oggetto di un metodo GraphQL.
 - **Letterali secondo il tipo**: `"golang:1.25-alpine"` è un `Image`, `/out` è un punto (vedi I punti non si sommano).
 - **Nomi dello schema senza prefisso**: lo schema non affiora nel programma. `(with-mounted-cache c …)` si risolve in `Container.with-mounted-cache` perché `c` è un `Container`: le collisioni tra tipi le risolve il checker, non il programmatore. Un nome senza metodo adatto è un campo radice, cioè una funzione di primo livello: `(container)`, `(cache-volume "go-mod")`. Il primo argomento si elabora una volta sola, quindi dentro `pipe` la risoluzione resta lineare.
 - **`auto`**: prova per calcolo (vedi Curry-Howard).
-- Parole riservate: `→ Type _ pipe auto the`, e le forme della superficie: `claim define Π ∀ λ let list match match* cond when unless begin`.
+- Parole riservate: `→ Type _ TODO pipe auto the`, e le forme della superficie: `claim define Π ∀ λ let list match match* cond when unless begin`.
 - Programmi e prove si scrivono nello stesso modo: cambia solo il tipo.
 
 ```
@@ -345,7 +346,7 @@ Condizioni di consistenza, tutte implementate e coperte da un test di rifiuto:
 | Copertura | divisione dei casi tipata; i casi con indici inconciliabili sono impossibili | `pred` senza `zero` |
 | Universi | stratificati, verificati dal kernel; un campo di livello maggiore non sta nel data | `(claim t Type)` con `(define t Type)`, `(data U : Type (u : (→ Type U)))` |
 | Positività | stretta, sul dominio normalizzato | `(data Cattivo (mk (→ Cattivo ⊥)))` |
-| Niente scappatoie | niente postulati: un `claim` vuole una `define` con un corpo, o un pattern assurdo verificato; `extern` solo nella libreria standard | `(claim postulato ⊥)` da solo, `(define (f e) (match e (())))` per `(¬ (≡ 0 0))` |
+| Niente scappatoie | niente postulati: un `claim` vuole una `define` con un corpo, o un pattern assurdo verificato; `extern` solo nella libreria standard; un `TODO` mostra obiettivo e contesto ma la define resta rifiutata | `(claim postulato ⊥)` da solo, `(define (f e) (match e (())))` per `(¬ (≡ 0 0))` |
 | Snodi che non mentono | i costruttori non possono mentire per costruzione; gli extern restituiscono solo tipi opachi | `(extern mente : (→ Dir ⊥) …)` |
 
 **`auto`**: le proposizioni decidibili si scrivono `(So (test? …))`, che calcolando diventa `⊤` o `⊥`. `auto` è `tt` quando il tipo atteso si riduce a `⊤`, `refl` quando è un'uguaglianza; il kernel ricontrolla. Con dati concreti la prova si calcola:

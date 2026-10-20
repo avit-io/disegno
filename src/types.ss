@@ -54,7 +54,7 @@
     (hashtable-set! builtin-of n k)))
 (define (con? n) (let ([g (gget n)]) (and g (eq? (g-kind g) 'con))))
 (define (fresh-name! n)
-  (when (memq n '(→ Type _ pipe auto let λ the)) (oops "~a è una parola riservata" n))
+  (when (memq n '(→ Type _ TODO pipe auto let λ the)) (oops "~a è una parola riservata" n))
   (when (gget n) (oops "~a è già definito" n)))
 
 (define metas (make-eqv-hashtable))                     ; m → #(soluzione nome tipo)
@@ -489,6 +489,7 @@
     [(eq? e 'Type) (values '(type 0) '(vtype 1))]
     [(string? e) (values `(str ,e) (string-type))]
     [(eq? e '_) (oops "_ non è un termine")]
+    [(eq? e 'TODO) (oops "TODO: qui il tipo non si sa; annotalo con (the T TODO)")]
     [(nat? e) (unless (bi 'nat) (oops "i letterali numerici richiedono il builtin nat")) (values `(num ,e) `(vglob ,(bi 'nat) ()))]
     [(symbol? e)
      (cond [(index-of e (ctx-names c)) => (lambda (i) (values `(var ,i) (list-ref (ctx-tys c) i)))]
@@ -695,7 +696,8 @@
 
 (define (check* c e ty)
   (let ([want (force ty)])
-    (cond [(eq? e 'auto) (auto c ty)]
+    (cond [(eq? e 'TODO) (todo! c ty)]
+          [(eq? e 'auto) (auto c ty)]
           [(let-form? e) (let-values ([(c body) (let-bind c e)]) (check c body ty))]
           [(lambda-form? e) (check-lambda c (cdr (cadr e)) (caddr e) ty)]
           [(and (string? e) (eq? (car want) 'vglob) (assq (hashtable-ref builtin-of (cadr want) #f) readers))
@@ -838,7 +840,7 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ %br %imp pipe let auto λ the))) (if (variable-shaped? e) (set! acc (cons e acc)) (oops "nome sconosciuto: ~a" e)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ TODO %br %imp pipe let auto λ the))) (if (variable-shaped? e) (set! acc (cons e acc)) (oops "nome sconosciuto: ~a" e)))]
         [(lambda-form? e) (walk (caddr e) (append (cdr (cadr e)) bound))]   ; λ lega i suoi nomi
         [(let-form? e)                                   ; let lega in sequenza
          (let loop ([bs (cdr (cadr e))] [bound bound])
@@ -885,6 +887,7 @@
     [else t]))
 (define (zonked l env t)
   (let ([z (zonk l env t)])
+    (when (and (todos) (pair? (unbox (todos)))) (raise (quote todo-pending)))   ; un buco lascia metavariabili: la clausola si salta
     (when (let has? ([z z]) (and (pair? z) (or (memq (car z) '(meta imeta)) (exists has? z))))
       (oops "impossibile inferire gli argomenti impliciti in ~s" (sexp '() z)))
     z))
@@ -1261,7 +1264,12 @@
     (when (and (not (privileged)) (plan-type? ty)) (hashtable-set! voci name (hashtable-ref docs name #t)))
     (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
            [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
-           [checked (map (lambda (ps c) (check-clause name ty ps (cdr c))) pats clauses)]   ; (clausola . sintassi risolta)
+           [checked (parameterize ([todos (box '())])
+                      (let ([r (map (lambda (ps c) (guard (x [(eq? x 'todo-pending) '(#f)])   ; i buchi delle altre clausole, poi tutti insieme
+                                                      (check-clause name ty ps (cdr c))))
+                                    pats clauses)])   ; (clausola . sintassi risolta)
+                        (flush-todos!)
+                        r))]
            [cs (filter values (map car checked))])
       (cover name ty (map cdr checked))
       (terminates! name cs)
@@ -1508,6 +1516,29 @@
 ;; --- stampa per i messaggi d'errore ---
 
 (define (show c v) (sexp (ctx-names c) (reify (ctx-l c) v)))
+
+;; TODO, come in Pie: un buco nel corpo di una define. Il checker raccoglie obiettivo e contesto
+;; di ogni buco della define e la rifiuta con quelli: un buco non è mai un postulato. Il
+;; messaggio si scrive alla fine, quando l'unificazione ha risolto ciò che poteva.
+(define todos (make-parameter #f))                        ; box con i buchi della define corrente
+(define (todo! c ty)
+  (unless (todos) (oops "TODO va nel corpo di una define"))
+  (let ([p (here)])
+    (set-box! (todos) (cons (lambda () (todo-message p c ty)) (unbox (todos))))
+    `(imeta ,(new-meta 'TODO #f))))
+(define (todo-message p c ty)
+  (let* ([l (ctx-l c)] [names (ctx-names c)]
+         [hyps (filter values
+                 (map (lambda (i)
+                        (let ([x (list-ref names i)])
+                          (and (symbol? x) (not (char=? (string-ref (symbol->string x) 0) #\%))
+                               (format "  ~a : ~s" x (sexp (list-tail names (+ i 1)) (reify (- l i 1) (list-ref (ctx-tys c) i)))))))
+                      (reverse (iota l))))]
+         [defs (map (lambda (d) (format "  ~a = ~s : ~s" (car d) (show c (cadr d)) (show c (caddr d)))) (reverse (ctx-defs c)))])
+    (format "~@[~a: ~]TODO~{\n~a~}\n  ──────────\n  ~s" (and p (pos->string p)) (append hyps defs) (show c ty))))
+(define (flush-todos!)
+  (let ([ms (if (todos) (map (lambda (k) (k)) (reverse (unbox (todos)))) '())])
+    (unless (null? ms) (error 'disegno (fold-left (lambda (acc m) (string-append acc "\n" m)) (car ms) (cdr ms))))))
 (define (sexp names t)
   (cond [(and (equal? (car t) 'app) (bi 'obj) (equal? (cadr t) `(glob ,(bi 'obj))) (equal? (car (caddr t)) 'glob))
          (kind-alias (cadr (caddr t)))]                  ; (Obj Kind.cache-volume) si legge CacheVolume

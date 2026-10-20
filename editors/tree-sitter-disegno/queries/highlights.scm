@@ -29,7 +29,7 @@
 
 ; Prove ed elementi speciali.
 ((symbol) @constant.builtin
-  (#any-of? @constant.builtin "auto" "refl" "tt" "true" "false" "root" "here" "vuota" "_"))
+  (#any-of? @constant.builtin "auto" "refl" "tt" "true" "false" "root" "here" "vuota" "_" "TODO"))
 
 ; Gli operatori: frecce, uguaglianza, relazioni e spazi affini.
 ((symbol) @operator
