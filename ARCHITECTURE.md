@@ -76,7 +76,13 @@ Gli strati, dal più fidato al meno:
 
 **Perché.** I programmi di CI/CD vivono quasi interamente in `Type₀`. Ogni meccanismo di universo in più, cioè variabili di livello, vincoli e cumulatività, complica l'elaboratore e il kernel per un uso che qui non c'è.
 
-**Costo.** `Nat : Type 1` è rifiutato: non si scrive `(≡ Nat Nat)` e non si fa una lista di tipi. Se servirà, il primo passo è la cumulatività, che tocca solo il confronto dei livelli nel kernel.
+**Costo.** `Nat : Type 1` è rifiutato: non si scrive `(≡ Nat Nat)` e non si fa una lista di tipi. Oggi nessun programma, libreria o pipeline ne ha bisogno.
+
+**Se servirà.** Due passi, nessuno dei quali basta da solo:
+- la cumulatività: `Type i ≤ Type j` per `i ≤ j`, covariante nel codominio di Π. È una relazione `sub` usata dove si confronta un tipo inferito con quello atteso, nell'elaboratore e in `k-check`; `unify` resta simmetrica;
+- `≡` su `A : (Type 1)` nel prelude, così `(≡ Nat Nat)` si scrive e `(≡ 0 0)` funziona ancora grazie alla cumulatività. Con K un indice grande è sicuro: `≡` ha al più un elemento, qualunque sia `A`.
+
+Le liste di tipi non arrivano nemmeno così: `(List Type)` porterebbe `List` in `Type₁` e con lei tutte le liste. Servirebbe il polimorfismo di universo, che resta escluso.
 
 ## 5. Elaborazione: NbE, metavariabili, impliciti
 
@@ -261,7 +267,7 @@ Tutto il resto, cioè l'elaboratore, la libreria non `extern` e i programmi, lo 
 ## Che cosa si cambierebbe per primo
 
 In ordine di valore per costo:
-1. **Cumulatività degli universi**: tocca solo il confronto dei livelli.
-2. **Il modulo di un nome sconosciuto nel messaggio d'errore**: «Port è in net: (import net)».
-3. **Posizioni dei nomi nel reader**: hover e definizione sulle variabili locali.
-4. **Definizioni mutue**: oggi non servono alla libreria.
+1. **Il modulo di un nome sconosciuto nel messaggio d'errore**: «Port è in net: (import net)».
+2. **Posizioni dei nomi nel reader**: hover e definizione sulle variabili locali.
+3. **Definizioni mutue**: oggi non servono alla libreria.
+4. **Cumulatività degli universi**, con `≡` in `Type 1` (§4): quando un programma vero vorrà un tipo come valore.
