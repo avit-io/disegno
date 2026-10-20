@@ -226,7 +226,7 @@ Tutte queste forme sono zucchero: un passo prima dell'elaborazione le traduce ne
 
 **Costo.**
 - Più parentesi: `(list "a" "b")` invece di `["a" "b"]`, `(Π ((x A)) …)` invece di `[x A]`.
-- `match` vale solo sugli argomenti della `define`, in testa al corpo (o dentro un'altra clausola): non è un'espressione qualsiasi. È ciò che serve al pattern matching dipendente; un `match` su un valore calcolato richiederebbe una funzione ausiliaria.
+- `match` sugli argomenti della `define` è il pattern matching dipendente: i casi raffinano i tipi. Su un valore calcolato è un'espressione che l'elaboratore traduce in una `define` ausiliaria, chiusa sul contesto, con i controlli di sempre. Lì il motivo non dipende dallo scrutinato, i casi non raffinano il tipo atteso, serve un tipo atteso (o `the`), e le clausole non richiamano la `define` in corso, perché la terminazione si controlla una `define` alla volta e una chiamata dentro l'ausiliaria le sfuggirebbe.
 - Un apice nei nomi (`f'`) è la `quote` del reader, quindi non si usa.
 
 **Scartato.** Tenere le due sintassi insieme. La migrazione è stata fatta una volta sola, con uno strumento che conservava commenti e testo.

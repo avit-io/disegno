@@ -507,6 +507,7 @@
            [(path-literal? e) (values (path-term c e) `(vglob ,(bi 'abs) ()))]
            [else (oops "nome sconosciuto: ~a" e)])]
     [(let-form? e) (let-values ([(c body) (let-bind c e)]) (infer c body))]
+    [(head? e '%match) (oops "match ha bisogno di un tipo atteso: scrivi (the T (match …))")]
     [(and (pair? e) (eq? (car e) 'the) (= (length e) 3))   ; (the T e): e controllato contro T
      (let-values ([(ta n) (check-type c (cadr e))])
        (let ([ty (ev (ctx-env c) ta)]) (values `(ann ,(check c (caddr e) ty) ,ta) ty)))]
@@ -719,6 +720,7 @@
   (let ([want (force ty)])
     (cond [(eq? e 'TODO) (todo! c ty)]
           [(eq? e 'auto) (auto c ty)]
+          [(head? e '%match) (check-match c e want)]
           [(let-form? e) (let-values ([(c body) (let-bind c e)]) (check c body ty))]
           [(lambda-form? e) (check-lambda c (cdr (cadr e)) (caddr e) ty)]
           [(and (string? e) (eq? (car want) 'vglob) (assq (hashtable-ref builtin-of (cadr want) #f) readers))
@@ -741,6 +743,44 @@
           [else (check-inferred c e ty)])))
 
 (define (known-local? c x) (or (index-of x (ctx-names c)) (assq x (ctx-defs c))))
+
+;; (match e clausola …) su un valore calcolato: una definizione ausiliaria, f/matchN, che prende il
+;; contesto e lo scrutinato e fa i casi; passa per i controlli di ogni define (copertura, kernel).
+;; Il motivo non dipende dallo scrutinato: i casi non raffinano il tipo atteso né il contesto.
+;; Le clausole non richiamano la define in corso: la terminazione la controlla define per define,
+;; e una chiamata dentro l'ausiliaria le sfuggirebbe.
+(define defining (make-parameter '()))                   ; le define in corso, la più interna in testa
+(define match-count 0)
+(define (check-match c e want)
+  (define (mentions-any? xs t) (if (pair? t) (exists (lambda (x) (mentions-any? xs x)) t) (and (symbol? t) (memq t xs))))
+  (define (has-meta? t) (and (pair? t) (or (eq? (car t) 'meta) (exists has-meta? t))))
+  (for-each (lambda (cl) (cond [(and (cadr cl) (mentions-any? (defining) (cadr cl)))
+                                => (lambda (m) (oops "match su un valore calcolato: non può richiamare ~a, che si sta definendo; usa match sugli argomenti della define" (car m)))]))
+            (cddr e))
+  (let* ([l (ctx-l c)]
+         [scr (map (lambda (x) (call-with-values (lambda () (infer c x)) cons)) (cadr e))]
+         [names (reverse (ctx-names c))]
+         [defs (filter (lambda (d) (not (memq (car d) names))) (reverse (ctx-defs c)))]
+         [binders (append (map (lambda (x a j) (list x (reify j a))) names (reverse (ctx-tys c)) (iota l))
+                          (map (lambda (d) (list (car d) (reify l (caddr d)))) defs))]
+         [k (length binders)]
+         [ty (fold-right (lambda (b acc) `(pi ,(car b) e ,(cadr b) ,acc))
+                         (fold-right (lambda (s j acc) `(pi _ e ,(reify (+ k j) (cdr s)) ,acc))
+                                     (reify (+ k (length scr)) want) scr (iota (length scr)))
+                         binders)]
+         [pnames (let loop ([ns (map car binders)])     ; un nome oscurato più avanti diventa _
+                   (cond [(null? ns) '()]
+                         [(memq (car ns) (cdr ns)) (cons '_ (loop (cdr ns)))]
+                         [else (cons (car ns) (loop (cdr ns)))]))]
+         [aux (begin (set! match-count (+ match-count 1))
+                     (string->symbol (format "~a/match~a" (if (pair? (defining)) (car (defining)) 'match) match-count)))])
+    (when (has-meta? ty) (oops "match: il tipo dello scrutinato o del risultato non è ancora noto; annotalo con the"))
+    (let ([saved (list pmetas absurds implicit-pmetas)])
+      (check-def-core aux ty (map (lambda (cl) (cons (append pnames (car cl)) (cadr cl))) (cddr e)))
+      (set! pmetas (car saved)) (set! absurds (cadr saved)) (set! implicit-pmetas (caddr saved)))
+    (hashtable-delete! voci aux) (hashtable-delete! domande aux)   ; i passi restano della voce che la usa
+    (fold-left (lambda (t a) `(app ,t ,a e)) `(glob ,aux)
+               (append (map (lambda (j) `(var ,(- l 1 j))) (iota l)) (map (lambda (d) (reify l (cadr d))) defs) (map car scr)))))
 
 ;; Un'applicazione di un globale (un'introduzione, o una funzione come if) si controlla contro il tipo atteso: prima il
 ;; tipo del risultato si unifica con quello atteso, poi gli argomenti si controllano nell'ordine,
@@ -1066,7 +1106,13 @@
      (let loop ([xs (cdr e)]) (if (null? (cdr xs)) (sx (car xs)) `(then ,(sx (car xs)) ,(loop (cdr xs)))))]
     [(string-append) (if (null? (cdr e)) ""
                          (let loop ([xs (cdr e)]) (if (null? (cdr xs)) (sx (car xs)) `(concat ,(sx (car xs)) ,(loop (cdr xs))))))]
-    [(match match*) (oops "~a: solo sugli argomenti di una define, in testa al corpo" (car e))]
+    [(match match*)                                      ; su un valore qualsiasi: lo elabora check-match
+     (unless (>= (length e) 3) (oops "~a: (~a x clausola …)" (car e) (car e)))
+     (let ([xs (if (eq? (car e) 'match) (list (cadr e)) (cadr e))])
+       (unless (list? xs) (oops "match*: (match* (x y) ((p q) corpo) …)"))
+       `(%match ,(map sx xs)
+                ,@(map (lambda (cl) (let-values ([(ps b) (split-clause cl (length xs))]) (list ps (and b (sx b)))))
+                       (cddr e))))]
     [(claim define data record extern import builtin) (oops "~a: è una dichiarazione, non un'espressione" (car e))]
     [else (map sx e)]))
 
@@ -1082,23 +1128,23 @@
 
 ;; (match x clausola …) in testa al corpo: x diventa il pattern di ogni clausola, e così via
 ;; dentro. → lista di (pattern . corpo); corpo #f per una clausola assurda, (p) senza corpo.
+;; Su qualcos'altro che gli argomenti è un'espressione: la elabora check-match.
+(define (split-clause cl n)                              ; → (values pattern-di-ciascuno corpo-o-#f)
+  (unless (and (list? cl) (<= 1 (length cl) 2)) (oops "match: clausola malformata ~s" cl))
+  (let ([ps (if (= n 1) (list (car cl)) (car cl))])
+    (unless (and (list? ps) (= (length ps) n)) (oops "match*: ~a pattern attesi in ~s" n cl))
+    (values ps (and (pair? (cdr cl)) (cadr cl)))))
 (define (expand-clauses pats body)
-  (define (scrut xs)
-    (for-each (lambda (x) (unless (and (symbol? x) (pattern-var? x pats)) (oops "match: ~s non è un argomento" x))) xs))
-  (define (split cl n)                                   ; → (values pattern-di-ciascuno corpo-o-#f)
-    (unless (and (list? cl) (<= 1 (length cl) 2)) (oops "match: clausola malformata ~s" cl))
-    (let ([ps (if (= n 1) (list (car cl)) (car cl))])
-      (unless (and (list? ps) (= (length ps) n)) (oops "match*: ~a pattern attesi in ~s" n cl))
-      (values ps (and (pair? (cdr cl)) (cadr cl)))))
+  (define (on-args? xs) (and (list? xs) (for-all (lambda (x) (and (symbol? x) (pattern-var? x pats))) xs)))
   (cond
-    [(or (head? body 'match) (head? body 'match*))
+    [(and (or (head? body 'match) (head? body 'match*)) (pair? (cdr body))
+          (on-args? (if (eq? (car body) 'match) (list (cadr body)) (cadr body))))
      (let ([xs (if (eq? (car body) 'match) (list (cadr body)) (cadr body))])
-       (scrut xs)
        (with-pos body
          (lambda ()
            (apply append
              (map (lambda (cl)
-                    (let-values ([(ps b) (split cl (length xs))])
+                    (let-values ([(ps b) (split-clause cl (length xs))])
                       (let ([pats (subst-pats pats xs ps)])
                         (if b (expand-clauses pats b) (list (cons pats #f))))))
                   (cddr body))))))]
@@ -1286,7 +1332,7 @@
     (hashtable-set! domande name (question-type? ty))
     (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
            [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
-           [checked (parameterize ([todos (box '())])
+           [checked (parameterize ([todos (box '())] [defining (cons name (defining))])
                       (let ([r (map (lambda (ps c) (guard (x [(eq? x 'todo-pending) '(#f)])   ; i buchi delle altre clausole, poi tutti insieme
                                                       (check-clause name ty ps (cdr c))))
                                     pats clauses)])   ; (clausola . sintassi risolta)
