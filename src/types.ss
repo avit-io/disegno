@@ -119,7 +119,7 @@
 ;; Un valore bloccato (su un input che il runner risolve dopo, come Host-env) ricorda la voce in
 ;; cui è nato: quando si sblocca, i suoi passi restano di quella voce.
 (define (reduce n sp)
-  (or (try-reduce n sp) (if (and (current-voce) (not (con? n))) `(vglob ,n ,sp #f ,(current-voce)) `(vglob ,n ,sp))))
+  (or (try-reduce n sp) (if (current-voce) `(vglob ,n ,sp #f ,(current-voce)) `(vglob ,n ,sp))))
 (define (in-voce-of v thunk)
   (if (and (> (length v) 4) (list-ref v 4)) (parameterize ([current-voce (list-ref v 4)]) (thunk)) (thunk)))
 (define (try-reduce n sp)

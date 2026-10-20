@@ -328,11 +328,22 @@
   (assert (contiene? (p) "withNewFile(path: \"/rollback\", contents: \"10.0.42\""))
   (putenv "DISEGNO_PROVA_TIPO" "") (putenv "DISEGNO_PROVA_TAG" ""))   ; vuota vale come assente
 (assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'param-male) "") "non è il nome di una variabile d'ambiente"))
-;; Un valore bloccato ricorda la voce in cui è nato, e la riprende quando il runner lo sblocca
-;; (in be-tsid: un apply su argomenti calcolati dopo, i cui passi finivano sotto main).
-(let ([v (parameterize ([current-voce 'con-doc]) (reduce '+ (list (cons '(vrigid 0 ()) 'e) (cons '(vrigid 1 ()) 'e))))])
-  (assert (eq? (list-ref v 4) 'con-doc))
-  (assert (eq? (in-voce-of v current-voce) 'con-doc)))
+;; Un valore bloccato (qui le credenziali lette da Secrets Manager) ricorda la voce in cui è nato,
+;; e la riprende quando il runner lo sblocca: i passi di ECR restano di lavora, non di main.
+(check-string "(import aws delivery)
+(claim conto (→ Bool Account))
+(define (conto b) (match b (true \"111111111111\") (false \"222222222222\")))
+(claim altro-aws (→ Aws Aws))
+(define (altro-aws boot) (aws (secrets-manager-key-first boot (list \"a\") \"username\" \"u\") (secrets-manager-key-first boot (list \"a\") \"password\" \"p\") \"eu-west-1\" cloud))
+(claim lavora (→ Aws Bool (Export Dir)))
+(define (lavora boot b) \"pubblica\"
+  (let ((reg (ecr (altro-aws boot) (conto b))))
+    (unless (Registry.has? reg \"repo\" \"tag\") (Registry.push reg (pipe (container) (from \"alpine\")) \"repo\" \"tag\"))))
+(claim etichettato (Π ((id (Host-secret \"AWS_ACCESS_KEY_ID\")) (key (Host-secret \"AWS_SECRET_ACCESS_KEY\")) (s (Host-env \"DISEGNO_PROVA_S\" \"x\"))) (Export Dir)))
+(define (etichettato id key s) (lavora (aws id key \"eu-west-1\" cloud) (same? s \"x\")))")
+(assert (equal? (map (lambda (ch) (voce-of (last-of (filter (lambda (s) (eq? (car s) 'withExec)) ch))))
+                     (parameterize ([observe (lambda (ch) #f)]) (exits resolve-dry 'etichettato)))
+                '(lavora lavora)))
 
 ;; otherwise: se a fallisce si realizza b, poi si fallisce lo stesso. A secco il piano mostra b
 ;; dopo il segno «se qualcosa prima fallisce». Per Before, b conta come se a fosse fallito subito.

@@ -363,8 +363,10 @@
       (print-voce #t (car h) "" #f (cadr h) (caddr h) "" '())
       (for-each (lambda (s) (printf "    ↳ ~a\n" s)) (reverse (cadddr h)))
       (flush-output-port))))
+;; ponytail: un segreto non sa la sua voce e va sotto quella aperta; uno letto prima del primo
+;; passo della voce dopo finirebbe sotto la precedente.
 (define (sub-line name text)                             ; un'osservazione o un segreto letto
-  (if (and held (eq? (car held) name))
+  (if (and held (or (not name) (eq? (car held) name)))
       (set! held (list (car held) (cadr held) (caddr held) (cons text (cadddr held))))
       (begin (release!) (printf "↳ ~a~a\n" (if (and (symbol? name) (voce-doc name)) (pad name) "") text) (flush-output-port))))
 
