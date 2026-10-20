@@ -17,38 +17,41 @@
 (import aws)
 
 ; La configurazione: nomi come percorsi, valori come testo; la password è un segreto.
-(def configura : (→ Aws Secret (Export Dir))
-  [a password] (then (put-parameter a /app/prod/db-host "db.internal")
-               (then (put-parameter a /app/prod/db-port "5432")
-                     (put-secure-parameter a /app/prod/db-password password))))
+(claim configura (→ Aws Secret (Export Dir)))
+(define (configura a password)
+  (begin
+    (put-parameter a /app/prod/db-host "db.internal")
+    (put-parameter a /app/prod/db-port "5432")
+    (put-secure-parameter a /app/prod/db-password password)))
 
-(def test : (→ Dir (Remote Bool))
-  [src] (passes? (try-exec (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")
-                                 (with-dir /src src))
-                           ["test" "-f" "/src/go.mod"])))
+(claim test (→ Dir (Remote Bool)))
+(define (test src)
+  (passes? (try-exec (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")
+                           (with-dir /src src))
+                     (list "test" "-f" "/src/go.mod"))))
 
-(def rilascio : (→ Aws Secret Dir (Export Dir))
-  [a password src]
+(claim rilascio (→ Aws Secret Dir (Export Dir)))
+(define (rilascio a password src)
   (branch (test src)
-    (then (configura a password)
-          (branch (parameter-is? a /app/prod/db-port "5432")
-            skip
-            (overlay "out" (with-file empty /PARAMETRI "db-port non risulta scritto\n"))))
-    (overlay "out" (with-file empty /RIFIUTATO "il test non è passato\n"))))
+          (begin
+            (configura a password)
+            (unless (parameter-is? a /app/prod/db-port "5432")
+              (overlay "out" (with-file empty /PARAMETRI "db-port non risulta scritto\n"))))
+          (overlay "out" (with-file empty /RIFIUTATO "il test non è passato\n"))))
 
-(def main : (→ [id (Host-secret "AWS_ACCESS_KEY_ID")] [key (Host-secret "AWS_SECRET_ACCESS_KEY")]
-               [password (Host-secret "DB_PASSWORD")] [src (Host "hello")] (Export Dir))
-  [id key password src] (rilascio (aws id key "eu-west-1" cloud) password src))
+(claim main (Π ((id (Host-secret "AWS_ACCESS_KEY_ID")) (key (Host-secret "AWS_SECRET_ACCESS_KEY"))
+                (password (Host-secret "DB_PASSWORD")) (src (Host "hello"))) (Export Dir)))
+(define (main id key password src) (rilascio (aws id key "eu-west-1" cloud) password src))
 
 ; --- i teoremi: per ogni credenziale, password e sorgente ---
 
-(def sotto-prod : (→ [a Aws] [pw Secret] [src Dir] (Parameters-within /app/prod (rilascio a pw src)))
-  [a pw src] auto)
+(claim sotto-prod (Π ((a Aws) (pw Secret) (src Dir)) (Parameters-within /app/prod (rilascio a pw src))))
+(define (sotto-prod a pw src) auto)
 
-(def test-prima-dei-parametri : (→ [a Aws] [pw Secret] [src Dir] (Before test? ssm? (rilascio a pw src)))
-  [a pw src] auto)
+(claim test-prima-dei-parametri (Π ((a Aws) (pw Secret) (src Dir)) (Before test? ssm? (rilascio a pw src))))
+(define (test-prima-dei-parametri a pw src) auto)
 
-(def nessun-doppione : (→ [a Aws] [pw Secret] (Pairwise ⋔ (parameters (configura a pw))))
-  [a pw] auto)
+(claim nessun-doppione (Π ((a Aws) (pw Secret)) (Pairwise ⋔ (parameters (configura a pw)))))
+(define (nessun-doppione a pw) auto)
 
 ; Una regione che non esiste non si scrive: «eu-west-9» non è un Region valido.

@@ -7,46 +7,48 @@
 (extern show-ip : (→ Nat String) %show-ip)
 
 (record Ip
-  [n  : Nat]
-  [ok : (So (<? n 4294967296))])
+  (n Nat)
+  (ok (So (<? n 4294967296))))
 (builtin ip Ip)
 
-(def Ip.⊕ : (→ [p Ip] [o Nat] (So (<? (+ (Ip.n p) o) 4294967296)) Ip)
-  [p o h] (ip (+ (Ip.n p) o) h))
+(claim Ip.⊕ (Π ((p Ip) (o Nat)) (→ (So (<? (+ (Ip.n p) o) 4294967296)) Ip)))
+(define (Ip.⊕ p o h) (ip (+ (Ip.n p) o) h))
 
 (record Cidr                               ; il blocco prefisso·2^(32−len) … di lunghezza 2^(32−len)
-  [prefix : Nat]
-  [len    : Nat]
-  [ok     : (So (and (≤? len 32) (<? prefix (pow2 len))))])
+  (prefix Nat)
+  (len Nat)
+  (ok (So (and (≤? len 32) (<? prefix (pow2 len))))))
 (builtin cidr Cidr)
 
-(def cidr-range : (→ Cidr Interval)
-  [c] (let [size (pow2 (∸ 32 (Cidr.len c))), lo (* (Cidr.prefix c) size)]
-        (interval lo (+ lo size))))
+(claim cidr-range (→ Cidr Interval))
+(define (cidr-range c)
+  (let ((size (pow2 (∸ 32 (Cidr.len c))))
+        (lo (* (Cidr.prefix c) size)))
+    (interval lo (+ lo size))))
 
-(def render-ip : (→ Ip String)
-  [a] (show-ip (Ip.n a)))
+(claim render-ip (→ Ip String))
+(define (render-ip a) (show-ip (Ip.n a)))
 
-(def render-cidr : (→ Cidr String)
-  [c] (concat (show-ip (Interval.lo (cidr-range c))) (concat "/" (show (Cidr.len c)))))
+(claim render-cidr (→ Cidr String))
+(define (render-cidr c) (string-append (show-ip (Interval.lo (cidr-range c))) "/" (show (Cidr.len c))))
 
-(def in? : (→ Ip Cidr Bool)
-  [a c] (within? (interval (Ip.n a) (add1 (Ip.n a))) (cidr-range c)))
+(claim in? (→ Ip Cidr Bool))
+(define (in? a c) (within? (interval (Ip.n a) (add1 (Ip.n a))) (cidr-range c)))
 
 (data Cidr-apart : (→ Cidr Cidr Type)
-  [cidr-apart : (→ [a Cidr] [b Cidr] (So (apart? (cidr-range a) (cidr-range b))) (Cidr-apart a b))])
+  (cidr-apart : (Π ((a Cidr) (b Cidr)) (→ (So (apart? (cidr-range a) (cidr-range b))) (Cidr-apart a b)))))
 
-(def Disjoint-subnets : (→ (List Cidr) Type)
-  [cs] (Pairwise Cidr-apart cs))
+(claim Disjoint-subnets (→ (List Cidr) Type))
+(define (Disjoint-subnets cs) (Pairwise Cidr-apart cs))
 
 ; --- porte: punti su [0, 65535], senza spostamenti; le regioni sono intervalli ---
 
 (record Port
-  [n  : Nat]
-  [ok : (So (≤? n 65535))])
+  (n Nat)
+  (ok (So (≤? n 65535))))
 
-(def port-range : (→ Port Port Interval)  ; [a, b] come intervallo semiaperto
-  [a b] (interval (Port.n a) (add1 (Port.n b))))
+(claim port-range (→ Port Port Interval))  ; [a, b] come intervallo semiaperto
+(define (port-range a b) (interval (Port.n a) (add1 (Port.n b))))
 
 (data port≠ : (→ Port Port Type)
-  [port-distinct : (→ [a Port] [b Port] (So (not (nat=? (Port.n a) (Port.n b)))) (port≠ a b))])
+  (port-distinct : (Π ((a Port) (b Port)) (→ (So (not (nat=? (Port.n a) (Port.n b)))) (port≠ a b)))))

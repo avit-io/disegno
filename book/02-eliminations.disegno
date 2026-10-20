@@ -9,76 +9,87 @@
 ;   disegno check book/02-eliminations.disegno
 
 (data Stagione
-  [primavera]
-  [estate]
-  [autunno]
-  [inverno])
+  (primavera)
+  (estate)
+  (autunno)
+  (inverno))
 
 ; --- eliminare per casi ---
 ; Una definizione per casi elenca le introduzioni e dice che cosa fare con ciascuna. Ogni
-; clausola è [pattern] corpo.
+; clausola di match è (pattern corpo).
 
-(def successiva : (→ Stagione Stagione)
-  [primavera] estate
-  [estate]    autunno
-  [autunno]   inverno
-  [inverno]   primavera)
+(claim successiva (→ Stagione Stagione))
+(define (successiva n)
+  (match n
+    (primavera estate)
+    (estate    autunno)
+    (autunno   inverno)
+    (inverno   primavera)))
 
 ; --- armonia ---
-; Che cosa succede se si dimentica un caso? Togli la clausola [inverno] e verifica: il checker
-; risponde «successiva: manca il caso [inverno]». È il controllo dell'armonia di Dummett:
-; un'eliminazione deve rispondere a ogni introduzione, altrimenti pretenderebbe di usare un
-; elemento senza sapere come è fatto.
+; Che cosa succede se si dimentica un caso? Togli la clausola (inverno primavera) e verifica: il
+; checker risponde «successiva: manca il caso (successiva inverno)». È il controllo dell'armonia
+; di Dummett: un'eliminazione deve rispondere a ogni introduzione, altrimenti pretenderebbe di
+; usare un elemento senza sapere come è fatto.
 
 ; --- deviazioni ---
 ; Un'introduzione seguita subito da un'eliminazione è una deviazione, nel senso di Prawitz: si
 ; costruisce primavera per poi smontarla. Il calcolo la elimina, ed è questo che vuol dire
 ; calcolare: (successiva primavera) si riduce a estate.
 
-(def dopo-la-primavera : (≡ (successiva primavera) estate)
-  auto)
+(claim dopo-la-primavera (≡ (successiva primavera) estate))
+(define dopo-la-primavera auto)
 
 ; --- eliminare un naturale ---
 ; Le introduzioni di Nat sono zero e add1; eliminarne uno vuol dire rispondere a entrambe. Il
 ; pattern (add1 n) dà un nome, n, a ciò che add1 aveva preso: il predecessore.
 
-(def pred : (→ Nat Nat)
-  [zero]     zero
-  [(add1 n)] n)
+(claim pred (→ Nat Nat))
+(define (pred m)
+  (match m
+    (zero     zero)
+    ((add1 n) n)))
 
-(def pred-di-tre : (≡ (pred 3) 2)
-  auto)
+(claim pred-di-tre (≡ (pred 3) 2))
+(define pred-di-tre auto)
 
 ; Un caso può usare il risultato sui pezzi più piccoli: è la ricorsione. Qui la somma, come la
 ; definisce la libreria standard (si chiama +, la riscriviamo per vederla).
 
-(def somma : (→ Nat Nat Nat)
-  [zero     m] m
-  [(add1 k) m] (add1 (somma k m)))
+(claim somma (→ Nat Nat Nat))
+(define (somma n m)
+  (match n
+    (zero m)
+    ((add1 k) (add1 (somma k m)))))
 
-(def due-più-due : (≡ (somma 2 2) 4)
-  auto)
+(claim due-più-due (≡ (somma 2 2) 4))
+(define due-più-due auto)
 
 ; --- eliminare il nulla ---
 ; ⊥ non ha introduzioni. Eliminarlo vuol dire rispondere a ogni sua introduzione: a nessuna.
 ; Il pattern assurdo () lo dice al checker, e la clausola non ha corpo. Da ⊥ segue qualunque
 ; cosa, perché non c'è niente da cui partire: ex falso quodlibet, qui un'eliminazione vuota.
 
-(def da-niente : (→ ⊥ Stagione)
-  [()])
+(claim da-niente (→ ⊥ Stagione))
+(define (da-niente n)
+  (match n
+    (())))
 
 ; --- esercizi ---
 ;
 ; 1. La stagione precedente, e la prova che precedente e successiva si annullano su estate.
-; (def precedente : (→ Stagione Stagione)
-;   ___)
-; (def avanti-e-indietro : (≡ (precedente (successiva estate)) estate) auto)
+; (claim precedente (→ Stagione Stagione))
+; (define precedente ___)
+; (claim avanti-e-indietro (≡ (precedente (successiva estate)) estate))
+; (define avanti-e-indietro auto)
 ;
-; 2. È inverno? Usa Bool, dalla libreria standard: (data Bool [true] [false]).
-; (def inverno? : (→ Stagione Bool)
-;   ___)
+; 2. È inverno? Usa Bool, dalla libreria standard: (data Bool (true) (false)).
+; (claim inverno? (→ Stagione Bool))
+; (define inverno? ___)
 ;
 ; 3. Il prodotto, usando somma. Suggerimento: (* (add1 k) m) è m più (* k m).
-; (def prodotto : (→ Nat Nat Nat)
-;   [zero     m] ___
-;   [(add1 k) m] ___)
+; (claim prodotto (→ Nat Nat Nat))
+; (define (prodotto n m)
+;   (match n
+;     (zero ___)
+;     ((add1 k) ___)))

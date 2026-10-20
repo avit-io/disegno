@@ -7,19 +7,25 @@
 
 ; Le dichiarazioni e il nome che introducono.
 (list . (symbol) @keyword
-  (#any-of? @keyword "def" "data" "record" "extern" "include"))
+  (#any-of? @keyword "claim" "define" "data" "record" "extern" "import" "builtin"))
 (list . (symbol) @_kw . (symbol) @function
-  (#eq? @_kw "def"))
+  (#any-of? @_kw "claim" "define"))
+(list . (symbol) @_kw . (list . (symbol) @function)
+  (#eq? @_kw "define"))
 (list . (symbol) @_kw . (symbol) @type.definition
   (#any-of? @_kw "data" "record"))
 
 ; Le forme speciali.
 (list . (symbol) @keyword.control
-  (#any-of? @keyword.control "let" "pipe" "branch" "if"))
+  (#any-of? @keyword.control "let" "let*" "λ" "lambda" "match" "match*" "cond" "when" "unless" "begin" "pipe" "branch" "if" "the" "list"))
+((symbol) @keyword.control
+  (#eq? @keyword.control "else"))
 
-; I tipi: un nome con l'iniziale maiuscola (Nat, Container, Obj.…) e l'universo.
+; I tipi: un nome con l'iniziale maiuscola (Nat, Container, Obj.…), l'universo e i quantificatori.
 ((symbol) @type
   (#match? @type "^[A-Z]"))
+((symbol) @keyword.type
+  (#any-of? @keyword.type "Π" "∀"))
 
 ; Prove ed elementi speciali.
 ((symbol) @constant.builtin
@@ -29,5 +35,4 @@
 ((symbol) @operator
   (#any-of? @operator "→" ":" "≡" "⊑" "⋔" "¬" "⊕" "⊖" "/" "++" "+" "∸" "*" "≤" "≥" "×" "::"))
 
-; Clausole e binder: le quadre.
 ["(" ")" "[" "]"] @punctuation.bracket

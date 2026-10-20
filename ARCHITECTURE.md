@@ -8,7 +8,8 @@ Il criterio che regge tutte le scelte è uno solo: **semplicità sopra generalit
 
 ```
 sorgente .disegno
-  │  reader: s-espressioni; le quadre diventano (%br …); ogni lista ricorda file e offset
+  │  reader: s-espressioni (Scheme); ogni lista ricorda file e offset; la superficie (claim,
+  │  define, Π, match, list…) si traduce nelle forme interne
   ▼
 elaboratore (non fidato)      nomi, impliciti, metavariabili, nomi corti, letterali, pattern, auto
   │  termine del nucleo
@@ -31,7 +32,7 @@ Gli strati, dal più fidato al meno:
 |---|---|---|---|
 | Nucleo | `src/` | chi progetta il linguaggio | tutto, compresi i nomi `%…` |
 | Libreria standard | `lib/*.disegno` | chi progetta il linguaggio | `extern`, `builtin`, `import` |
-| Programma | ogni altro file | l'utente | `def`, `data`, `record`, `import` |
+| Programma | ogni altro file | l'utente | `claim`, `define`, `data`, `record`, `import` |
 
 ## 1. La teoria: Martin-Löf intensionale, con l'assioma K
 
@@ -43,7 +44,7 @@ Gli strati, dal più fidato al meno:
 - l'eliminazione verso `Type` è ammessa;
 - `Type : Type`, i tipi non positivi, la ricorsione non strutturale e i casi mancanti sono rifiutati.
 
-**K.** Il pattern matching unifica `x = x`. Quindi l'unicità delle prove d'identità è dimostrabile, e lo è anche K: `(def k … [P p refl] p)` passa il controllo. È la scelta di Agda senza `--without-K` e di Idris. Rende semplice il matching dipendente: non serve controllare che l'unificazione non usi K. Il prezzo è l'incompatibilità con l'univalenza, che in un linguaggio per CI/CD non serve.
+**K.** Il pattern matching unifica `x = x`. Quindi l'unicità delle prove d'identità è dimostrabile, e lo è anche K: `(define (k P p e) (match e (refl p)))` passa il controllo. È la scelta di Agda senza `--without-K` e di Idris. Rende semplice il matching dipendente: non serve controllare che l'unificazione non usi K. Il prezzo è l'incompatibilità con l'univalenza, che in un linguaggio per CI/CD non serve.
 
 **Scartato.** La teoria dei tipi omotopica (HoTT) e la teoria cubica: aggiungono complessità che non ripaga in questo dominio. L'uguaglianza estensionale: renderebbe indecidibile il controllo dei tipi.
 
@@ -51,13 +52,13 @@ Gli strati, dal più fidato al meno:
 
 **Scelta.** Il kernel (`k-infer`, `k-check`) conosce variabili, globali, applicazioni, λ, Π, `Type n`, annotazioni e i letterali di stringa e di numero. Non sa che cosa siano `≡` o `Nat`: per lui sono globali con un tipo. La conversione è la stessa unificazione dell'elaboratore, usata senza metavariabili.
 
-**Perché.** È il criterio di de Bruijn: un controllore piccolo che chiunque può rileggere. L'elaboratore può sbagliare a ricostruire un implicito, il kernel no. Se ne è avuta una prova durante la verifica: un caso in cui l'elaboratore lasciava passare un termine mal tipato, `(def e : (≡ Nat Nat) refl)`, è stato fermato dal kernel.
+**Perché.** È il criterio di de Bruijn: un controllore piccolo che chiunque può rileggere. L'elaboratore può sbagliare a ricostruire un implicito, il kernel no. Se ne è avuta una prova durante la verifica: un caso in cui l'elaboratore lasciava passare un termine mal tipato, `(claim e (≡ Nat Nat))` con `(define e refl)`, è stato fermato dal kernel.
 
 **Costo.** Nel kernel non entrano il pattern matching, la copertura e la terminazione, che si controllano nell'elaboratore. Rientrano quindi nella base fidata insieme al kernel, e per questo ciascuna ha i suoi test di rifiuto.
 
 ## 3. Pattern matching dipendente invece degli eliminatori
 
-**Scelta.** Una sola forma di definizione: `def nome : tipo` seguito da clausole `[pattern] corpo`. Valgono queste regole:
+**Scelta.** Una sola forma di definizione: `(claim nome tipo)` e `(define (nome x …) corpo)`, con `match` per i casi; sotto, una lista di clausole su tutti gli argomenti. Valgono queste regole:
 - la copertura si controlla dividendo i casi, con i tipi;
 - un caso è assurdo implicitamente se gli indici sono inconciliabili;
 - `()` dichiara un assurdo esplicito, che il checker verifica;
@@ -67,7 +68,7 @@ Gli strati, dal più fidato al meno:
 
 **Costo.** Un solo argomento decrescente: Ackermann è rifiutato. Non ci sono definizioni mutue; si codificano con famiglie indicizzate, come si fa già per il piano (sezione 7).
 
-**Induttivi annidati in una lista.** Un tipo può comparire dentro una `List` in un suo costruttore: `(data Rosa [nodo (List Rosa)])` è ammesso, perché `List` è strettamente positiva nel suo parametro (come in Coq e Agda). Sotto una freccia resta rifiutato: `(List (→ T ⊥))` no. È servito al piano: `docker-build` prende una lista di segreti, `(List (Obj Kind.secret))`. Vale solo per la `List` del builtin. La ricorsione strutturale non attraversa ancora la lista: una funzione su `Rosa` che chiama sé stessa sugli elementi viene rifiutata, e `nodes` non scende negli argomenti di tipo lista.
+**Induttivi annidati in una lista.** Un tipo può comparire dentro una `List` in un suo costruttore: `(data Rosa (nodo (List Rosa)))` è ammesso, perché `List` è strettamente positiva nel suo parametro (come in Coq e Agda). Sotto una freccia resta rifiutato: `(List (→ T ⊥))` no. È servito al piano: `docker-build` prende una lista di segreti, `(List (Obj Kind.secret))`. Vale solo per la `List` del builtin. La ricorsione strutturale non attraversa ancora la lista: una funzione su `Rosa` che chiama sé stessa sugli elementi viene rifiutata, e `nodes` non scende negli argomenti di tipo lista.
 
 ## 4. Universi stratificati, senza cumulatività
 
@@ -87,7 +88,7 @@ Gli strati, dal più fidato al meno:
 
 **Perché.** NbE dà la conversione per calcolo senza scrivere a mano la sostituzione, ed è la tecnica più semplice tra quelle corrette. La regola dei nomi da variabile serve a far emergere gli errori: un `Port` sconosciuto, magari per un `import` dimenticato, è un errore e non diventa un tipo qualsiasi che produce messaggi incomprensibili tre righe dopo.
 
-**Scartato.** Gli impliciti dichiarati a mano (`variable` di Agda, `{A : Type}` ovunque): rumore in ogni firma della libreria.
+**Scartato.** Gli impliciti dichiarati a mano ovunque (`variable` di Agda, `{A : Type}`): rumore in ogni firma della libreria. Dichiararli si può, con `(∀ ((A Type)) …)`, quando serve nominarli o dare loro un tipo.
 
 ## 6. Totalità e niente IO: il programma è un piano
 
@@ -96,7 +97,7 @@ Gli strati, dal più fidato al meno:
 **Perché.** È ciò che rende sensati i teoremi: il programma termina per costruzione e il piano è noto per intero prima di eseguire, quindi le proprietà del piano si provano. È l'IO a richieste e risposte di Haskell 1.0, la derivazione di Nix e il Cmd di Elm, senza l'evaluation in fase di build di Nix (*import from derivation*).
 
 **Due tempi.**
-- `if` decide su valori noti, mentre si costruisce il piano, ed è una `def` del prelude.
+- `if` decide su valori noti, mentre si costruisce il piano, ed è una `define` del prelude.
 - `branch` decide su osservazioni durante l'esecuzione, ed è un costruttore del piano che contiene entrambi i rami.
 - `(Remote Bool)` non è `Bool`: la distinzione di fase la fanno i tipi.
 - Il contenuto di un file non torna al linguaggio. `includes?`, `matches?`, `empty?` e `same-content?` (modulo `files`) sono osservazioni che Dagger calcola in un container, come `passes?`; al runner arriva un exit code, al programma un `(Remote Bool)`. Per `Before` contano come test.
@@ -170,7 +171,7 @@ Tre meccanismi, tutti riservati alla libreria tranne `import`.
 **`extern`: solo tipi opachi e primitive pure.** `String`, `contains?`, `concat`, `show`, `re?` (un'espressione regolare su tutta la stringa) e pochi altri: calcolano soltanto sui letterali. Con `re?` una libreria si definisce i suoi tipi raffinati, come `Bucket` e `Arn` in `aws`, senza toccare il nucleo. Un extern non mente, perché restituisce un tipo opaco o calcola, mai una proposizione e mai un dato del mondo. Precedente: Elm 0.19, che ha riservato il codice nativo ai pacchetti ufficiali.
 
 **`builtin`: il nucleo non nomina la libreria.** Il nucleo ha un elenco chiuso di chiavi (`nat`, `zero`, `suc`, `list`, `string`, `abs`, `ip`, `obj`, `host`…). La libreria lega ciascuna a un suo nome con `(builtin chiave nome)`, come i `BUILTIN` di Agda. Passano da qui:
-- i letterali `0`, `"x"`, `/out` e `[a b]`;
+- i letterali `0`, `"x"`, `/out` e le liste `(list a b)`;
 - le prove di `auto` (`⊤`, `≡`, `⊥`);
 - l'accelerazione;
 - il piano e l'input di `main`.
@@ -202,19 +203,27 @@ Il controllo verifica che il nome esista e sia del genere giusto (tipo, costrutt
 
 ## 12. La superficie
 
-**Scelta.** Il linguaggio usa le s-espressioni, ma le quadre sono sintassi:
-- in una firma `[x T]` è un binder, `(x T)` un'applicazione;
-- in un termine `["a" "b"]` è una lista;
-- nelle definizioni le quadre raccolgono pattern o campi.
+**Scelta.** La sintassi è quella di Pie (*The Little Typer*), cioè Scheme con i tipi. Le parentesi sono solo tonde; le quadre sono un sinonimo, come in R6RS, e non vogliono dire niente di diverso.
+- `(claim nome tipo)` afferma il giudizio, `(define (nome x …) corpo)` lo giustifica, come in Pie;
+- `(Π ((x A) …) B)` per i tipi dipendenti, `(∀ ((A Type) …) B)` per gli argomenti impliciti, `(→ A B C)` quando niente dipende;
+- `(λ (x …) corpo)`, `(let ((x e) …) corpo)` in sequenza, `(list a b c)`;
+- i casi si scrivono con `match` sugli argomenti della `define`, o `match*` su più di uno: `(match n (zero m) ((add1 k) …))`. Una clausola con il pattern assurdo `()` non ha corpo;
+- le forme di Scheme per il piano: `cond` sui valori, `when` e `unless` sulle osservazioni (`branch` con `skip`), `begin` per gli effetti in sequenza (`then`), `string-append`.
 
 Inoltre:
 - `pipe` passa il valore come primo argomento, come l'oggetto di un metodo GraphQL;
-- i campi dello schema si scrivono senza prefisso: `(with-exec c …)` si risolve in `Container.with-exec` perché `c` è un `Container`;
-- le parole riservate sono solo `→ Type _ pipe auto let`.
+- i campi dello schema si scrivono senza prefisso: `(with-exec c …)` si risolve in `Container.with-exec` perché `c` è un `Container`.
 
-**Perché.** Le s-espressioni non hanno precedenze né ambiguità, e il reader di Chez le legge già. Le quadre rimettono nel testo la distinzione tra legare e applicare che le parentesi da sole cancellano. La risoluzione dei nomi corti guidata dal tipo tiene lo schema fuori dal programma.
+Tutte queste forme sono zucchero: un passo prima dell'elaborazione le traduce nelle forme interne, e il nucleo non cambia. `match` diventa le clausole su tutti gli argomenti che l'elaboratore controlla da sempre (copertura, assurdi, terminazione).
 
-**Costo.** Un apice nei nomi (`f'`) è la `quote` del reader, quindi non si usa.
+**Perché.** Chi usa Disegno non deve imparare una lingua nuova: deve leggere Scheme. La prima versione dava alle quadre tre significati (binder in una firma, lista in un termine, pattern in una definizione) e aveva un `let` con le virgole: si leggeva come una lingua a sé. Pie mostra che i tipi dipendenti stanno bene dentro la sintassi di Scheme.
+
+**Costo.**
+- Più parentesi: `(list "a" "b")` invece di `["a" "b"]`, `(Π ((x A)) …)` invece di `[x A]`.
+- `match` vale solo sugli argomenti della `define`, in testa al corpo (o dentro un'altra clausola): non è un'espressione qualsiasi. È ciò che serve al pattern matching dipendente; un `match` su un valore calcolato richiederebbe una funzione ausiliaria.
+- Un apice nei nomi (`f'`) è la `quote` del reader, quindi non si usa.
+
+**Scartato.** Tenere le due sintassi insieme. La migrazione è stata fatta una volta sola, con uno strumento che conservava commenti e testo.
 
 ## 13. Errori e strumenti
 

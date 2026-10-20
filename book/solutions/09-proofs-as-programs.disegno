@@ -2,55 +2,70 @@
 ;
 ;   disegno check book/solutions/09-proofs-as-programs.disegno
 
-(def Decidibile : (→ Type Type)
-  [A] (Either A (¬ A)))
+(claim Decidibile (→ Type Type))
+(define (Decidibile A) (Either A (¬ A)))
 
 ; 1. Induzione su n: ≤-zero per zero, ≤-succ per il passo.
 
-(def ≤-add1 : (→ [n Nat] (≤ n (add1 n)))
-  [zero]     ≤-zero
-  [(add1 k)] (≤-succ (≤-add1 k)))
+(claim ≤-add1 (Π ((n Nat)) (≤ n (add1 n))))
+(define (≤-add1 n)
+  (match n
+    (zero     ≤-zero)
+    ((add1 k) (≤-succ (≤-add1 k)))))
 
 ; 2. Come decidi-≤. Due casi si refutano subito con il pattern assurdo; nel passo, una
 ;    refutazione di (≡ j k) diventa una di (≡ (add1 j) (add1 k)) grazie all'iniettività.
 
-(def add1-iniettivo : (→ (≡ (add1 n) (add1 m)) (≡ n m))
-  [refl] refl)
+(claim add1-iniettivo (→ (≡ (add1 n) (add1 m)) (≡ n m)))
+(define (add1-iniettivo x)
+  (match x
+    (refl refl)))
 
-(def zero-non-è-add1 : (¬ (≡ zero (add1 n)))
-  [()])
+(claim zero-non-è-add1 (¬ (≡ zero (add1 n))))
+(define (zero-non-è-add1 m)
+  (match m
+    (())))
 
-(def add1-non-è-zero : (¬ (≡ (add1 n) zero))
-  [()])
+(claim add1-non-è-zero (¬ (≡ (add1 n) zero)))
+(define (add1-non-è-zero m)
+  (match m
+    (())))
 
-(def un-passo-≡ : (→ (Decidibile (≡ m n)) (Decidibile (≡ (add1 m) (add1 n))))
-  [(left p)]   (left (cong add1 p))
-  [(right np)] (right (λ [q] (np (add1-iniettivo q)))))
+(claim un-passo-≡ (→ (Decidibile (≡ m n)) (Decidibile (≡ (add1 m) (add1 n)))))
+(define (un-passo-≡ x)
+  (match x
+    ((left p)   (left (cong add1 p)))
+    ((right np) (right (λ (q) (np (add1-iniettivo q)))))))
 
-(def decidi-≡ : (→ [m Nat] [n Nat] (Decidibile (≡ m n)))
-  [zero     zero]     (left refl)
-  [zero     (add1 _)] (right zero-non-è-add1)
-  [(add1 _) zero]     (right add1-non-è-zero)
-  [(add1 j) (add1 k)] (un-passo-≡ (decidi-≡ j k)))
+(claim decidi-≡ (Π ((m Nat) (n Nat)) (Decidibile (≡ m n))))
+(define (decidi-≡ m n)
+  (match* (m n)
+    ((zero zero)     (left refl))
+    ((zero (add1 _)) (right zero-non-è-add1))
+    (((add1 _) zero)     (right add1-non-è-zero))
+    (((add1 j) (add1 k)) (un-passo-≡ (decidi-≡ j k)))))
 
 ; 3. Induzione sulla prova. Per ≤-zero, (≤? zero n) si riduce a true e (So true) a ⊤. Per
 ;    ≤-succ, (≤? (add1 m) (add1 n)) si riduce a (≤? m n): è l'ipotesi induttiva.
 
-(def ≤?-completo : (→ (≤ m n) (So (≤? m n)))
-  [≤-zero]     tt
-  [(≤-succ p)] (≤?-completo p))
+(claim ≤?-completo (→ (≤ m n) (So (≤? m n))))
+(define (≤?-completo x)
+  (match x
+    (≤-zero     tt)
+    ((≤-succ p) (≤?-completo p))))
 
 ; 4. Una politica, e il teorema che il piano la rispetta.
 
 (import dagger)
 
-(def golang? : (→ Image Bool)
-  [i] (contains? (Image.raw i) "golang"))
+(claim golang? (→ Image Bool))
+(define (golang? i) (contains? (Image.raw i) "golang"))
 
-(def build : Container
+(claim build Container)
+(define build
   (pipe (container)
         (from "golang:1.25-alpine")
-        (with-exec ["go" "build" "./..."])))
+        (with-exec (list "go" "build" "./..."))))
 
-(def tutto-golang : (All golang? (images build))
-  auto)
+(claim tutto-golang (All golang? (images build)))
+(define tutto-golang auto)

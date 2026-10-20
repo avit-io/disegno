@@ -6,18 +6,20 @@
 
 (import dagger)
 
-(def chez : Container                                    ; Chez Scheme su Alpine, chiamato scheme
+(claim chez Container)                                    ; Chez Scheme su Alpine, chiamato scheme
+(define chez
   (pipe (container)
         (from "alpine:3.22")
-        (with-exec ["apk" "add" "--no-cache" "chez-scheme"])
-        (with-exec ["ln" "-s" "/usr/bin/chez" "/usr/bin/scheme"])))
+        (with-exec (list "apk" "add" "--no-cache" "chez-scheme"))
+        (with-exec (list "ln" "-s" "/usr/bin/chez" "/usr/bin/scheme"))))
 
-(def test : (→ Dir Dir)
-  [repo] (pipe chez
-               (with-dir /src repo)
-               (with-workdir /src)
-               (with-exec ["sh" "-c" "mkdir -p /out; scheme --script tests/test.ss >/out/test.log 2>&1; s=$?; cat /out/test.log; exit $s"])
-               (dir-of /out)))
+(claim test (→ Dir Dir))
+(define (test repo)
+  (pipe chez
+        (with-dir /src repo)
+        (with-workdir /src)
+        (with-exec (list "sh" "-c" "mkdir -p /out; scheme --script tests/test.ss >/out/test.log 2>&1; s=$?; cat /out/test.log; exit $s"))
+        (dir-of /out)))
 
-(def main : (→ [repo (Host ".")] (Export Dir))
-  [repo] (overlay "ci-out" (test repo)))
+(claim main (Π ((repo (Host "."))) (Export Dir)))
+(define (main repo) (overlay "ci-out" (test repo)))

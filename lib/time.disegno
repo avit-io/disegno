@@ -3,29 +3,39 @@
 ; --- tempo: istanti e durate, in secondi. "2026-10-15T10:00:00Z" è un istante, "1h30m" una durata ---
 
 (data Instant
-  [at Nat])
+  (at Nat))
 (builtin instant Instant)
 
 (data Duration
-  [secs Nat])
+  (secs Nat))
 (builtin duration Duration)
 
-(def Instant.⊕ : (→ Instant Duration Instant)
-  [(at a) (secs d)] (at (+ a d)))
+(claim Instant.⊕ (→ Instant Duration Instant))
+(define (Instant.⊕ n m)
+  (match* (n m)
+    (((at a) (secs d)) (at (+ a d)))))
 
 ; Sugli istanti (miliardi di secondi) l'ordine è il test decidibile, che auto calcola; la legge
 ; passa per la relazione induttiva con il lemma di riflessione ≤-from.
-(def ≥t : (→ Instant Instant Type)        ; (≥t p q): p non viene prima di q
-  [(at p) (at q)] (So (≤? q p)))
+(claim ≥t (→ Instant Instant Type))        ; (≥t p q): p non viene prima di q
+(define (≥t n m)
+  (match* (n m)
+    (((at p) (at q)) (So (≤? q p)))))
 
-(def Instant.⊖ : (→ [p Instant] [q Instant] (≥t p q) Duration)
-  [(at a) (at b) _] (secs (∸ a b)))
+(claim Instant.⊖ (Π ((p Instant) (q Instant)) (→ (≥t p q) Duration)))
+(define (Instant.⊖ p q _)
+  (match* (p q)
+    (((at a) (at b)) (secs (∸ a b)))))
 
-(def Instant.⊕-⊖ : (→ [p Instant] [q Instant] [h (≥t p q)] (≡ (Instant.⊕ q (Instant.⊖ p q h)) p))
-  [(at a) (at b) h] (cong at (+-∸ a b (≤-from b a h))))
+(claim Instant.⊕-⊖ (Π ((p Instant) (q Instant) (h (≥t p q))) (≡ (Instant.⊕ q (Instant.⊖ p q h)) p)))
+(define (Instant.⊕-⊖ p q h)
+  (match* (p q)
+    (((at a) (at b)) (cong at (+-∸ a b (≤-from b a h))))))
 
-(def tempo : (Affine Instant Duration ≥t)
-  (affine Instant.⊕ Instant.⊖ Instant.⊕-⊖))
+(claim tempo (Affine Instant Duration ≥t))
+(define tempo (affine Instant.⊕ Instant.⊖ Instant.⊕-⊖))
 
-(def window : (→ Instant Duration Interval) ; una finestra: dall'istante, per la durata
-  [(at a) (secs d)] (interval a (+ a d)))
+(claim window (→ Instant Duration Interval)) ; una finestra: dall'istante, per la durata
+(define (window n m)
+  (match* (n m)
+    (((at a) (secs d)) (interval a (+ a d)))))

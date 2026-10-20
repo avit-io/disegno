@@ -5,49 +5,61 @@
 (import text)
 
 (data Vec : (→ Type Nat Type)
-  [vnil  : (Vec A zero)]
-  [vcons : (→ A (Vec A n) (Vec A (add1 n)))])
+  (vnil  : (Vec A zero))
+  (vcons : (→ A (Vec A n) (Vec A (add1 n)))))
 
-(def tre-lettere : (Vec String 3)
-  (vcons "a" (vcons "b" (vcons "c" vnil))))
+(claim tre-lettere (Vec String 3))
+(define tre-lettere (vcons "a" (vcons "b" (vcons "c" vnil))))
 
-(def testa : (→ (Vec A (add1 n)) A)
-  [(vcons a _)] a)
+(claim testa (→ (Vec A (add1 n)) A))
+(define (testa m)
+  (match m
+    ((vcons a _) a)))
 
-(def coda : (→ (Vec A (add1 n)) (Vec A n))
-  [(vcons _ resto)] resto)
+(claim coda (→ (Vec A (add1 n)) (Vec A n)))
+(define (coda m)
+  (match m
+    ((vcons _ resto) resto)))
 
 ; 1. Il tipo del risultato ha lo stesso n dell'argomento: una mappa che perde o aggiunge
 ;    elementi non passerebbe.
 
-(def mappa : (→ (→ A B) (Vec A n) (Vec B n))
-  [f vnil]            vnil
-  [f (vcons x resto)] (vcons (f x) (mappa f resto)))
+(claim mappa (→ (→ A B) (Vec A n) (Vec B n)))
+(define (mappa f m)
+  (match m
+    (vnil            vnil)
+    ((vcons x resto) (vcons (f x) (mappa f resto)))))
 
 ; 2. vnil diventa vuota, vcons diventa ::. L'indice si perde.
 
-(def in-lista : (→ (Vec A n) (List A))
-  [vnil]            vuota
-  [(vcons x resto)] (:: x (in-lista resto)))
+(claim in-lista (→ (Vec A n) (List A)))
+(define (in-lista m)
+  (match m
+    (vnil            vuota)
+    ((vcons x resto) (:: x (in-lista resto)))))
 
 ; 3. Servono almeno due elementi: (add1 (add1 n)). coda toglie il primo, testa prende il
 ;    successivo, e i tipi combaciano da soli.
 
-(def secondo : (→ (Vec A (add1 (add1 n))) A)
-  [v] (testa (coda v)))
+(claim secondo (→ (Vec A (add1 (add1 n))) A))
+(define (secondo v) (testa (coda v)))
 
-(def la-b : (≡ (secondo tre-lettere) "b")
-  auto)
+(claim la-b (≡ (secondo tre-lettere) "b"))
+(define la-b auto)
 
 ; 4. ultimo-da porta con sé l'ultimo elemento visto, e scende sul resto: la ricorsione è su
 ;    bs, un pezzo dell'argomento.
 
-(def ultimo-da : (→ A (Vec A n) A)
-  [a vnil]         a
-  [_ (vcons b bs)] (ultimo-da b bs))
+(claim ultimo-da (→ A (Vec A n) A))
+(define (ultimo-da a m)
+  (match m
+    (vnil         a)
+    ((vcons b bs) (ultimo-da b bs))))
 
-(def ultimo : (→ (Vec A (add1 n)) A)
-  [(vcons a resto)] (ultimo-da a resto))
+(claim ultimo (→ (Vec A (add1 n)) A))
+(define (ultimo m)
+  (match m
+    ((vcons a resto) (ultimo-da a resto))))
 
-(def la-c : (≡ (ultimo tre-lettere) "c")
-  auto)
+(claim la-c (≡ (ultimo tre-lettere) "c"))
+(define la-c auto)

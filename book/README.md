@@ -17,7 +17,7 @@ Programmi e prove si scrivono allo stesso modo. Il libro comincia dai programmi 
 
 ## Come si legge
 
-Ogni capitolo è un file `.disegno`: il testo sta nei commenti, il codice è codice vero. Leggilo in un editor con il plugin di Disegno (l'hover mostra i tipi), e verificalo:
+Ogni capitolo è un file `.disegno`: il testo sta nei commenti, il codice è codice vero. La sintassi è quella di Pie, cioè Scheme con i tipi: `(claim nome tipo)`, poi `(define (nome x …) corpo)`. Leggilo in un editor con il plugin di Disegno (l'hover mostra i tipi), e verificalo:
 
 ```
 disegno check book/01-introductions.disegno

@@ -9,20 +9,20 @@
 (extern segment? : (→ String Bool) %segment?)
 
 (record Segment
-  [name : String]
-  [ok   : (So (segment? name))])
+  (name String)
+  (ok (So (segment? name))))
 (builtin segment Segment)
 
 (data Abs
-  [root]
-  [/ Abs Segment])
+  (root)
+  (/ Abs Segment))
 (builtin abs Abs)
 (builtin root root)
 (builtin slash /)
 
 (data Rel
-  [here]
-  [step Rel Segment])
+  (here)
+  (step Rel Segment))
 (builtin rel Rel)
 (builtin here here)
 (builtin step step)
@@ -30,40 +30,48 @@
 ; (⊑ p q): p sta dentro q. È induttivo, quindi la differenza si calcola sulla prova e le leggi
 ; si dimostrano per induzione, senza confrontare stringhe.
 (data ⊑ : (→ Abs Abs Type)
-  [⊑-refl : (⊑ p p)]
-  [⊑-step : (→ (⊑ p q) (⊑ (/ p s) q))])
+  (⊑-refl : (⊑ p p))
+  (⊑-step : (→ (⊑ p q) (⊑ (/ p s) q))))
 
-(def Abs.⊕ : (→ Abs Rel Abs)
-  [p here]       p
-  [p (step v s)] (/ (⊕ p v) s))
+(claim Abs.⊕ (→ Abs Rel Abs))
+(define (Abs.⊕ p n)
+  (match n
+    (here       p)
+    ((step v s) (/ (⊕ p v) s))))
 
-(def Abs.⊖ : (→ [p Abs] [q Abs] (⊑ p q) Rel)
-  [p       q ⊑-refl]     here
-  [(/ p s) q (⊑-step h)] (step (⊖ p q h) s))
+(claim Abs.⊖ (Π ((p Abs) (q Abs)) (→ (⊑ p q) Rel)))
+(define (Abs.⊖ p q n)
+  (match* (p n)
+    ((p ⊑-refl)     here)
+    (((/ p s) (⊑-step h)) (step (⊖ p q h) s))))
 
-(def /s : (→ Segment Abs Abs)
-  [s p] (/ p s))
+(claim /s (→ Segment Abs Abs))
+(define (/s s p) (/ p s))
 
 ; Un punto come testo, per comporre indirizzi: /site/css → "/site/css"; la radice è "".
-(def render-abs : (→ Abs String)
-  [root]    ""
-  [(/ p s)] (concat (render-abs p) (concat "/" (Segment.name s))))
+(claim render-abs (→ Abs String))
+(define (render-abs n)
+  (match n
+    (root    "")
+    ((/ p s) (string-append (render-abs p) "/" (Segment.name s)))))
 
 ; La legge: q ⊕ (p ⊖ q) = p. Dimostrata qui una volta; chi scrive un disegno la eredita.
-(def ⊕-⊖ : (→ [p Abs] [q Abs] [h (⊑ p q)] (≡ (⊕ q (⊖ p q h)) p))
-  [p       q ⊑-refl]     refl
-  [(/ p s) q (⊑-step h)] (cong (/s s) (⊕-⊖ p q h)))
+(claim ⊕-⊖ (Π ((p Abs) (q Abs) (h (⊑ p q))) (≡ (⊕ q (⊖ p q h)) p)))
+(define (⊕-⊖ p q h)
+  (match* (p h)
+    ((p ⊑-refl)     refl)
+    (((/ p s) (⊑-step h)) (cong (/s s) (⊕-⊖ p q h)))))
 
-(def percorsi : (Affine Abs Rel ⊑)
-  (affine Abs.⊕ Abs.⊖ ⊕-⊖))
+(claim percorsi (Affine Abs Rel ⊑))
+(define percorsi (affine Abs.⊕ Abs.⊖ ⊕-⊖))
 
 ; Regioni: il sottoalbero di un punto. (⋔ p q): i sottoalberi di p e q sono disgiunti, perché i
 ; due percorsi si separano a un passo. Induttivo come ⊑; auto trova il punto di separazione.
 
-(def ≠ : (→ Segment Segment Type)
-  [s t] (So (distinct? (Segment.name s) (Segment.name t))))
+(claim ≠ (→ Segment Segment Type))
+(define (≠ s t) (So (distinct? (Segment.name s) (Segment.name t))))
 
 (data ⋔ : (→ Abs Abs Type)
-  [⋔-here  : (→ (≠ s t) (⋔ (/ p s) (/ p t)))]
-  [⋔-left  : (→ (⋔ p q) (⋔ (/ p s) q))]
-  [⋔-right : (→ (⋔ p q) (⋔ p (/ q s)))])
+  (⋔-here  : (→ (≠ s t) (⋔ (/ p s) (/ p t))))
+  (⋔-left  : (→ (⋔ p q) (⋔ (/ p s) q)))
+  (⋔-right : (→ (⋔ p q) (⋔ p (/ q s)))))

@@ -13,18 +13,20 @@
 ; Il checker accetta una ricorsione solo se un argomento scende così, di costruttore in
 ; costruttore. Si chiama ricorsione strutturale.
 
-(def doppio : (→ Nat Nat)
-  [zero]     zero
-  [(add1 k)] (add1 (add1 (doppio k))))
+(claim doppio (→ Nat Nat))
+(define (doppio n)
+  (match n
+    (zero     zero)
+    ((add1 k) (add1 (add1 (doppio k))))))
 
-(def doppio-di-tre : (≡ (doppio 3) 6)
-  auto)
+(claim doppio-di-tre (≡ (doppio 3) 6))
+(define doppio-di-tre auto)
 
 ; --- perché niente ricorsione generale ---
 ; Se ogni chiamata ricorsiva fosse ammessa, questa definizione passerebbe:
 ;
-;   (def assurdo : ⊥
-;     assurdo)
+;   (claim assurdo ⊥)
+;   (define assurdo assurdo)
 ;
 ; Il tipo dice ⊥ e il corpo è assurdo stesso: il checker non avrebbe niente da obiettare. Ma
 ; allora ⊥ avrebbe un elemento, e dal capitolo 2 sappiamo che da ⊥ segue qualunque cosa: ogni
@@ -42,12 +44,14 @@
 ; può dipendere dal numero: mot (il «motivo», come in The Little Typer) dice di che tipo è il
 ; risultato per ciascun n.
 
-(def ind-Nat : (→ [n Nat] [mot (→ Nat Type)]
-                  (mot zero)
-                  (→ [k Nat] (mot k) (mot (add1 k)))
-                  (mot n))
-  [zero     mot base passo] base
-  [(add1 k) mot base passo] (passo k (ind-Nat k mot base passo)))
+(claim ind-Nat (Π ((n Nat) (mot (→ Nat Type)))
+                 (→ (mot zero)
+                    (Π ((k Nat)) (→ (mot k) (mot (add1 k))))
+                    (mot n))))
+(define (ind-Nat n mot base passo)
+  (match n
+    (zero base)
+    ((add1 k) (passo k (ind-Nat k mot base passo)))))
 
 ; Si legga il tipo come una regola di Gentzen. Per ottenere (mot n) bastano due cose: (mot zero),
 ; e un modo di passare da (mot k) a (mot (add1 k)). Le due premesse corrispondono alle due
@@ -61,14 +65,14 @@
 ; Quando il tipo del risultato non dipende dal numero, il motivo è una funzione costante, e
 ; ind-Nat diventa la ricorsione semplice.
 
-(def rec-Nat : (→ {X Type} Nat X (→ Nat X X) X)
-  [n base passo] (ind-Nat n (λ [_] X) base passo))
+(claim rec-Nat (∀ ((X Type)) (→ Nat X (→ Nat X X) X)))
+(define (rec-Nat n base passo) (ind-Nat n (λ (_) X) base passo))
 
-(def doppio-bis : (→ Nat Nat)
-  [n] (rec-Nat n 0 (λ [_ d] (add1 (add1 d)))))
+(claim doppio-bis (→ Nat Nat))
+(define (doppio-bis n) (rec-Nat n 0 (λ (_ d) (add1 (add1 d)))))
 
-(def stesso-doppio : (≡ (doppio-bis 3) (doppio 3))
-  auto)
+(claim stesso-doppio (≡ (doppio-bis 3) (doppio 3)))
+(define stesso-doppio auto)
 
 ; --- un motivo che dipende ---
 ; Ora un motivo vero: per ogni n, (+ n 0) è n. Il calcolo non basta, perché (+ n 0) con n
@@ -78,23 +82,26 @@
 ;          due lati: è cong, dalla libreria standard. L'uguaglianza ha il capitolo 6; per ora
 ;          basta sapere che cong porta un'uguaglianza dentro una funzione.
 
-(def +-zero : (→ [n Nat] (≡ (+ n 0) n))
-  [n] (ind-Nat n (λ [k] (≡ (+ k 0) k))
-         refl
-         (λ [k ih] (cong add1 ih))))
+(claim +-zero (Π ((n Nat)) (≡ (+ n 0) n)))
+(define (+-zero n)
+  (ind-Nat n (λ (k) (≡ (+ k 0) k))
+           refl
+           (λ (k ih) (cong add1 ih))))
 
 ; ih sta per ipotesi induttiva. La stessa prova si può scrivere con il pattern matching e la
 ; ricorsione strutturale: è la stessa eliminazione, senza nominarla.
 
-(def +-zero-bis : (→ [n Nat] (≡ (+ n 0) n))
-  [zero]     refl
-  [(add1 k)] (cong add1 (+-zero-bis k)))
+(claim +-zero-bis (Π ((n Nat)) (≡ (+ n 0) n)))
+(define (+-zero-bis n)
+  (match n
+    (zero     refl)
+    ((add1 k) (cong add1 (+-zero-bis k)))))
 
 ; --- anche i tipi devono essere ben fondati ---
 ; La ricorsione si può nascondere anche in un data. Questo tipo verrebbe rifiutato:
 ;
 ;   (data Strano
-;     [avvolgi (→ Strano ⊥)])
+;     (avvolgi (→ Strano ⊥)))
 ;
 ; Un elemento di Strano conterrebbe una funzione che consuma Strano; con essa si riesce a
 ; scrivere un elemento di ⊥ senza nessuna definizione ricorsiva. Il checker richiede che il
@@ -104,16 +111,17 @@
 ; --- esercizi ---
 ;
 ; 1. La lunghezza di un ramo sinistro: quante volte si può scendere a sinistra in un Albero.
-; (data Albero [foglia] [nodo Albero Albero])
-; (def sinistra : (→ Albero Nat)
-;   ___)
+; (data Albero (foglia) (nodo Albero Albero))
+; (claim sinistra (→ Albero Nat))
+; (define sinistra ___)
 ;
 ; 2. Il prodotto con rec-Nat, senza pattern matching. Suggerimento: (* n m) è m sommato n volte.
-; (def prodotto : (→ Nat Nat Nat)
-;   [n m] (rec-Nat n ___ ___))
-; (def sei : (≡ (prodotto 2 3) 6) auto)
+; (claim prodotto (→ Nat Nat Nat))
+; (define (prodotto n m) (rec-Nat n ___ ___))
+; (claim sei (≡ (prodotto 2 3) 6))
+; (define sei auto)
 ;
 ; 3. Per ogni n, (+ n (add1 m)) è (add1 (+ n m)). Usa ind-Nat, poi riscrivila col pattern
 ;    matching.
-; (def +-add1 : (→ [n Nat] [m Nat] (≡ (+ n (add1 m)) (add1 (+ n m))))
-;   [n m] (ind-Nat n ___ ___ ___))
+; (claim +-add1 (Π ((n Nat) (m Nat)) (≡ (+ n (add1 m)) (add1 (+ n m)))))
+; (define (+-add1 n m) (ind-Nat n ___ ___ ___))

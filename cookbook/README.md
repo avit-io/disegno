@@ -4,7 +4,7 @@ Ricette brevi, ciascuna un programma a sé e commentato. Si leggono in ordine; t
 
 | Ricetta | Mostra | Comando |
 |---|---|---|
-| [00-basics](00-basics.disegno) | `data`, `def`, pattern, prove per induzione, `record` con invarianti, `auto` | `disegno check` |
+| [00-basics](00-basics.disegno) | `data`, `claim` e `define`, `match`, prove per induzione, `record` con invarianti, `auto` | `disegno check` |
 | [01-files](01-files.disegno) | `Host` ed `Export`, directory come valori, una configurazione resa come testo | `disegno plan` / `run` |
 | [02-go-build](02-go-build.disegno) | container, `pipe`, nomi del motore senza prefisso, percorsi come punti, cache, montaggi disgiunti per ogni sorgente | `disegno plan` / `run` |
 | [03-release](03-release.disegno) | `branch` sull'esito dei test, `publish`, il teorema test-prima-di-publish | `disegno plan` |

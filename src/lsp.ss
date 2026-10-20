@@ -123,11 +123,10 @@
 
 ;; --- simboli: le dichiarazioni del file, lette senza controllarle ---
 
-(define symbol-kinds '((def . 12) (data . 10) (record . 23) (extern . 12)))   ; Function, Enum, Struct
+(define symbol-kinds '((claim . 12) (data . 10) (record . 23) (extern . 12)))   ; Function, Enum, Struct
 
 (define (document-symbols msg params)
-  (let*-values ([(text) (hashtable-ref documents (get (get params "textDocument") "uri") "")]
-                [(t opens) (brackets text)])
+  (let*-values ([(text) (hashtable-ref documents (get (get params "textDocument") "uri") "")] [(t) text])
     (let* ([sfd (make-source-file-descriptor "doc" (open-bytevector-input-port (string->utf8 t)))]
            [p (open-string-input-port t)]
            [line-col (lambda (off)                    ; offset → (riga . colonna), da 0

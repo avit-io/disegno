@@ -3,43 +3,53 @@
 ;   disegno check book/solutions/02-eliminations.disegno
 
 (data Stagione
-  [primavera]
-  [estate]
-  [autunno]
-  [inverno])
+  (primavera)
+  (estate)
+  (autunno)
+  (inverno))
 
-(def successiva : (→ Stagione Stagione)
-  [primavera] estate
-  [estate]    autunno
-  [autunno]   inverno
-  [inverno]   primavera)
+(claim successiva (→ Stagione Stagione))
+(define (successiva n)
+  (match n
+    (primavera estate)
+    (estate    autunno)
+    (autunno   inverno)
+    (inverno   primavera)))
 
-(def somma : (→ Nat Nat Nat)
-  [zero     m] m
-  [(add1 k) m] (add1 (somma k m)))
+(claim somma (→ Nat Nat Nat))
+(define (somma n m)
+  (match n
+    (zero m)
+    ((add1 k) (add1 (somma k m)))))
 
 ; 1. Un caso per ogni introduzione, come successiva ma all'indietro.
 
-(def precedente : (→ Stagione Stagione)
-  [primavera] inverno
-  [estate]    primavera
-  [autunno]   estate
-  [inverno]   autunno)
+(claim precedente (→ Stagione Stagione))
+(define (precedente n)
+  (match n
+    (primavera inverno)
+    (estate    primavera)
+    (autunno   estate)
+    (inverno   autunno)))
 
-(def avanti-e-indietro : (≡ (precedente (successiva estate)) estate)
-  auto)
+(claim avanti-e-indietro (≡ (precedente (successiva estate)) estate))
+(define avanti-e-indietro auto)
 
 ; 2. Il pattern _ risponde a tutte le introduzioni rimaste: la copertura è comunque completa.
 
-(def inverno? : (→ Stagione Bool)
-  [inverno] true
-  [_]       false)
+(claim inverno? (→ Stagione Bool))
+(define (inverno? n)
+  (match n
+    (inverno true)
+    (_       false)))
 
 ; 3. La ricorsione su k, come in somma: il caso (add1 k) usa il risultato su k.
 
-(def prodotto : (→ Nat Nat Nat)
-  [zero     m] zero
-  [(add1 k) m] (somma m (prodotto k m)))
+(claim prodotto (→ Nat Nat Nat))
+(define (prodotto n m)
+  (match n
+    (zero zero)
+    ((add1 k) (somma m (prodotto k m)))))
 
-(def sei : (≡ (prodotto 2 3) 6)
-  auto)
+(claim sei (≡ (prodotto 2 3) 6))
+(define sei auto)

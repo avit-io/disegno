@@ -1,8 +1,8 @@
 ; 00 — Le basi: tipi, definizioni, prove
 ;
-; Disegno è un linguaggio totale con tipi dipendenti. Una sola forma di definizione,
-; `def nome : tipo` seguita da clausole `[pattern] corpo`; `data` per i tipi induttivi,
-; `record` per un costruttore con campi nominati. Programmi e prove si scrivono allo stesso
+; Disegno è Scheme con i tipi dipendenti, come Pie: `(claim nome tipo)` e poi
+; `(define (nome x …) corpo)`, con `match` per i casi; `data` per i tipi induttivi, `record`
+; per un costruttore con campi nominati. Programmi e prove si scrivono allo stesso
 ; modo: cambia solo il tipo. Questa ricetta non ha main: si verifica e basta.
 ;
 ;   disegno check cookbook/00-basics.disegno
@@ -12,45 +12,51 @@
 
 (import text)
 
-(def +-zero : (→ [n Nat] (≡ (+ n 0) n))
-  [zero]     refl
-  [(add1 k)] (cong add1 (+-zero k)))          ; induzione: la chiamata su k è strutturale
+(claim +-zero (Π ((n Nat)) (≡ (+ n 0) n)))
+(define (+-zero n)
+  (match n
+    (zero     refl)
+    ((add1 k) (cong add1 (+-zero k)))))          ; induzione: la chiamata su k è strutturale
 
 ; --- famiglie induttive: la lunghezza nel tipo ---
 
 (data Vec : (→ Type Nat Type)
-  [nil  : (Vec A 0)]
-  [cons : (→ A (Vec A n) (Vec A (add1 n)))])
+  (nil  : (Vec A 0))
+  (cons : (→ A (Vec A n) (Vec A (add1 n)))))
 
-(def head : (→ (Vec A (add1 n)) A)            ; il caso nil è impossibile: il checker lo sa
-  [(cons x _)] x)
+(claim head (→ (Vec A (add1 n)) A))            ; il caso nil è impossibile: il checker lo sa
+(define (head m)
+  (match m
+    ((cons x _) x)))
 
 ; --- invarianti di dominio nel tipo, verificati calcolando al momento del check ---
 
 (data Env
-  [dev]
-  [prod])
+  (dev)
+  (prod))
 
-(def min-replicas : (→ Env Nat)
-  [dev]  1
-  [prod] 3)
+(claim min-replicas (→ Env Nat))
+(define (min-replicas n)
+  (match n
+    (dev  1)
+    (prod 3)))
 
 (record App
-  [name     : String]
-  [env      : Env]
-  [replicas : Nat]
-  [ok       : (≥ replicas (min-replicas env))])
+  (name String)
+  (env Env)
+  (replicas Nat)
+  (ok (≥ replicas (min-replicas env))))
 
-(def api : App
-  (app "api" prod 3 auto))                 ; con 2 repliche: «auto: la proposizione si riduce a ⊥»
+(claim api App)
+(define api (app "api" prod 3 auto))                 ; con 2 repliche: «auto: la proposizione si riduce a ⊥»
 
 ; --- prove per calcolo: auto ---
 
-(def uno-più-uno : (≡ (+ 1 1) 2)
-  auto)
+(claim uno-più-uno (≡ (+ 1 1) 2))
+(define uno-più-uno auto)
 
-(def testa : (≡ (head (cons 1 nil)) 1)
-  auto)
+(claim testa (≡ (head (cons 1 nil)) 1))
+(define testa auto)
 
-(def api-in-regola : (≥ (App.replicas api) (min-replicas (App.env api)))
-  auto)
+(claim api-in-regola (≥ (App.replicas api) (min-replicas (App.env api))))
+(define api-in-regola auto)

@@ -11,24 +11,27 @@
 
 (import dagger)
 
-(def go-build : (→ Dir Dir)
-  [src] (let [root /src, out /out, bin (/ out "hello")]
-          (pipe (container)
-                (from "golang:1.25-alpine")                       ; un Image, verificato
-                (with-mounted-cache /go/pkg/mod (cache-volume "go-mod"))
-                (with-env "CGO_ENABLED" "0")
-                (with-dir root src)
-                (with-workdir root)
-                (with-exec ["go" "build" "-o" bin "."])           ; bin si interpola come punto
-                (dir-of out))))
+(claim go-build (→ Dir Dir))
+(define (go-build src)
+  (let ((root /src)
+        (out /out)
+        (bin (/ out "hello")))
+    (pipe (container)
+          (from "golang:1.25-alpine")                       ; un Image, verificato
+          (with-mounted-cache /go/pkg/mod (cache-volume "go-mod"))
+          (with-env "CGO_ENABLED" "0")
+          (with-dir root src)
+          (with-workdir root)
+          (with-exec (list "go" "build" "-o" bin "."))           ; bin si interpola come punto
+          (dir-of out))))
 
-(def main : (→ [src (Host "hello")] (Export Dir))
-  [src] (overlay "bin" (go-build src)))
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src) (overlay "bin" (go-build src)))
 
 ; Teoremi, non linter: valgono per ogni sorgente.
 
-(def binario-dentro-out : (⊑ (/ /out "hello") /out)
-  auto)
+(claim binario-dentro-out (⊑ (/ /out "hello") /out))
+(define binario-dentro-out auto)
 
-(def montaggi-disgiunti : (→ [src Dir] (Disjoint-mounts (go-build src)))
-  [src] auto)
+(claim montaggi-disgiunti (Π ((src Dir)) (Disjoint-mounts (go-build src))))
+(define (montaggi-disgiunti src) auto)

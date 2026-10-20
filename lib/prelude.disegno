@@ -4,27 +4,35 @@
 ; --- uguaglianza ---
 
 (data ≡ : (→ A A Type)
-  [refl : (≡ x x)])
+  (refl : (≡ x x)))
 (builtin eq ≡)
 (builtin refl refl)
 
-(def cong : (→ [f (→ A B)] (≡ x y) (≡ (f x) (f y)))
-  [f refl] refl)
+(claim cong (Π ((f (→ A B))) (→ (≡ x y) (≡ (f x) (f y)))))
+(define (cong f n)
+  (match n
+    (refl refl)))
 
-(def sym : (→ (≡ x y) (≡ y x))
-  [refl] refl)
+(claim sym (→ (≡ x y) (≡ y x)))
+(define (sym n)
+  (match n
+    (refl refl)))
 
-(def trans : (→ (≡ x y) (≡ y z) (≡ x z))
-  [refl refl] refl)
+(claim trans (→ (≡ x y) (≡ y z) (≡ x z)))
+(define (trans n m)
+  (match* (n m)
+    ((refl refl) refl)))
 
 ; transport (il replace di Pie): l'eliminazione dell'uguaglianza. Ciò che vale di x vale di y, se x ≡ y.
-(def transport : (→ {A Type} {x A} {y A} (≡ x y) [P (→ A Type)] (P x) (P y))
-  [refl P px] px)
+(claim transport (∀ ((A Type) (x A) (y A)) (→ (≡ x y) (Π ((P (→ A Type))) (→ (P x) (P y))))))
+(define (transport n P px)
+  (match n
+    (refl px)))
 
 ; Either: la disgiunzione. Due introduzioni; eliminarla vuol dire trattare entrambi i casi.
 (data Either : (→ Type Type Type)
-  [left  : (→ A (Either A B))]
-  [right : (→ B (Either A B))])
+  (left  : (→ A (Either A B)))
+  (right : (→ B (Either A B))))
 
 ; --- proposizioni decidibili: (So b) è ⊤ se b è vero, ⊥ altrimenti; auto prova ⊤ calcolando ---
 
@@ -32,73 +40,89 @@
 (builtin empty ⊥)
 
 (data ⊤
-  [tt])
+  (tt))
 (builtin unit ⊤)
 (builtin tt tt)
 
 (data Bool
-  [true]
-  [false])
+  (true)
+  (false))
 (builtin bool Bool)
 (builtin true true)
 (builtin false false)
 
-(def ¬ : (→ Type Type)              ; negazione: (¬ A) è A → ⊥
-  [A] (→ A ⊥))
+(claim ¬ (→ Type Type))              ; negazione: (¬ A) è A → ⊥
+(define (¬ A) (→ A ⊥))
 
-(def So : (→ Bool Type)
-  [true]  ⊤
-  [false] ⊥)
+(claim So (→ Bool Type))
+(define (So n)
+  (match n
+    (true  ⊤)
+    (false ⊥)))
 
-(def if : (→ Bool A A A)
-  [true  a _] a
-  [false _ b] b)
+(claim if (→ Bool A A A))
+(define (if n a b)
+  (match n
+    (true a)
+    (false b)))
 
 ; --- naturali: 0, 1, 2… sono zucchero per zero, add1 ---
 
 (data Nat
-  [zero]
-  [add1 Nat])
+  (zero)
+  (add1 Nat))
 (builtin nat Nat)
 (builtin zero zero)
 (builtin suc add1)
 
-(def + : (→ Nat Nat Nat)
-  [zero     m] m
-  [(add1 k) m] (add1 (+ k m)))
+(claim + (→ Nat Nat Nat))
+(define (+ n m)
+  (match n
+    (zero m)
+    ((add1 k) (add1 (+ k m)))))
 
-(def ≤? : (→ Nat Nat Bool)
-  [zero     _]        true
-  [(add1 _) zero]     false
-  [(add1 m) (add1 n)] (≤? m n))
+(claim ≤? (→ Nat Nat Bool))
+(define (≤? x y)
+  (match* (x y)
+    ((zero _)        true)
+    (((add1 _) zero)     false)
+    (((add1 m) (add1 n)) (≤? m n))))
 
-(def ≥ : (→ Nat Nat Type)
-  [m n] (So (≤? n m)))
+(claim ≥ (→ Nat Nat Type))
+(define (≥ m n) (So (≤? n m)))
 
 ; Le definizioni sono unarie e sono la verità logica; il valutatore calcola nativamente sui numeri
 ; quelle legate qui sotto come builtin (types.ss, fast), e test.ss verifica che coincidano.
 
-(def ∸ : (→ Nat Nat Nat)                 ; sottrazione troncata
-  [p        zero]     p
-  [zero     (add1 _)] zero
-  [(add1 p) (add1 q)] (∸ p q))
+(claim ∸ (→ Nat Nat Nat))                 ; sottrazione troncata
+(define (∸ n m)
+  (match* (n m)
+    ((p zero)     p)
+    ((zero (add1 _)) zero)
+    (((add1 p) (add1 q)) (∸ p q))))
 
-(def * : (→ Nat Nat Nat)
-  [zero     _] zero
-  [(add1 k) m] (+ m (* k m)))
+(claim * (→ Nat Nat Nat))
+(define (* n m)
+  (match n
+    (zero zero)
+    ((add1 k) (+ m (* k m)))))
 
-(def <? : (→ Nat Nat Bool)
-  [m n] (≤? (add1 m) n))
+(claim <? (→ Nat Nat Bool))
+(define (<? m n) (≤? (add1 m) n))
 
-(def nat=? : (→ Nat Nat Bool)
-  [zero     zero]     true
-  [zero     (add1 _)] false
-  [(add1 _) zero]     false
-  [(add1 m) (add1 n)] (nat=? m n))
+(claim nat=? (→ Nat Nat Bool))
+(define (nat=? x y)
+  (match* (x y)
+    ((zero zero)     true)
+    ((zero (add1 _)) false)
+    (((add1 _) zero)     false)
+    (((add1 m) (add1 n)) (nat=? m n))))
 
-(def pow2 : (→ Nat Nat)
-  [zero]     1
-  [(add1 k)] (+ (pow2 k) (pow2 k)))
+(claim pow2 (→ Nat Nat))
+(define (pow2 n)
+  (match n
+    (zero     1)
+    ((add1 k) (+ (pow2 k) (pow2 k)))))
 
 (builtin plus +)
 (builtin monus ∸)
@@ -108,91 +132,119 @@
 (builtin nat-eq? nat=?)
 (builtin pow2 pow2)
 
-(def not : (→ Bool Bool)
-  [true]  false
-  [false] true)
+(claim not (→ Bool Bool))
+(define (not n)
+  (match n
+    (true  false)
+    (false true)))
 
-(def and : (→ Bool Bool Bool)
-  [true  b] b
-  [false _] false)
+(claim and (→ Bool Bool Bool))
+(define (and n b)
+  (match n
+    (true b)
+    (false false)))
 
-(def or : (→ Bool Bool Bool)
-  [true  _] true
-  [false b] b)
+(claim or (→ Bool Bool Bool))
+(define (or n b)
+  (match n
+    (true true)
+    (false b)))
 
 ; L'ordine come relazione induttiva: la differenza si calcola sulla prova, come per i percorsi.
 (data ≤ : (→ Nat Nat Type)
-  [≤-zero : (≤ zero n)]
-  [≤-succ : (→ (≤ m n) (≤ (add1 m) (add1 n)))])
+  (≤-zero : (≤ zero n))
+  (≤-succ : (→ (≤ m n) (≤ (add1 m) (add1 n)))))
 
 ; Riflessione: dal test booleano alla relazione induttiva.
-(def ≤-from : (→ [m Nat] [n Nat] (So (≤? m n)) (≤ m n))
-  [zero     n        _] ≤-zero
-  [(add1 m) (add1 n) h] (≤-succ (≤-from m n h)))
+(claim ≤-from (Π ((m Nat) (n Nat)) (→ (So (≤? m n)) (≤ m n))))
+(define (≤-from m n h)
+  (match* (m n)
+    ((zero n) ≤-zero)
+    (((add1 m) (add1 n)) (≤-succ (≤-from m n h)))))
 
 ; La legge dei naturali: q + (p ∸ q) = p se q ≤ p. Serve al tempo e agli indirizzi.
-(def +-∸ : (→ [p Nat] [q Nat] [h (≤ q p)] (≡ (+ q (∸ p q)) p))
-  [p        zero     ≤-zero]     refl
-  [(add1 p) (add1 q) (≤-succ h)] (cong add1 (+-∸ p q h)))
+(claim +-∸ (Π ((p Nat) (q Nat) (h (≤ q p))) (≡ (+ q (∸ p q)) p)))
+(define (+-∸ p q h)
+  (match* (p q h)
+    ((p zero ≤-zero)     refl)
+    (((add1 p) (add1 q) (≤-succ h)) (cong add1 (+-∸ p q h)))))
 
-; --- liste: ["a" "b"] è zucchero per (:: "a" (:: "b" vuota)) ---
+; --- liste: (list "a" "b") è zucchero per (:: "a" (:: "b" vuota)) ---
 
 (data List : (→ Type Type)
-  [vuota : (List A)]
-  [::    : (→ A (List A) (List A))])
+  (vuota : (List A))
+  (::    : (→ A (List A) (List A))))
 (builtin list List)
 (builtin nil vuota)
 (builtin cons ::)
 
-(def ++ : (→ (List A) (List A) (List A))
-  [vuota    ys] ys
-  [(:: x xs) ys] (:: x (++ xs ys)))
+(claim ++ (→ (List A) (List A) (List A)))
+(define (++ n ys)
+  (match n
+    (vuota ys)
+    ((:: x xs) (:: x (++ xs ys)))))
 
-(def concat-map : (→ (→ A (List B)) (List A) (List B))
-  [f vuota]     []
-  [f (:: x xs)] (++ (f x) (concat-map f xs)))
+(claim concat-map (→ (→ A (List B)) (List A) (List B)))
+(define (concat-map f n)
+  (match n
+    (vuota     (list))
+    ((:: x xs) (++ (f x) (concat-map f xs)))))
 
-(def any? : (→ (→ A Bool) (List A) Bool)
-  [p vuota]     false
-  [p (:: x xs)] (if (p x) true (any? p xs)))
+(claim any? (→ (→ A Bool) (List A) Bool))
+(define (any? p n)
+  (match n
+    (vuota     false)
+    ((:: x xs) (if (p x) true (any? p xs)))))
 
-(def all : (→ (→ A Bool) (List A) Bool)
-  [p vuota]     true
-  [p (:: x xs)] (if (p x) (all p xs) false))
+(claim all (→ (→ A Bool) (List A) Bool))
+(define (all p n)
+  (match n
+    (vuota     true)
+    ((:: x xs) (if (p x) (all p xs) false))))
 
-(def map : (→ (→ A B) (List A) (List B))
-  [f vuota]     []
-  [f (:: x xs)] (:: (f x) (map f xs)))
+(claim map (→ (→ A B) (List A) (List B)))
+(define (map f n)
+  (match n
+    (vuota     (list))
+    ((:: x xs) (:: (f x) (map f xs)))))
 
 ; (Holds p x): p vale su x. È un dato e non (So (p x)), così se auto fallisce dice su quale x.
 (data Holds : (→ (→ A Bool) A Type)
-  [holds : (→ [p (→ A Bool)] [x A] (So (p x)) (Holds p x))])
+  (holds : (Π ((p (→ A Bool)) (x A)) (→ (So (p x)) (Holds p x)))))
 
 
 ; Proposizioni su liste: Every p xs (ogni elemento soddisfa p), Pairwise r xs (ogni coppia è in r).
 
 ; Σ: la coppia dipendente. Il secondo elemento ha un tipo che dipende dal primo; è "esiste a
 ; tale che B a". × è il caso in cui B non dipende da a.
-(data Σ : (→ [A Type] (→ A Type) Type)
-  [pair : (→ {A Type} {B (→ A Type)} [a A] (B a) (Σ A B))])
+(data Σ : (Π ((A Type)) (→ (→ A Type) Type))
+  (pair : (∀ ((A Type) (B (→ A Type))) (Π ((a A)) (→ (B a) (Σ A B))))))
 (builtin sigma Σ)
 
-(def fst : (→ {A Type} {B (→ A Type)} (Σ A B) A)
-  [(pair a _)] a)
+(claim fst (∀ ((A Type) (B (→ A Type))) (→ (Σ A B) A)))
+(define (fst n)
+  (match n
+    ((pair a _) a)))
 
-(def snd : (→ {A Type} {B (→ A Type)} [p (Σ A B)] (B (fst p)))
-  [(pair _ b)] b)
+(claim snd (∀ ((A Type) (B (→ A Type))) (Π ((p (Σ A B))) (B (fst p)))))
+(define (snd p)
+  (match p
+    ((pair _ b) b)))
 
-(def × : (→ Type Type Type)
-  [A B] (Σ A (λ [_] B)))
+(claim × (→ Type Type Type))
+(define (× A B) (Σ A (λ (_) B)))
 
-(def Every : (→ (→ A Type) (List A) Type)
-  [p vuota]     ⊤
-  [p (:: x xs)] (× (p x) (Every p xs)))
+(claim Every (→ (→ A Type) (List A) Type))
+(define (Every p n)
+  (match n
+    (vuota     ⊤)
+    ((:: x xs) (× (p x) (Every p xs)))))
 
-(def Pairwise : (→ (→ A A Type) (List A) Type)
-  [r vuota]     ⊤
-  [r (:: x xs)] (× (Every (r x) xs) (Pairwise r xs)))
+(claim Pairwise (→ (→ A A Type) (List A) Type))
+(define (Pairwise r n)
+  (match n
+    (vuota     ⊤)
+    ((:: x xs) (× (Every (r x) xs) (Pairwise r xs)))))
 
-(def All : (→ (→ A Bool) (List A) Type)
-  [p xs] (Every (Holds p) xs))
+(claim All (→ (→ A Bool) (List A) Type))
+(define (All p xs) (Every (Holds p) xs))

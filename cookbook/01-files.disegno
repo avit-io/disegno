@@ -9,17 +9,19 @@
 
 (import dagger)
 
-(def web : Port 8080)
+(claim web Port)
+(define web 8080)
 
 ; Una configurazione resa come testo: concat e show calcolano sui letterali.
-(def config : String
-  (concat "[server]\nporta = " (concat (show (Port.n web)) "\n")))
+(claim config String)
+(define config (string-append "[server]\nporta = " (show (Port.n web)) "\n"))
 
-(def con-config : (→ Dir Dir)
-  [src] (pipe src
-              (with-file /config/app.toml config)
-              (with-file /LEGGIMI "generato da Disegno\n")))
+(claim con-config (→ Dir Dir))
+(define (con-config src)
+  (pipe src
+        (with-file /config/app.toml config)
+        (with-file /LEGGIMI "generato da Disegno\n")))
 
 ; overlay aggiunge al contenuto della destinazione; replace la sostituisce (export con wipe).
-(def main : (→ [src (Host "hello")] (Export Dir))
-  [src] (overlay "out" (con-config src)))
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src) (overlay "out" (con-config src)))

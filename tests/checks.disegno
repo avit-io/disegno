@@ -7,182 +7,201 @@
 
 (import dagger time files)
 
-(def +-assoc : (→ [a Nat] [b Nat] [c Nat] (≡ (+ (+ a b) c) (+ a (+ b c))))
-  [zero     b c] refl
-  [(add1 a) b c] (cong add1 (+-assoc a b c)))
+(claim +-assoc (Π ((a Nat) (b Nat) (c Nat)) (≡ (+ (+ a b) c) (+ a (+ b c)))))
+(define (+-assoc a b c)
+  (match a
+    (zero refl)
+    ((add1 a) (cong add1 (+-assoc a b c)))))
 
-(def ++-vuota : (→ [xs (List A)] (≡ (++ xs vuota) xs))
-  [vuota]     refl
-  [(:: x xs)] (cong (:: x) (++-vuota xs)))
+(claim ++-vuota (Π ((xs (List A))) (≡ (++ xs vuota) xs)))
+(define (++-vuota xs)
+  (match xs
+    (vuota     refl)
+    ((:: x xs) (cong (:: x) (++-vuota xs)))))
 
-(def ++-assoc : (→ [xs (List A)] [ys (List A)] [zs (List A)] (≡ (++ (++ xs ys) zs) (++ xs (++ ys zs))))
-  [vuota     ys zs] refl
-  [(:: x xs) ys zs] (cong (:: x) (++-assoc xs ys zs)))
+(claim ++-assoc (Π ((xs (List A)) (ys (List A)) (zs (List A))) (≡ (++ (++ xs ys) zs) (++ xs (++ ys zs)))))
+(define (++-assoc xs ys zs)
+  (match xs
+    (vuota refl)
+    ((:: x xs) (cong (:: x) (++-assoc xs ys zs)))))
 
 ; --- percorsi: lo spazio affine ---
 
-(def ⊑-trans : (→ (⊑ p q) (⊑ q r) (⊑ p r))
-  [⊑-refl     h] h
-  [(⊑-step g) h] (⊑-step (⊑-trans g h)))
+(claim ⊑-trans (→ (⊑ p q) (⊑ q r) (⊑ p r)))
+(define (⊑-trans n h)
+  (match n
+    (⊑-refl h)
+    ((⊑-step g) (⊑-step (⊑-trans g h)))))
 
-(def ⊕-here : (→ [p Abs] (≡ (⊕ p here) p))
-  [p] refl)
+(claim ⊕-here (Π ((p Abs)) (≡ (⊕ p here) p)))
+(define (⊕-here p) refl)
 
-(def legge : (→ [p Abs] [q Abs] [h (⊑ p q)] (≡ (⊕ q (⊖ p q h)) p))
-  [p q h] (Affine.law percorsi p q h))
+(claim legge (Π ((p Abs) (q Abs) (h (⊑ p q))) (≡ (⊕ q (⊖ p q h)) p)))
+(define (legge p q h) (Affine.law percorsi p q h))
 
-(def ⊖-ritorno : (≡ (⊖ /out/bin/hello /out auto) "bin/hello")
-  auto)
+(claim ⊖-ritorno (≡ (⊖ /out/bin/hello /out auto) "bin/hello"))
+(define ⊖-ritorno auto)
 
-(def separati : (⋔ /src /go/pkg/mod)
-  auto)
+(claim separati (⋔ /src /go/pkg/mod))
+(define separati auto)
 
 ; --- letterali: il letterale resta, il tipo cambia ---
 
-(def letterale-immagine : (≡ (Image.raw "golang:1.25-alpine") "golang:1.25-alpine")
-  auto)
+(claim letterale-immagine (≡ (Image.raw "golang:1.25-alpine") "golang:1.25-alpine"))
+(define letterale-immagine auto)
 
-(def letterale-punto : (≡ /go/pkg/mod (/ (/ (/ root "go") "pkg") "mod"))
-  auto)
+(claim letterale-punto (≡ /go/pkg/mod (/ (/ (/ root "go") "pkg") "mod")))
+(define letterale-punto auto)
 
-(def letterale-vettore : (≡ (⊕ /out "bin/hello") /out/bin/hello)
-  auto)
+(claim letterale-vettore (≡ (⊕ /out "bin/hello") /out/bin/hello))
+(define letterale-vettore auto)
 
 ; --- piani: le garanzie che oggi stanno in linter e policy ---
 
-(def piano-pinnato : (All pinned? (images (pipe (container) (from "alpine@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1"))))
-  auto)
+(claim piano-pinnato (All pinned? (images (pipe (container) (from "alpine@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1")))))
+(define piano-pinnato auto)
 
-(def immagini-in-ordine : (≡ (images (pipe (container) (from "a") (with-dir /w (dir-of (from (container) "b") root)))) ["a" "b"])
-  auto)
+(claim immagini-in-ordine (≡ (images (pipe (container) (from "a") (with-dir /w (dir-of (from (container) "b") root)))) (list "a" "b")))
+(define immagini-in-ordine auto)
 
-(def publish-protetto : (→ [src Dir] (Before test? publish?
-                                       (branch (passes? (try-exec (with-dir (from (container) "alpine") /src src) ["make" "test"]))
-                                         (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
-                                         (overlay "report" src))))
-  [src] auto)
+(claim publish-protetto (Π ((src Dir)) (Before test? publish?
+                                               (branch (passes? (try-exec (with-dir (from (container) "alpine") /src src) (list "make" "test")))
+                                                       (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
+                                                       (overlay "report" src)))))
+(define (publish-protetto src) auto)
 
 ; Un controllo sul contenuto, guardato da Dagger, conta come test: pubblicare solo se il
 ; report dice PASS soddisfa Before.
-(def publish-se-pass : (→ [src Dir] (Before test? publish?
-                                      (branch (includes? (file-of src /report.txt) "PASS")
-                                        (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
-                                        (overlay "report" src))))
-  [src] auto)
+(claim publish-se-pass (Π ((src Dir)) (Before test? publish?
+                                              (branch (includes? (file-of src /report.txt) "PASS")
+                                                      (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
+                                                      (overlay "report" src)))))
+(define (publish-se-pass src) auto)
 
 ; Che cosa scrive una directory: per ogni sorgente, sotto /site e senza sovrapposizioni.
-(def scritture : (→ [src Dir] (× (Writes-within /site (put (with-file empty /site/a "1") /site/src src))
-                                 (Disjoint-writes (put (with-file empty /site/a "1") /site/src src))))
-  [src] auto)
+(claim scritture (Π ((src Dir)) (× (Writes-within /site (put (with-file empty /site/a "1") /site/src src))
+                                   (Disjoint-writes (put (with-file empty /site/a "1") /site/src src)))))
+(define (scritture src) auto)
 
-(def scritture-sovrapposte : (¬ (Disjoint-writes (put (with-file empty /site/src/a "1") /site/src empty)))
-  auto)
+(claim scritture-sovrapposte (¬ (Disjoint-writes (put (with-file empty /site/src/a "1") /site/src empty))))
+(define scritture-sovrapposte auto)
 
-(def montaggi : (→ [src Dir] (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /cache (cache-volume "c")))))
-  [src] auto)
+(claim montaggi (Π ((src Dir)) (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /cache (cache-volume "c"))))))
+(define (montaggi src) auto)
 
-(def montaggi-visti : (≡ (mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /cache (cache-volume "c"))))
-                         [/cache /src])
-  auto)
+(claim montaggi-visti (≡ (mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /cache (cache-volume "c"))))
+                         (list /cache /src)))
+(define montaggi-visti auto)
 
 ; --- negazioni: ciò che non deve valere, come teorema ---
 ; Un pattern assurdo () dichiara che a quella posizione non c'è alcun valore; la clausola non ha
 ; corpo. Per avere (⊑ /out /src) servirebbe ⊑-step su una prova di (⊑ root /src): impossibile.
 
-(def fuori-a-mano : (¬ (⊑ /out /src))
-  [(⊑-step ())])
+(claim fuori-a-mano (¬ (⊑ /out /src)))
+(define (fuori-a-mano n)
+  (match n
+    ((⊑-step ()))))
 
-(def fuori : (¬ (⊑ /out /src))
-  auto)
+(claim fuori (¬ (⊑ /out /src)))
+(define fuori auto)
 
-(def non-pinnata : (¬ (All pinned? (images (from (container) "alpine"))))
-  auto)
+(claim non-pinnata (¬ (All pinned? (images (from (container) "alpine")))))
+(define non-pinnata auto)
 
-(def annidati-non-disgiunti : (¬ (⋔ /src /src/cache))
-  auto)
+(claim annidati-non-disgiunti (¬ (⋔ /src /src/cache)))
+(define annidati-non-disgiunti auto)
 
-(def montaggi-sovrapposti : (¬ (Disjoint-mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /src/cache (cache-volume "c")))))
-  auto)
+(claim montaggi-sovrapposti (¬ (Disjoint-mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /src/cache (cache-volume "c"))))))
+(define montaggi-sovrapposti auto)
 
-(def zero-non-è-uno : (¬ (≡ 0 1))
-  [()])
+(claim zero-non-è-uno (¬ (≡ 0 1)))
+(define (zero-non-è-uno n)
+  (match n
+    (())))
 
 ; --- naturali e accelerazione: la legge vale anche sui numeri grandi, calcolati nativamente ---
 
-(def legge-naturali : (≡ (+ 1000000 (∸ 4294967296 1000000)) 4294967296)
-  auto)
+(claim legge-naturali (≡ (+ 1000000 (∸ 4294967296 1000000)) 4294967296))
+(define legge-naturali auto)
 
 ; --- tempo: istanti e durate ---
 
-(def inizio : Instant "2026-10-15T00:00:00Z")
-(def fine   : Instant "2026-10-16T00:00:00Z")
+(claim inizio Instant)
+(define inizio "2026-10-15T00:00:00Z")
+(claim fine Instant)
+(define fine "2026-10-16T00:00:00Z")
 
-(def un-giorno-dopo : (≡ (⊕ inizio "1d") fine)
-  auto)
+(claim un-giorno-dopo (≡ (⊕ inizio "1d") fine))
+(define un-giorno-dopo auto)
 
-(def durata : (≡ (⊖ fine inizio auto) "24h")
-  auto)
+(claim durata (≡ (⊖ fine inizio auto) "24h"))
+(define durata auto)
 
-(def finestre-separate : (Apart (window inizio "1h") (window fine "1h"))
-  auto)
+(claim finestre-separate (Apart (window inizio "1h") (window fine "1h")))
+(define finestre-separate auto)
 
-(def finestre-sovrapposte : (¬ (Apart (window inizio "2h") (window (⊕ inizio "1h") "1h")))
-  auto)
+(claim finestre-sovrapposte (¬ (Apart (window inizio "2h") (window (⊕ inizio "1h") "1h"))))
+(define finestre-sovrapposte auto)
 
 ; --- indirizzi: punti raffinati e blocchi CIDR come regioni ---
 
-(def gateway : Ip "10.0.0.1")
+(claim gateway Ip)
+(define gateway "10.0.0.1")
 
-(def indirizzo-dopo : (≡ (⊕ gateway 1 auto) "10.0.0.2")
-  auto)
+(claim indirizzo-dopo (≡ (⊕ gateway 1 auto) "10.0.0.2"))
+(define indirizzo-dopo auto)
 
-(def dentro-il-blocco : (So (in? "10.0.0.5" "10.0.0.0/24"))
-  auto)
+(claim dentro-il-blocco (So (in? "10.0.0.5" "10.0.0.0/24")))
+(define dentro-il-blocco auto)
 
-(def subnet-disgiunte : (Disjoint-subnets ["10.0.0.0/24" "10.0.1.0/24" "10.1.0.0/16"])
-  auto)
+(claim subnet-disgiunte (Disjoint-subnets (list "10.0.0.0/24" "10.0.1.0/24" "10.1.0.0/16")))
+(define subnet-disgiunte auto)
 
-(def subnet-annidate : (¬ (Disjoint-subnets ["10.0.0.0/8" "10.1.0.0/16"]))
-  auto)
+(claim subnet-annidate (¬ (Disjoint-subnets (list "10.0.0.0/8" "10.1.0.0/16"))))
+(define subnet-annidate auto)
 
 ; --- porte: nessuna porta allocata due volte ---
 
-(def porte-distinte : (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 9090)))
-  auto)
+(claim porte-distinte (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 9090))))
+(define porte-distinte auto)
 
-(def porte-doppie : (¬ (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 8080))))
-  auto)
+(claim porte-doppie (¬ (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 8080)))))
+(define porte-doppie auto)
 
 ; --- stringhe: il letterale si compone, il calcolo avviene sui letterali ---
 
-(def resa : (≡ (concat "porta = " (show 8080)) "porta = 8080")
-  auto)
+(claim resa (≡ (string-append "porta = " (show 8080)) "porta = 8080"))
+(define resa auto)
 
-(def resa-cidr : (≡ (render-cidr "10.0.1.0/24") "10.0.1.0/24")
-  auto)
+(claim resa-cidr (≡ (render-cidr "10.0.1.0/24") "10.0.1.0/24"))
+(define resa-cidr auto)
 
 ; --- il linguaggio puro: λ, the, impliciti, Σ, Either, transport, ex falso ---
 
-(def id : (→ {A Type} A A)
-  (λ [x] x))
+(claim id (∀ ((A Type)) (→ A A)))
+(define id (λ (x) x))
 
-(def applica : (≡ ((the (→ Nat Nat) (λ [n] (add1 n))) 1) 2)
-  auto)
+(claim applica (≡ ((the (→ Nat Nat) (λ (n) (add1 n))) 1) 2))
+(define applica auto)
 
-(def un-testimone : (Σ Nat (λ [n] (≡ (+ n n) 4)))
-  (pair 2 refl))
+(claim un-testimone (Σ Nat (λ (n) (≡ (+ n n) 4))))
+(define un-testimone (pair 2 refl))
 
-(def il-testimone : (≡ (fst un-testimone) 2)
-  auto)
+(claim il-testimone (≡ (fst un-testimone) 2))
+(define il-testimone auto)
 
-(def ex-falso : (→ ⊥ A)
-  [()])
+(claim ex-falso (→ ⊥ A))
+(define (ex-falso n)
+  (match n
+    (())))
 
-(def sposta : (→ (≡ x y) (≡ y y) (≡ x y))
-  [e p] (transport (sym e) (λ [m] (≡ m y)) p))
+(claim sposta (→ (≡ x y) (≡ y y) (≡ x y)))
+(define (sposta e p) (transport (sym e) (λ (m) (≡ m y)) p))
 
-(def nomi-come-variabili : (→ Nat (→ Nat Nat) Nat)   ; step e port sono costruttori altrove
-  [port step] (step port))
+(claim nomi-come-variabili (→ Nat (→ Nat Nat) Nat))   ; step e port sono costruttori altrove
+(define (nomi-come-variabili port n)
+  (match n
+    (step (step port))))
 
-(def atteso-negli-argomenti : (→ Bool (Σ Nat (λ [n] (≡ n n))))   ; il tipo atteso scende dentro if
-  [b] (if b (pair 1 refl) (pair 2 refl)))
+(claim atteso-negli-argomenti (→ Bool (Σ Nat (λ (n) (≡ n n)))))   ; il tipo atteso scende dentro if
+(define (atteso-negli-argomenti b) (if b (pair 1 refl) (pair 2 refl)))

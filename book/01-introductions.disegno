@@ -17,30 +17,31 @@
 ; ne sono altre: questa dichiarazione dice esattamente questo, e niente di più.
 
 (data Stagione
-  [primavera]
-  [estate]
-  [autunno]
-  [inverno])
+  (primavera)
+  (estate)
+  (autunno)
+  (inverno))
 
 ; --- il giudizio ---
-; `def` afferma un giudizio: «adesso è un elemento di Stagione». Si legge `adesso : Stagione`.
-; Il checker lo accetta perché primavera è una delle introduzioni di Stagione.
+; `claim` afferma un giudizio, «adesso è un elemento di Stagione», e `define` lo giustifica.
+; Si legge `adesso : Stagione`. Il checker lo accetta perché primavera è una delle
+; introduzioni di Stagione.
 
-(def adesso : Stagione
-  primavera)
+(claim adesso Stagione)
+(define adesso primavera)
 
 ; --- i naturali, nella libreria standard ---
 ; Nat è dichiarato così, in lib/prelude.disegno:
 ;
 ;   (data Nat
-;     [zero]
-;     [add1 Nat])
+;     (zero)
+;     (add1 Nat))
 ;
 ; Una introduzione senza argomenti (zero) e una che prende un naturale già costruito (add1). I
 ; letterali 0, 1, 2… sono abbreviazioni: 2 è (add1 (add1 zero)).
 
-(def tre : Nat
-  (add1 (add1 (add1 zero))))
+(claim tre Nat)
+(define tre (add1 (add1 (add1 zero))))
 
 ; --- forme canoniche ---
 ; Un'espressione chiusa di tipo Nat può essere scritta in molti modi, ma calcolando arriva sempre a
@@ -48,8 +49,8 @@
 ; riduce. Il giudizio qui sotto dice che le due espressioni hanno la stessa forma canonica; `auto`
 ; lo verifica calcolando. (L'uguaglianza ≡ ha un capitolo tutto suo, il sesto.)
 
-(def tre-è-uno-più-due : (≡ tre (+ 1 2))
-  auto)
+(claim tre-è-uno-più-due (≡ tre (+ 1 2)))
+(define tre-è-uno-più-due auto)
 
 ; --- introduzioni con argomenti ---
 ; Un albero binario è una foglia, oppure un nodo con due alberi già costruiti. Le introduzioni
@@ -57,11 +58,11 @@
 ; arbitrariamente grandi con un numero finito di regole.
 
 (data Albero
-  [foglia]
-  [nodo Albero Albero])
+  (foglia)
+  (nodo Albero Albero))
 
-(def piccolo : Albero
-  (nodo foglia (nodo foglia foglia)))
+(claim piccolo Albero)
+(define piccolo (nodo foglia (nodo foglia foglia)))
 
 ; --- il tipo senza introduzioni ---
 ; Se il significato di un tipo sta nelle sue introduzioni, che cosa significa un tipo che non ne
@@ -69,22 +70,24 @@
 ;
 ;   (data ⊥ : Type)
 ;
-; Non si può scrivere (def qualcosa : ⊥ …): non c'è niente da mettere al posto dei puntini. Nel
-; capitolo 8 vedremo che ⊥ è il falso, e che proprio per questo è utile.
+; Dopo (claim qualcosa ⊥) non si può scrivere (define qualcosa …): non c'è niente da mettere al
+; posto dei puntini. Nel capitolo 8 vedremo che ⊥ è il falso, e che proprio per questo è utile.
 
 ; --- esercizi ---
 ; Togli il ; davanti alle righe, completa i ___ e verifica il file.
 ;
 ; 1. Dichiara il tipo dei semafori, con tre introduzioni.
 ; (data Semaforo
-;   [___]
-;   [___]
-;   [___])
+;   (___)
+;   (___)
+;   (___))
 ;
 ; 2. Un albero con tre nodi.
-; (def tre-nodi : Albero
-;   ___)
+; (claim tre-nodi Albero)
+; (define tre-nodi ___)
 ;
 ; 3. Scrivi 4 senza usare letterali, e verifica che sia 4.
-; (def quattro : Nat ___)
-; (def quattro-è-4 : (≡ quattro 4) auto)
+; (claim quattro Nat)
+; (define quattro ___)
+; (claim quattro-è-4 (≡ quattro 4))
+; (define quattro-è-4 auto)

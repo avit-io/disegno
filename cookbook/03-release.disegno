@@ -10,35 +10,38 @@
 
 (import dagger)
 
-(def golang : (→ Dir Container)
-  [src] (pipe (container) (from "golang:1.25-alpine") (with-dir /src src) (with-workdir /src)))
+(claim golang (→ Dir Container))
+(define (golang src) (pipe (container) (from "golang:1.25-alpine") (with-dir /src src) (with-workdir /src)))
 
-(def test : (→ Dir Container)                  ; try-exec: un fallimento è un esito, non un errore
-  [src] (pipe (golang src) (try-exec ["go" "vet" "./..."])))
+(claim test (→ Dir Container))                  ; try-exec: un fallimento è un esito, non un errore
+(define (test src) (pipe (golang src) (try-exec (list "go" "vet" "./..."))))
 
-(def build : (→ Dir Dir)
-  [src] (pipe (golang src)
-              (with-env "CGO_ENABLED" "0")
-              (with-exec ["go" "build" "-o" /out/hello "."])
-              (dir-of /out)))
+(claim build (→ Dir Dir))
+(define (build src)
+  (pipe (golang src)
+        (with-env "CGO_ENABLED" "0")
+        (with-exec (list "go" "build" "-o" /out/hello "."))
+        (dir-of /out)))
 
-(def app-image : (→ Dir Container)
-  [src] (pipe (container)
-              (from "alpine:3.20")
-              (with-dir /app (build src))
-              (with-entrypoint ["/app/hello"])))
+(claim app-image (→ Dir Container))
+(define (app-image src)
+  (pipe (container)
+        (from "alpine:3.20")
+        (with-dir /app (build src))
+        (with-entrypoint (list "/app/hello"))))
 
-(def report : (→ Dir Dir)
-  [src] (with-file empty /report.txt "go vet non passa\n"))
+(claim report (→ Dir Dir))
+(define (report src) (with-file empty /report.txt "go vet non passa\n"))
 
-(def release : (→ Dir (Export Dir))
-  [src] (branch (passes? (test src))
+(claim release (→ Dir (Export Dir)))
+(define (release src)
+  (branch (passes? (test src))
           (publish (app-image src) "registry.example.com/hello:1")
           (overlay "reports" (report src))))
 
-(def main : (→ [src (Host "hello")] (Export Dir))
-  [src] (release src))
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src) (release src))
 
 ; Il teorema, per ogni sorgente: si pubblica solo dopo che i test sono passati.
-(def test-prima-di-publish : (→ [src Dir] (Before test? publish? (release src)))
-  [src] auto)
+(claim test-prima-di-publish (Π ((src Dir)) (Before test? publish? (release src))))
+(define (test-prima-di-publish src) auto)

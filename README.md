@@ -7,24 +7,28 @@ Un linguaggio totale, con tipi dipendenti, per CI/CD e infrastruttura. Progetta,
 ```
 (import dagger)
 
-(def go-build : (→ Dir Dir)
-  [src] (let [root /src, out /out, bin (/ out "hello")]
-          (pipe (container)
-                (from "golang:1.25-alpine")                       ; un Image, verificato
-                (with-mounted-cache /go/pkg/mod (cache-volume "go-mod"))
-                (with-dir root src)
-                (with-workdir root)
-                (with-exec ["go" "build" "-o" bin "."])
-                (dir-of out))))
+(claim go-build (→ Dir Dir))
+(define (go-build src)
+  (let ((root /src)
+        (out /out)
+        (bin (/ out "hello")))
+    (pipe (container)
+          (from "golang:1.25-alpine")                       ; un Image, verificato
+          (with-mounted-cache /go/pkg/mod (cache-volume "go-mod"))
+          (with-dir root src)
+          (with-workdir root)
+          (with-exec (list "go" "build" "-o" bin "."))
+          (dir-of out))))
 
-(def main : (→ [src (Host "hello")] (Export Dir))
-  [src] (overlay "bin" (go-build src)))
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src) (overlay "bin" (go-build src)))
 
 ; teoremi, non linter: valgono per ogni sorgente
-(def montaggi-disgiunti : (→ [src Dir] (Disjoint-mounts (go-build src)))
-  [src] auto)
+(claim montaggi-disgiunti (Π ((src Dir)) (Disjoint-mounts (go-build src))))
+(define (montaggi-disgiunti src) auto)
 ```
 
+- **Scheme con i tipi**: la sintassi è quella di Pie (*The Little Typer*), `(claim nome tipo)` e `(define (nome x …) corpo)`, con `Π`, `match`, `let`, `cond` e `begin` di Scheme. Niente da imparare oltre a Scheme.
 - **Totale**: niente ricorsione generale, copertura dei casi, universi stratificati, positività; un kernel ricontrolla ogni termine.
 - **Il piano è un dato**: le operazioni del motore sono costruttori di un tipo induttivo, generati dallo schema di Dagger. Le regole che oggi stanno in linter e policy (immagini pinnate, test prima di publish, montaggi disgiunti) sono teoremi, provati per calcolo con `auto`.
 - **I punti non si sommano**: i letterali si leggono secondo il tipo atteso (`"golang:1.25-alpine"` è un `Image`, `/out` è un punto); punto più punto è un errore di tipo.

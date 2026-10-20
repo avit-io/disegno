@@ -7,28 +7,29 @@
 
 ; --- regioni: un letterale "eu-west-1" atteso come Region si controlla mentre si tipa ---
 
-(def regions : (List String)
-  ["us-east-1" "us-east-2" "us-west-1" "us-west-2" "ca-central-1" "sa-east-1"
-   "eu-west-1" "eu-west-2" "eu-west-3" "eu-central-1" "eu-central-2" "eu-north-1" "eu-south-1" "eu-south-2"
-   "ap-south-1" "ap-south-2" "ap-northeast-1" "ap-northeast-2" "ap-northeast-3"
-   "ap-southeast-1" "ap-southeast-2" "ap-southeast-3" "ap-east-1" "me-south-1" "me-central-1" "af-south-1"])
+(claim regions (List String))
+(define regions
+  (list "us-east-1" "us-east-2" "us-west-1" "us-west-2" "ca-central-1" "sa-east-1"
+        "eu-west-1" "eu-west-2" "eu-west-3" "eu-central-1" "eu-central-2" "eu-north-1" "eu-south-1" "eu-south-2"
+        "ap-south-1" "ap-south-2" "ap-northeast-1" "ap-northeast-2" "ap-northeast-3"
+        "ap-southeast-1" "ap-southeast-2" "ap-southeast-3" "ap-east-1" "me-south-1" "me-central-1" "af-south-1"))
 
-(def region? : (→ String Bool)
-  [s] (any? (same? s) regions))
+(claim region? (→ String Bool))
+(define (region? s) (any? (same? s) regions))
 
 (record Region
-  [name : String]
-  [ok   : (So (region? name))])
+  (name String)
+  (ok (So (region? name))))
 
 ; --- nomi di dominio, controllati con un'espressione regolare mentre si tipa ---
 
 (record Bucket                             ; un bucket S3: 3–63 caratteri, minuscole, cifre, . e -
-  [name : String]
-  [ok   : (So (re? "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" name))])
+  (name String)
+  (ok (So (re? "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" name))))
 
 (record Arn                                ; arn:partizione:servizio:regione:account:risorsa
-  [raw : String]
-  [ok  : (So (re? "arn:aws(-cn|-us-gov)?:[a-z0-9-]+:([a-z]{2}(-[a-z]+)+-[0-9])?:([0-9]{12})?:.+" raw))])
+  (raw String)
+  (ok (So (re? "arn:aws(-cn|-us-gov)?:[a-z0-9-]+:([a-z]{2}(-[a-z]+)+-[0-9])?:([0-9]{12})?:.+" raw))))
 
 ; --- le credenziali: due segreti dalla firma di main, e la regione ---
 
@@ -37,29 +38,33 @@
 ; nessuno lo usa più: per uno stato che deve restare tra un passo e l'altro, come un emulatore, si
 ; comincia con (start localstack), che lo tiene vivo fino alla fine della sessione.
 (data Endpoint
-  [cloud]
-  [emulated Service])
+  (cloud)
+  (emulated Service))
 
 (record Aws
-  [key-id     : Secret]
-  [secret-key : Secret]
-  [region     : Region]
-  [endpoint   : Endpoint])
+  (key-id Secret)
+  (secret-key Secret)
+  (region Region)
+  (endpoint Endpoint))
 
-(def connect : (→ Endpoint Container Container)
-  [cloud          c] c
-  [(emulated svc) c] (pipe c (with-service-binding "aws" svc) (with-env "AWS_ENDPOINT_URL" "http://aws:4566")))
+(claim connect (→ Endpoint Container Container))
+(define (connect n c)
+  (match n
+    (cloud c)
+    ((emulated svc) (pipe c (with-service-binding "aws" svc) (with-env "AWS_ENDPOINT_URL" "http://aws:4566")))))
 
-(def cli : (→ Aws Container)
-  [a] (connect (Aws.endpoint a)
-               (pipe (container)
-                     (from "amazon/aws-cli@sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de")   ; 2.31.18
-                     (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
-                     (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
-                     (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a))))))
+(claim cli (→ Aws Container))
+(define (cli a)
+  (connect (Aws.endpoint a)
+           (pipe (container)
+                 (from "amazon/aws-cli@sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de")   ; 2.31.18
+                 (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
+                 (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
+                 (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a))))))
 
 ; LocalStack, l'emulatore di AWS, come service: per provare un piano senza un account.
-(def localstack : Service
+(claim localstack Service)
+(define localstack
   (pipe (container)
         (from "localstack/localstack@sha256:59373b4a27dba3ec15c4db0b7455f0cb68c8a42300e2cbbe362b440f9a131697")   ; 4.9
         (with-env "LOCALSTACK_HOST" "localhost:4566")                    ; non localhost.localstack.cloud, che chiede il DNS pubblico
@@ -70,157 +75,174 @@
 ; ponytail: la CLI legge un valore che comincia con file:// da quel file; put-secure-parameter lo
 ; usa di proposito, un valore in chiaro così fatto andrebbe evitato.
 
-(def put-parameter : (→ Aws Abs String (Export Dir))
-  [a name value] (apply (cli a) ["aws" "ssm" "put-parameter" "--name" name "--value" value
-                                 "--type" "String" "--overwrite"]))
+(claim put-parameter (→ Aws Abs String (Export Dir)))
+(define (put-parameter a name value)
+  (apply (cli a) (list "aws" "ssm" "put-parameter" "--name" name "--value" value
+                       "--type" "String" "--overwrite")))
 
 ; Un valore segreto non passa dagli argomenti: il segreto è montato come file, e la CLI lo legge.
-(def put-secure-parameter : (→ Aws Abs Secret (Export Dir))
-  [a name s] (apply (with-mounted-secret (cli a) /run/disegno/valore s)
-                    ["aws" "ssm" "put-parameter" "--name" name "--value" "file:///run/disegno/valore"
-                     "--type" "SecureString" "--overwrite"]))
+(claim put-secure-parameter (→ Aws Abs Secret (Export Dir)))
+(define (put-secure-parameter a name s)
+  (apply (with-mounted-secret (cli a) /run/disegno/valore s)
+         (list "aws" "ssm" "put-parameter" "--name" name "--value" "file:///run/disegno/valore"
+               "--type" "SecureString" "--overwrite")))
 
-(def parameter-exists? : (→ Aws Abs (Remote Bool))
-  [a name] (probe (cli a) ["aws" "ssm" "get-parameter" "--name" name]))
+(claim parameter-exists? (→ Aws Abs (Remote Bool)))
+(define (parameter-exists? a name) (probe (cli a) (list "aws" "ssm" "get-parameter" "--name" name)))
 
 ; Il confronto lo fa il container: nome e testo arrivano come argomenti posizionali, non nel comando.
-(def parameter-is? : (→ Aws Abs String (Remote Bool))
-  [a name value] (probe (cli a) ["sh" "-c" "test \"$(aws ssm get-parameter --name \"$1\" --query Parameter.Value --output text)\" = \"$2\""
-                                 "sh" name value]))
+(claim parameter-is? (→ Aws Abs String (Remote Bool)))
+(define (parameter-is? a name value)
+  (probe (cli a) (list "sh" "-c" "test \"$(aws ssm get-parameter --name \"$1\" --query Parameter.Value --output text)\" = \"$2\""
+                       "sh" name value)))
 
 ; --- che cosa scrive un piano nel Parameter Store, seguendo le sue storie ---
 
-(def parameter-of : (→ (Export Dir) (List Abs))
-  [(apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) (:: _ (:: (arg-path p) _))))))]
-    (if (and (same? a "aws") (and (same? b "ssm") (same? c "put-parameter"))) [p] [])
-  [_] [])
+(claim parameter-of (→ (Export Dir) (List Abs)))
+(define (parameter-of n)
+  (match n
+    ((apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) (:: _ (:: (arg-path p) _))))))
+     (if (and (same? a "aws") (and (same? b "ssm") (same? c "put-parameter"))) (list p) (list)))
+    (_ (list))))
 
-(def written : (→ Event (List Abs))
-  [(done e)] (parameter-of e)
-  [(seen _)] [])
+(claim written (→ Event (List Abs)))
+(define (written n)
+  (match n
+    ((done e) (parameter-of e))
+    ((seen _) (list))))
 
-(def parameters : (→ (Export Dir) (List Abs))
-  [p] (concat-map (concat-map written) (histories p)))
+(claim parameters (→ (Export Dir) (List Abs)))
+(define (parameters p) (concat-map (concat-map written) (histories p)))
 
-(def ssm? : (→ (Export Dir) Bool)               ; un'uscita che scrive un parametro (come aws-command? "ssm" "put-parameter")
-  [e] (any? (λ [_] true) (parameter-of e)))
+(claim ssm? (→ (Export Dir) Bool))               ; un'uscita che scrive un parametro (come aws-command? "ssm" "put-parameter")
+(define (ssm? e) (any? (λ (_) true) (parameter-of e)))
 
 ; Ogni parametro che il piano può scrivere sta sotto r.
-(def Parameters-within : (→ Abs (Export Dir) Type)
-  [r p] (Every (λ [q] (⊑ q r)) (parameters p)))
+(claim Parameters-within (→ Abs (Export Dir) Type))
+(define (Parameters-within r p) (Every (λ (q) (⊑ q r)) (parameters p)))
 
 ; Un'uscita che esegue un comando della CLI: (aws-command? "s3" "sync"). Per Before e Precedes:
 ; (Before test? (aws-command? "s3" "sync") p), nessuna pubblicazione prima del test.
-(def aws-command? : (→ String String (Export Dir) Bool)
-  [svc op (apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _))))] (and (same? a "aws") (and (same? b svc) (same? c op)))
-  [svc op _] false)
+(claim aws-command? (→ String String (Export Dir) Bool))
+(define (aws-command? svc op n)
+  (match n
+    ((apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _)))) (and (same? a "aws") (and (same? b svc) (same? c op))))
+    (_ false)))
 
 ; --- S3: un bucket e un prefisso, s3://bucket/site; si pubblica una directory del piano ---
 
-(def s3-uri : (→ Bucket Abs String)
-  [b p] (concat "s3://" (concat (Bucket.name b) (render-abs p))))
+(claim s3-uri (→ Bucket Abs String))
+(define (s3-uri b p) (string-append "s3://" (Bucket.name b) (render-abs p)))
 
-(def make-bucket : (→ Aws Bucket (Export Dir))
-  [a b] (apply (cli a) ["aws" "s3" "mb" (s3-uri b root)]))
+(claim make-bucket (→ Aws Bucket (Export Dir)))
+(define (make-bucket a b) (apply (cli a) (list "aws" "s3" "mb" (s3-uri b root))))
 
 ; La directory va nel container in /disegno/src, e la CLI la sincronizza: --delete toglie ciò
 ; che non c'è più, quindi il prefisso diventa esattamente la directory.
-(def s3-sync : (→ Aws Dir Bucket Abs (Export Dir))
-  [a d b p] (apply (with-dir (cli a) /disegno/src d) ["aws" "s3" "sync" "/disegno/src" (s3-uri b p) "--delete"]))
+(claim s3-sync (→ Aws Dir Bucket Abs (Export Dir)))
+(define (s3-sync a d b p) (apply (with-dir (cli a) /disegno/src d) (list "aws" "s3" "sync" "/disegno/src" (s3-uri b p) "--delete")))
 
-(def s3-put : (→ Aws File Bucket Abs (Export Dir))
-  [a f b p] (apply (Container.with-file (cli a) /disegno/file f) ["aws" "s3" "cp" "/disegno/file" (s3-uri b p)]))
+(claim s3-put (→ Aws File Bucket Abs (Export Dir)))
+(define (s3-put a f b p) (apply (Container.with-file (cli a) /disegno/file f) (list "aws" "s3" "cp" "/disegno/file" (s3-uri b p))))
 
-(def s3-exists? : (→ Aws Bucket Abs (Remote Bool))
-  [a b p] (probe (cli a) ["aws" "s3" "ls" (s3-uri b p)]))
+(claim s3-exists? (→ Aws Bucket Abs (Remote Bool)))
+(define (s3-exists? a b p) (probe (cli a) (list "aws" "s3" "ls" (s3-uri b p))))
 
 ; Il contenuto lo guarda il container: l'oggetto passa per una pipe, il testo come argomento.
-(def s3-includes? : (→ Aws Bucket Abs String (Remote Bool))
-  [a b p s] (probe (cli a) ["sh" "-c" "aws s3 cp \"$1\" - | grep -qF \"$2\"" "sh" (s3-uri b p) s]))
+(claim s3-includes? (→ Aws Bucket Abs String (Remote Bool)))
+(define (s3-includes? a b p s) (probe (cli a) (list "sh" "-c" "aws s3 cp \"$1\" - | grep -qF \"$2\"" "sh" (s3-uri b p) s)))
 
 ; --- segreti letti a esecuzione: il programma dice da dove, il runner li carica quando servono ---
 ; Solo la credenziale di partenza viene dalla firma di main (o da un ruolo IAM); tutti gli altri
 ; segreti li carica la pipeline. Il valore non torna al linguaggio: (secret-from c cmd) è un
 ; Secret, che il runner passa a Dagger quando un passo lo usa. Il piano mostra il comando.
 
-(def secrets-manager : (→ Aws String Secret)    ; il SecretString intero
-  [a id] (secret-from (cli a) ["aws" "secretsmanager" "get-secret-value" "--secret-id" id
-                               "--query" "SecretString" "--output" "text"]
-                    id))
+(claim secrets-manager (→ Aws String Secret))    ; il SecretString intero
+(define (secrets-manager a id)
+  (secret-from (cli a) (list "aws" "secretsmanager" "get-secret-value" "--secret-id" id
+                             "--query" "SecretString" "--output" "text")
+               id))
 
 ; Una chiave di un segreto JSON: la CLI non sa estrarla, jq sì, nello stesso container.
 ; ponytail: Alpine con apk; una toolbox costruita con Nix e fissata per digest la sostituirebbe.
-(def cli-jq : (→ Aws Container)
-  [a] (connect (Aws.endpoint a)
-               (pipe (container)
-                     (from "alpine@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8")   ; 3.22
-                     (with-exec ["apk" "add" "--no-cache" "aws-cli" "jq"])
-                     (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
-                     (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
-                     (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a))))))
+(claim cli-jq (→ Aws Container))
+(define (cli-jq a)
+  (connect (Aws.endpoint a)
+           (pipe (container)
+                 (from "alpine@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8")   ; 3.22
+                 (with-exec (list "apk" "add" "--no-cache" "aws-cli" "jq"))
+                 (with-secret-variable "AWS_ACCESS_KEY_ID" (Aws.key-id a))
+                 (with-secret-variable "AWS_SECRET_ACCESS_KEY" (Aws.secret-key a))
+                 (with-env "AWS_DEFAULT_REGION" (Region.name (Aws.region a))))))
 
-(def secrets-manager-key : (→ Aws String String Secret)
-  [a id key] (secret-from (cli-jq a)
-                          ["sh" "-c" "aws secretsmanager get-secret-value --secret-id \"$1\" --query SecretString --output text | jq -er --arg k \"$2\" '.[$k]'"
-                           "sh" id key]
-                          (concat id (concat ":" key))))
+(claim secrets-manager-key (→ Aws String String Secret))
+(define (secrets-manager-key a id key)
+  (secret-from (cli-jq a)
+               (list "sh" "-c" "aws secretsmanager get-secret-value --secret-id \"$1\" --query SecretString --output text | jq -er --arg k \"$2\" '.[$k]'"
+                     "sh" id key)
+               (string-append id ":" key)))
 
-(def ssm-secure : (→ Aws Abs Secret)            ; un parametro SecureString, decifrato
-  [a name] (secret-from (cli a) ["aws" "ssm" "get-parameter" "--name" name "--with-decryption"
-                                 "--query" "Parameter.Value" "--output" "text"]
-                        (render-abs name)))
+(claim ssm-secure (→ Aws Abs Secret))            ; un parametro SecureString, decifrato
+(define (ssm-secure a name)
+  (secret-from (cli a) (list "aws" "ssm" "get-parameter" "--name" name "--with-decryption"
+                             "--query" "Parameter.Value" "--output" "text")
+               (render-abs name)))
 
 ; Il primo segreto che esiste tra più id, in ordine: quando lo stesso segreto può stare a livelli
 ; diversi (per ambiente, per piattaforma, comune). Con un nome scelto: un Dockerfile cerca il
 ; segreto per id (RUN --mount=type=secret,id=ssh-key).
-(def first-secret-script : String
-  "k=\"$1\"; shift; for id in \"$@\"; do v=$(aws secretsmanager get-secret-value --secret-id \"$id\" --output json 2>/dev/null | jq -er '.SecretString // (.SecretBinary | @base64d)') || continue; if [ -z \"$k\" ]; then printf '%s' \"$v\"; else printf '%s' \"$v\" | jq -er --arg k \"$k\" '.[$k]'; fi; exit $?; done; echo \"nessuno di: $*\" >&2; exit 1")
+(claim first-secret-script String)
+(define first-secret-script "k=\"$1\"; shift; for id in \"$@\"; do v=$(aws secretsmanager get-secret-value --secret-id \"$id\" --output json 2>/dev/null | jq -er '.SecretString // (.SecretBinary | @base64d)') || continue; if [ -z \"$k\" ]; then printf '%s' \"$v\"; else printf '%s' \"$v\" | jq -er --arg k \"$k\" '.[$k]'; fi; exit $?; done; echo \"nessuno di: $*\" >&2; exit 1")
 
-(def secrets-manager-first : (→ Aws (List String) String Secret)        ; id in ordine, nome
-  [a ids name] (secret-from (cli-jq a) (++ ["sh" "-c" first-secret-script "sh" ""] (map arg-text ids)) name))
+(claim secrets-manager-first (→ Aws (List String) String Secret))        ; id in ordine, nome
+(define (secrets-manager-first a ids name) (secret-from (cli-jq a) (++ (list "sh" "-c" first-secret-script "sh" "") (map arg-text ids)) name))
 
-(def secrets-manager-key-first : (→ Aws (List String) String String Secret)   ; id in ordine, chiave, nome
-  [a ids key name] (secret-from (cli-jq a) (++ ["sh" "-c" first-secret-script "sh" key] (map arg-text ids)) name))
+(claim secrets-manager-key-first (→ Aws (List String) String String Secret))   ; id in ordine, chiave, nome
+(define (secrets-manager-key-first a ids key name) (secret-from (cli-jq a) (++ (list "sh" "-c" first-secret-script "sh" key) (map arg-text ids)) name))
 
 ; Come secrets-manager-key-first, ma se nessun segreto ha la chiave vale default.
-(def secrets-manager-key-first-or : (→ Aws (List String) String String String Secret)   ; id, chiave, default, nome
-  [a ids key default name]
+(claim secrets-manager-key-first-or (→ Aws (List String) String String String Secret))   ; id, chiave, default, nome
+(define (secrets-manager-key-first-or a ids key default name)
   (secret-from (with-env (cli-jq a) "DEFAULT" default)
-               (++ ["sh" "-c" (concat "(" (concat first-secret-script ") 2>/dev/null || printf '%s' \"$DEFAULT\"")) "sh" key] (map arg-text ids))
+               (++ (list "sh" "-c" (string-append "(" first-secret-script ") 2>/dev/null || printf '%s' \"$DEFAULT\"") "sh" key) (map arg-text ids))
                name))
 
 ; Un'osservazione: la chiave del primo segreto esistente vale questo testo? (una modalità, un flag)
-(def secrets-manager-key-is? : (→ Aws (List String) String String (Remote Bool))   ; id in ordine, chiave, valore
-  [a ids key value] (probe (with-env (cli-jq a) "WANT" value) (++ ["sh" "-c" (concat "test \"$(" (concat first-secret-script ")\" = \"$WANT\""))
-                                           "sh" key]
-                                          (map arg-text ids))))
+(claim secrets-manager-key-is? (→ Aws (List String) String String (Remote Bool)))   ; id in ordine, chiave, valore
+(define (secrets-manager-key-is? a ids key value)
+  (probe (with-env (cli-jq a) "WANT" value) (++ (list "sh" "-c" (string-append "test \"$(" first-secret-script ")\" = \"$WANT\"")
+                                                      "sh" key)
+                                                (map arg-text ids))))
 
 ; --- ECR: il registro delle immagini. La password si legge a esecuzione, come un segreto ---
 
 (record Account                            ; un account AWS: dodici cifre
-  [id : String]
-  [ok : (So (re? "[0-9]{12}" id))])
+  (id String)
+  (ok (So (re? "[0-9]{12}" id))))
 
-(def ecr-registry : (→ Account Region String)       ; 123456789012.dkr.ecr.eu-west-1.amazonaws.com
-  [acc r] (concat (Account.id acc) (concat ".dkr.ecr." (concat (Region.name r) ".amazonaws.com"))))
+(claim ecr-registry (→ Account Region String))       ; 123456789012.dkr.ecr.eu-west-1.amazonaws.com
+(define (ecr-registry acc r) (string-append (Account.id acc) ".dkr.ecr." (Region.name r) ".amazonaws.com"))
 
-(def ecr-image : (→ Aws Account String String String) ; repo, tag → registro/repo:tag
-  [a acc repo tag] (concat (ecr-registry acc (Aws.region a)) (concat "/" (concat repo (concat ":" tag)))))
+(claim ecr-image (→ Aws Account String String String)) ; repo, tag → registro/repo:tag
+(define (ecr-image a acc repo tag) (string-append (ecr-registry acc (Aws.region a)) "/" repo ":" tag))
 
-(def ecr-password : (→ Aws Secret)
-  [a] (secret-from (cli a) ["aws" "ecr" "get-login-password"] "ecr-password"))
+(claim ecr-password (→ Aws Secret))
+(define (ecr-password a) (secret-from (cli a) (list "aws" "ecr" "get-login-password") "ecr-password"))
 
-(def ensure-repository : (→ Aws String (Export Dir))  ; crea il repository se non c'è
-  [a repo] (apply (cli a) ["sh" "-c" "aws ecr describe-repositories --repository-names \"$1\" >/dev/null 2>&1 || aws ecr create-repository --repository-name \"$1\""
-                           "sh" repo]))
+(claim ensure-repository (→ Aws String (Export Dir)))  ; crea il repository se non c'è
+(define (ensure-repository a repo)
+  (apply (cli a) (list "sh" "-c" "aws ecr describe-repositories --repository-names \"$1\" >/dev/null 2>&1 || aws ecr create-repository --repository-name \"$1\""
+                       "sh" repo)))
 
-(def ecr-image-exists? : (→ Aws String String (Remote Bool))
-  [a repo tag] (probe (cli a) ["aws" "ecr" "describe-images" "--repository-name" repo "--image-ids" (concat "imageTag=" tag)]))
+(claim ecr-image-exists? (→ Aws String String (Remote Bool)))
+(define (ecr-image-exists? a repo tag) (probe (cli a) (list "aws" "ecr" "describe-images" "--repository-name" repo "--image-ids" (string-append "imageTag=" tag))))
 
 ; ECR come Registry: il push crea il repository se manca, poi pubblica con la password del momento.
-(def ecr : (→ Aws Account Registry)
-  [a acc] (registry (ecr-image a acc)
-                    (λ [c repo tag] (then (ensure-repository a repo)
-                                          (Registry.push (login-registry (ecr-registry acc (Aws.region a)) "AWS" (ecr-password a) direct)
-                                                         c repo tag)))
-                    (ecr-image-exists? a)))
+(claim ecr (→ Aws Account Registry))
+(define (ecr a acc)
+  (registry (ecr-image a acc)
+            (λ (c repo tag) (begin
+                              (ensure-repository a repo)
+                              (Registry.push (login-registry (ecr-registry acc (Aws.region a)) "AWS" (ecr-password a) direct)
+                                             c repo tag)))
+            (ecr-image-exists? a)))

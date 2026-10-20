@@ -2,42 +2,49 @@
 ;
 ;   disegno check book/solutions/04-recursion.disegno
 
-(def ind-Nat : (→ [n Nat] [mot (→ Nat Type)]
-                  (mot zero)
-                  (→ [k Nat] (mot k) (mot (add1 k)))
-                  (mot n))
-  [zero     mot base passo] base
-  [(add1 k) mot base passo] (passo k (ind-Nat k mot base passo)))
+(claim ind-Nat (Π ((n Nat) (mot (→ Nat Type)))
+                 (→ (mot zero)
+                    (Π ((k Nat)) (→ (mot k) (mot (add1 k))))
+                    (mot n))))
+(define (ind-Nat n mot base passo)
+  (match n
+    (zero base)
+    ((add1 k) (passo k (ind-Nat k mot base passo)))))
 
-(def rec-Nat : (→ {X Type} Nat X (→ Nat X X) X)
-  [n base passo] (ind-Nat n (λ [_] X) base passo))
+(claim rec-Nat (∀ ((X Type)) (→ Nat X (→ Nat X X) X)))
+(define (rec-Nat n base passo) (ind-Nat n (λ (_) X) base passo))
 
 ; 1. Si scende solo a sinistra; il sottoalbero destro si ignora.
 
 (data Albero
-  [foglia]
-  [nodo Albero Albero])
+  (foglia)
+  (nodo Albero Albero))
 
-(def sinistra : (→ Albero Nat)
-  [foglia]     0
-  [(nodo s _)] (add1 (sinistra s)))
+(claim sinistra (→ Albero Nat))
+(define (sinistra n)
+  (match n
+    (foglia     0)
+    ((nodo s _) (add1 (sinistra s)))))
 
 ; 2. Base 0; il passo aggiunge m al risultato precedente. Il numero k del passo non serve.
 
-(def prodotto : (→ Nat Nat Nat)
-  [n m] (rec-Nat n 0 (λ [_ p] (+ m p))))
+(claim prodotto (→ Nat Nat Nat))
+(define (prodotto n m) (rec-Nat n 0 (λ (_ p) (+ m p))))
 
-(def sei : (≡ (prodotto 2 3) 6)
-  auto)
+(claim sei (≡ (prodotto 2 3) 6))
+(define sei auto)
 
 ; 3. Il motivo è l'enunciato con n al posto di k. Base: (+ 0 (add1 m)) e (add1 (+ 0 m)) si
 ;    riducono entrambi a (add1 m). Passo: come +-zero, cong add1 sull'ipotesi induttiva.
 
-(def +-add1 : (→ [n Nat] [m Nat] (≡ (+ n (add1 m)) (add1 (+ n m))))
-  [n m] (ind-Nat n (λ [k] (≡ (+ k (add1 m)) (add1 (+ k m))))
+(claim +-add1 (Π ((n Nat) (m Nat)) (≡ (+ n (add1 m)) (add1 (+ n m)))))
+(define (+-add1 n m)
+  (ind-Nat n (λ (k) (≡ (+ k (add1 m)) (add1 (+ k m))))
            refl
-           (λ [k ih] (cong add1 ih))))
+           (λ (k ih) (cong add1 ih))))
 
-(def +-add1-bis : (→ [n Nat] [m Nat] (≡ (+ n (add1 m)) (add1 (+ n m))))
-  [zero     m] refl
-  [(add1 k) m] (cong add1 (+-add1-bis k m)))
+(claim +-add1-bis (Π ((n Nat) (m Nat)) (≡ (+ n (add1 m)) (add1 (+ n m)))))
+(define (+-add1-bis n m)
+  (match n
+    (zero refl)
+    ((add1 k) (cong add1 (+-add1-bis k m)))))

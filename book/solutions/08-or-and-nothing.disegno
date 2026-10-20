@@ -4,27 +4,35 @@
 
 ; 1. Un caso per introduzione, e l'introduzione opposta.
 
-(def either-scambia : (→ (Either A B) (Either B A))
-  [(left a)]  (right a)
-  [(right b)] (left b))
+(claim either-scambia (→ (Either A B) (Either B A)))
+(define (either-scambia n)
+  (match n
+    ((left a)  (right a))
+    ((right b) (left b))))
 
 ; 2. (¬ (Either A B)) è una funzione: la si definisce per casi sulla disgiunzione ricevuta.
 
-(def de-morgan-inversa : (→ (× (¬ A) (¬ B)) (¬ (Either A B)))
-  [(pair na _) (left a)]  (na a)
-  [(pair _ nb) (right b)] (nb b))
+(claim de-morgan-inversa (→ (× (¬ A) (¬ B)) (¬ (Either A B))))
+(define (de-morgan-inversa n m)
+  (match* (n m)
+    (((pair na _) (left a))  (na a))
+    (((pair _ nb) (right b)) (nb b))))
 
 ; 3. Da a si ottiene (¬ (¬ A)), con la doppia negazione del capitolo; f la porta all'assurdo.
 
-(def tripla : (→ (¬ (¬ (¬ A))) (¬ A))
-  [f a] (f (λ [g] (g a))))
+(claim tripla (→ (¬ (¬ (¬ A))) (¬ A)))
+(define (tripla f a) (f (λ (g) (g a))))
 
 ; 4. Il pattern refl su (≡ (add1 n) (add1 m)) unifica n e m: è l'iniettività. Poi
 ;    l'induzione: zero non è (add1 zero), e il caso (add1 k) si riduce al caso k.
 
-(def add1-iniettivo : (→ (≡ (add1 n) (add1 m)) (≡ n m))
-  [refl] refl)
+(claim add1-iniettivo (→ (≡ (add1 n) (add1 m)) (≡ n m)))
+(define (add1-iniettivo x)
+  (match x
+    (refl refl)))
 
-(def mai-il-successivo : (→ [n Nat] (¬ (≡ n (add1 n))))
-  [zero     ()]
-  [(add1 k) e]  (mai-il-successivo k (add1-iniettivo e)))
+(claim mai-il-successivo (Π ((n Nat)) (¬ (≡ n (add1 n)))))
+(define (mai-il-successivo n m)
+  (match* (n m)
+    ((zero ()))
+    (((add1 k) e)  (mai-il-successivo k (add1-iniettivo e)))))

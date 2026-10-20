@@ -7,47 +7,50 @@
 ; --- costruire ---
 
 ; Un file con il suo nome: il nome è un Segment, quindi "a/b" o "" non passano.
-(def file : (→ Segment String File)
-  [n contents] (Query.file (Segment.name n) contents))
+(claim file (→ Segment String File))
+(define (file n contents) (Query.file (Segment.name n) contents))
 
-(def file-of : (→ Dir Abs File)
-  [d path] (Directory.file d path))
+(claim file-of (→ Dir Abs File))
+(define (file-of d path) (Directory.file d path))
 
-(def put-file : (→ Dir Abs File Dir)
-  [d path f] (Directory.with-file d path f))
+(claim put-file (→ Dir Abs File Dir))
+(define (put-file d path f) (Directory.with-file d path f))
 
-(def merge : (→ Dir Dir Dir)                   ; b sopra a, dalla radice
-  [a b] (Directory.with-directory a root b))
+(claim merge (→ Dir Dir Dir))                   ; b sopra a, dalla radice
+(define (merge a b) (Directory.with-directory a root b))
 
-; Selezionare per glob, come Dagger: (only src ["**/*.go" "go.mod"]), (except src ["**/*_test.go"]).
+; Selezionare per glob, come Dagger: (only src (list "**/*.go" "go.mod")),
+; (except src (list "**/*_test.go")).
 ; ponytail: i glob non si controllano mentre si tipa; un Glob raffinato con re? se servirà.
-(def only : (→ Dir (List String) Dir)
-  [d globs] (Directory.filter d [] globs))
+(claim only (→ Dir (List String) Dir))
+(define (only d globs) (Directory.filter d (list) globs))
 
-(def except : (→ Dir (List String) Dir)
-  [d globs] (Directory.filter d globs []))
+(claim except (→ Dir (List String) Dir))
+(define (except d globs) (Directory.filter d globs (list)))
 
 ; --- che cosa scrive una directory: i percorsi lungo la sua catena di costruzione ---
 ; Come i montaggi di un container, si guarda solo la catena (chain), che non scende negli
 ; argomenti: le proprietà valgono per ogni sorgente.
 
-(def write-of : (→ Any (List Abs))
-  [(any (Directory.with-new-file _ path _ _))]    [path]
-  [(any (Directory.with-file _ path _))]          [path]
-  [(any (Directory.with-directory _ path _))]     [path]
-  [(any (Directory.with-new-directory _ path))]   [path]
-  [_]                                             [])
+(claim write-of (→ Any (List Abs)))
+(define (write-of n)
+  (match n
+    ((any (Directory.with-new-file _ path _ _))    (list path))
+    ((any (Directory.with-file _ path _))          (list path))
+    ((any (Directory.with-directory _ path _))     (list path))
+    ((any (Directory.with-new-directory _ path))   (list path))
+    (_                                             (list))))
 
-(def writes : (→ (Obj k) (List Abs))
-  [p] (concat-map write-of (chain p)))
+(claim writes (→ (Obj k) (List Abs)))
+(define (writes p) (concat-map write-of (chain p)))
 
 ; Nessuna scrittura ne copre un'altra: né lo stesso percorso due volte, né uno dentro l'altro.
-(def Disjoint-writes : (→ (Obj k) Type)
-  [p] (Pairwise ⋔ (writes p)))
+(claim Disjoint-writes (→ (Obj k) Type))
+(define (Disjoint-writes p) (Pairwise ⋔ (writes p)))
 
 ; Tutto ciò che si scrive sta sotto r.
-(def Writes-within : (→ Abs (Obj k) Type)
-  [r p] (Every (λ [q] (⊑ q r)) (writes p)))
+(claim Writes-within (→ Abs (Obj k) Type))
+(define (Writes-within r p) (Every (λ (q) (⊑ q r)) (writes p)))
 
 ; --- osservazioni sul contenuto, calcolate da Dagger ---
 ; Il testo arriva al comando come argomento, non passa da una shell. Sono osservazioni di
@@ -55,21 +58,22 @@
 ; ponytail: un'espressione regolare malformata fa uscire grep con 2, cioè «falso»; un tipo
 ; Regex raffinato la rifiuterebbe prima, se servirà.
 
-(def strumenti : Container
-  (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")))
+(claim strumenti Container)
+(define strumenti (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")))
 
-(def guarda : (→ File (List Arg) (Remote Bool))
-  [f cmd] (passes? (pipe strumenti (Container.with-file /f f) (try-exec cmd))))
+(claim guarda (→ File (List Arg) (Remote Bool)))
+(define (guarda f cmd) (passes? (pipe strumenti (Container.with-file /f f) (try-exec cmd))))
 
-(def includes? : (→ File String (Remote Bool))  ; il testo compare nel file
-  [f s] (guarda f ["grep" "-qF" s "/f"]))
+(claim includes? (→ File String (Remote Bool)))  ; il testo compare nel file
+(define (includes? f s) (guarda f (list "grep" "-qF" s "/f")))
 
-(def matches? : (→ File String (Remote Bool))   ; una riga soddisfa l'espressione regolare estesa
-  [f re] (guarda f ["grep" "-qE" re "/f"]))
+(claim matches? (→ File String (Remote Bool)))   ; una riga soddisfa l'espressione regolare estesa
+(define (matches? f re) (guarda f (list "grep" "-qE" re "/f")))
 
-(def empty? : (→ File (Remote Bool))            ; il file è vuoto
-  [f] (guarda f ["sh" "-c" "! test -s /f"]))
+(claim empty? (→ File (Remote Bool)))            ; il file è vuoto
+(define (empty? f) (guarda f (list "sh" "-c" "! test -s /f")))
 
-(def same-content? : (→ File File (Remote Bool))
-  [a b] (passes? (pipe strumenti (Container.with-file /a a) (Container.with-file /b b)
-                       (try-exec ["cmp" "-s" "/a" "/b"]))))
+(claim same-content? (→ File File (Remote Bool)))
+(define (same-content? a b)
+  (passes? (pipe strumenti (Container.with-file /a a) (Container.with-file /b b)
+                 (try-exec (list "cmp" "-s" "/a" "/b")))))

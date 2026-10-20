@@ -12,29 +12,31 @@
 
 ; --- costruire: un sito sotto /site, con un file dato e i sorgenti copiati ---
 
-(def sito : (→ Dir Dir)
-  [src] (pipe empty
-              (with-file /site/index.html "<h1>ciao da Disegno</h1>\n")
-              (put-file /site/robots.txt (file "robots.txt" "User-agent: *\n"))
-              (put /site/src src)))
+(claim sito (→ Dir Dir))
+(define (sito src)
+  (pipe empty
+        (with-file /site/index.html "<h1>ciao da Disegno</h1>\n")
+        (put-file /site/robots.txt (file "robots.txt" "User-agent: *\n"))
+        (put /site/src src)))
 
 ; Che cosa scrive, per ogni sorgente: tutto sotto /site, e nessuna scrittura ne copre un'altra.
-(def sito-in-site : (→ [src Dir] (Writes-within /site (sito src)))
-  [src] auto)
+(claim sito-in-site (Π ((src Dir)) (Writes-within /site (sito src))))
+(define (sito-in-site src) auto)
 
-(def sito-disgiunto : (→ [src Dir] (Disjoint-writes (sito src)))
-  [src] auto)
+(claim sito-disgiunto (Π ((src Dir)) (Disjoint-writes (sito src))))
+(define (sito-disgiunto src) auto)
 
 ; Scrivere due volte lo stesso percorso è una sovrapposizione, e lo si prova.
-(def doppio : (¬ (Disjoint-writes (pipe empty (with-file /a "1") (with-file /a "2"))))
-  auto)
+(claim doppio (¬ (Disjoint-writes (pipe empty (with-file /a "1") (with-file /a "2")))))
+(define doppio auto)
 
 ; --- il contenuto: si sceglie il ramo da ciò che Dagger trova nel file ---
 
-(def è-un-programma? : (→ Dir (Remote Bool))
-  [src] (includes? (file-of src /main.go) "package main"))
+(claim è-un-programma? (→ Dir (Remote Bool)))
+(define (è-un-programma? src) (includes? (file-of src /main.go) "package main"))
 
-(def main : (→ [src (Host "hello")] (Export Dir))
-  [src] (branch (è-un-programma? src)
+(claim main (Π ((src (Host "hello"))) (Export Dir)))
+(define (main src)
+  (branch (è-un-programma? src)
           (overlay "out" (sito src))
           (overlay "out" (with-file empty /RIFIUTATO "main.go non è un programma\n"))))

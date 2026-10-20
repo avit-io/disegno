@@ -965,28 +965,6 @@
               (oops "~a: un extern deve restituire un tipo opaco del motore" name))
             (define-global! name (make-g 'extern (ev '() t) (cons spec (reverse names)))))))))
 
-;; Il reader di Chez non distingue [..] da (..): prima di leggere, [ diventa (%br  fuori da stringhe e commenti.
-;; Il reader di Chez non distingue [..] da (..): prima di leggere, [ diventa ( e se ne annota la
-;; posizione; le virgole diventano spazi. La trasformazione conserva le lunghezze, quindi gli
-;; offset del testo letto sono quelli del file. → (values testo posizioni-delle-quadre)
-(define (brackets s)
-  (let ([out (string-copy s)] [opens (make-eqv-hashtable)])
-    (let loop ([i 0] [mode 'code])
-      (when (< i (string-length s))
-        (let ([c (string-ref s i)])
-          (case mode
-            [(string) (cond [(char=? c #\\) (loop (+ i 2) mode)]
-                            [else (loop (+ i 1) (if (char=? c #\") 'code mode))])]
-            [(comment) (loop (+ i 1) (if (char=? c #\newline) 'code mode))]
-            [else (case c
-                    [(#\[) (string-set! out i #\() (hashtable-set! opens i '%br)]
-                    [(#\{) (string-set! out i #\() (hashtable-set! opens i '%imp)]   ; {x T}: binder implicito
-                    [(#\}) (string-set! out i #\))]
-                    [(#\]) (string-set! out i #\))]
-                    [(#\,) (string-set! out i #\space)])         ; le virgole sono spazi, come in Clojure
-                  (loop (+ i 1) (case c [(#\") 'string] [(#\;) 'comment] [else mode]))]))))
-    (values out opens)))
-
 ;; --- posizioni: ogni lista del sorgente ricorda file e offset; gli errori li riportano ---
 
 (define pos-of (make-eq-hashtable))                     ; lista → (file . offset)
@@ -1005,44 +983,167 @@
           (vector (car p) line col)
           (if (char=? (string-ref text i) #\newline) (loop (+ i 1) (+ line 1) 1) (loop (+ i 1) line (+ col 1)))))))
 
-;; Da annotazione a s-espressione: le liste aperte da [ diventano (%br …), e ogni lista ricorda
-;; dove sta nel file.
-(define (strip file opens a)
+;; Da annotazione a s-espressione: ogni lista ricorda dove sta nel file. Il reader è quello di
+;; Scheme: [..] è un sinonimo di (..), come in R6RS.
+(define (strip file a)
   (if (not (annotation? a))
       a
-      (let* ([e (annotation-expression a)] [at (source-object-bfp (annotation-source a))]
-             [br (hashtable-ref opens at #f)])
-        (if (or (pair? e) (and (null? e) br))
-            (let* ([items (let loop ([e e]) (cond [(pair? e) (cons (strip file opens (car e)) (loop (cdr e)))]
-                                                  [(null? e) '()]
-                                                  [else (strip file opens e)]))]
-                   [d (if br (cons br items) items)])
-              (when (pair? d) (hashtable-set! pos-of d (cons file at)))
+      (let ([e (annotation-expression a)] [at (source-object-bfp (annotation-source a))])
+        (if (pair? e)
+            (let ([d (let loop ([e e]) (cond [(pair? e) (cons (strip file (car e)) (loop (cdr e)))]
+                                             [(null? e) '()]
+                                             [else (strip file e)]))])
+              (hashtable-set! pos-of d (cons file at))
               d)
             e))))
 
-(define (check-text name text)
+;; --- la superficie: Scheme con i tipi, come Pie ---
+;; (claim f T) e (define (f x …) corpo); (Π ((x A) …) B), (∀ ((A Type) …) B) per gli impliciti;
+;; (λ (x …) corpo); (let ((x e) …) corpo), in sequenza; (list a b); (match x (p corpo) …) e
+;; (match* (x y) ((p q) corpo) …) sugli argomenti; cond, when, unless, begin, string-append.
+;; Tutto diventa le forme interne dell'elaboratore: (%br …) per liste, binder e legami.
+
+(define (keep new old)                                   ; la forma nuova eredita la posizione
+  (let ([p (and (pair? old) (hashtable-ref pos-of old #f))])
+    (when (and p (pair? new) (not (hashtable-ref pos-of new #f))) (hashtable-set! pos-of new p))
+    new))
+
+(define (head? e h) (and (pair? e) (eq? (car e) h)))
+(define (bindings who bs)                                ; ((x e) …) → ((x . e) …)
+  (unless (and (list? bs) (for-all (lambda (b) (and (list? b) (= (length b) 2) (symbol? (car b)))) bs))
+    (oops "~a: legami malformati in ~s" who bs))
+  (map (lambda (b) (cons (car b) (cadr b))) bs))
+
+(define (sx e)                                           ; espressione di superficie → forma interna
+  (if (pair? e) (with-pos e (lambda () (keep (sx* e) e))) e))
+(define (sx* e)
+  (unless (list? e) (oops "espressione non valida: ~s" e))
+  (case (car e)
+    [(Π ∀) (unless (= (length e) 3) (oops "~a: (~a ((x A) …) B)" (car e) (car e)))
+     `(→ ,@(map (lambda (b) `(,(if (eq? (car e) 'Π) '%br '%imp) ,(car b) ,(sx (cdr b)))) (bindings (car e) (cadr e)))
+         ,(sx (caddr e)))]
+    [(λ lambda) (unless (and (= (length e) 3) (list? (cadr e)) (for-all symbol? (cadr e))) (oops "λ: (λ (x …) corpo)"))
+     `(λ (%br ,@(cadr e)) ,(sx (caddr e)))]
+    [(let let*) (unless (= (length e) 3) (oops "let: (let ((x e) …) corpo)"))
+     `(let (%br ,@(apply append (map (lambda (b) (list (car b) (sx (cdr b)))) (bindings 'let (cadr e))))) ,(sx (caddr e)))]
+    [(list) `(%br ,@(map sx (cdr e)))]
+    [(cond) (let loop ([cs (cdr e)])
+              (cond [(null? cs) (oops "cond: manca else")]
+                    [(not (and (list? (car cs)) (= (length (car cs)) 2))) (oops "cond: clausola malformata ~s" (car cs))]
+                    [(eq? (caar cs) 'else) (unless (null? (cdr cs)) (oops "cond: else va in fondo")) (sx (cadar cs))]
+                    [else (keep `(if ,(sx (caar cs)) ,(sx (cadar cs)) ,(loop (cdr cs))) (car cs))]))]
+    [(when unless) (unless (= (length e) 3) (oops "~a: (~a osservazione corpo)" (car e) (car e)))
+     (if (eq? (car e) 'when) `(branch ,(sx (cadr e)) ,(sx (caddr e)) skip) `(branch ,(sx (cadr e)) skip ,(sx (caddr e))))]
+    [(begin) (when (null? (cdr e)) (oops "begin vuoto"))
+     (let loop ([xs (cdr e)]) (if (null? (cdr xs)) (sx (car xs)) `(then ,(sx (car xs)) ,(loop (cdr xs)))))]
+    [(string-append) (if (null? (cdr e)) ""
+                         (let loop ([xs (cdr e)]) (if (null? (cdr xs)) (sx (car xs)) `(concat ,(sx (car xs)) ,(loop (cdr xs))))))]
+    [(match match*) (oops "~a: solo sugli argomenti di una define, in testa al corpo" (car e))]
+    [(claim define data record extern import builtin) (oops "~a: è una dichiarazione, non un'espressione" (car e))]
+    [else (map sx e)]))
+
+;; I pattern di una clausola: le variabili sono le foglie, salvo la testa di un costruttore.
+(define (pattern-var? x pats)
+  (let walk ([ps pats])
+    (exists (lambda (p) (if (pair? p) (walk (cdr p)) (eq? p x))) ps)))
+(define (subst-pats pats xs qs)                          ; tutte insieme: (match* (m n) ((n m) …)) scambia
+  (map (lambda (p) (cond [(and (symbol? p) (memq p xs)) (list-ref qs (- (length xs) (length (memq p xs))))]
+                         [(pair? p) (cons (car p) (subst-pats (cdr p) xs qs))]
+                         [else p]))
+       pats))
+
+;; (match x clausola …) in testa al corpo: x diventa il pattern di ogni clausola, e così via
+;; dentro. → lista di (pattern . corpo); corpo #f per una clausola assurda, (p) senza corpo.
+(define (expand-clauses pats body)
+  (define (scrut xs)
+    (for-each (lambda (x) (unless (and (symbol? x) (pattern-var? x pats)) (oops "match: ~s non è un argomento" x))) xs))
+  (define (split cl n)                                   ; → (values pattern-di-ciascuno corpo-o-#f)
+    (unless (and (list? cl) (<= 1 (length cl) 2)) (oops "match: clausola malformata ~s" cl))
+    (let ([ps (if (= n 1) (list (car cl)) (car cl))])
+      (unless (and (list? ps) (= (length ps) n)) (oops "match*: ~a pattern attesi in ~s" n cl))
+      (values ps (and (pair? (cdr cl)) (cadr cl)))))
+  (cond
+    [(or (head? body 'match) (head? body 'match*))
+     (let ([xs (if (eq? (car body) 'match) (list (cadr body)) (cadr body))])
+       (scrut xs)
+       (with-pos body
+         (lambda ()
+           (apply append
+             (map (lambda (cl)
+                    (let-values ([(ps b) (split cl (length xs))])
+                      (let ([pats (subst-pats pats xs ps)])
+                        (if b (expand-clauses pats b) (list (cons pats #f))))))
+                  (cddr body))))))]
+    [else (list (cons pats (sx body)))]))
+
+(define claims (make-parameter (make-eq-hashtable)))      ; claim → firma, in attesa della define; uno per file
+
+(define (desugar-decl d)                                 ; → dichiarazioni interne
+  (define (need n) (unless (and (list? d) (>= (length d) n)) (oops "~a malformata: ~s" (car d) d)))
+  (case (and (pair? d) (car d))
+    [(claim) (need 3)
+     (unless (and (= (length d) 3) (symbol? (cadr d))) (oops "claim: (claim nome tipo)"))
+     (when (hashtable-ref (claims) (cadr d) #f) (oops "~a: claim già fatto, manca la define" (cadr d)))
+     (hashtable-set! (claims) (cadr d) (sx (caddr d)))
+     '()]
+    [(define) (need 3)
+     (unless (= (length d) 3) (oops "define: (define (nome x …) corpo)"))
+     (let* ([h (cadr d)] [name (if (pair? h) (car h) h)] [params (if (pair? h) (cdr h) '())]
+            [t (or (hashtable-ref (claims) name #f) (oops "~a: manca il claim, (claim ~a tipo)" name name))])
+       (hashtable-delete! (claims) name)
+       (list (if (null? params)
+                 `(def ,name : ,t ,(sx (caddr d)))
+                 `(def ,name : ,t ,@(apply append (map (lambda (c) (if (cdr c) (list `(%br ,@(car c)) (cdr c)) (list `(%br ,@(car c)))))
+                                                       (expand-clauses params (caddr d))))))))]
+    [(data) (need 2)
+     (if (and (pair? (cddr d)) (eq? (caddr d) ':))
+         (begin (need 4)
+                (list `(data ,(cadr d) : ,(sx (cadddr d))
+                         ,@(map (lambda (k) (unless (and (list? k) (= (length k) 3) (eq? (cadr k) ':)) (oops "costruttore malformato: ~s" k))
+                                  (keep `(%br ,(car k) : ,(sx (caddr k))) k))
+                                (list-tail d 4)))))
+         (list `(data ,(cadr d)
+                  ,@(map (lambda (k) (cond [(symbol? k) `(%br ,k)]
+                                           [(and (list? k) (pair? k) (symbol? (car k))) (keep `(%br ,(car k) ,@(map sx (cdr k))) k)]
+                                           [else (oops "costruttore malformato: ~s" k)]))
+                         (cddr d)))))]
+    [(record) (need 2)
+     (let ([h (cadr d)])
+       (list `(record ,(if (pair? h)
+                           (cons (car h) (map (lambda (p) (if (symbol? p) p `(%br ,@(car (map (lambda (b) (list (car b) (sx (cdr b)))) (bindings 'record (list p)))))))
+                                              (cdr h)))
+                           h)
+                ,@(map (lambda (f) (let ([b (car (bindings 'record (list f)))]) (keep `(%br ,(car b) : ,(sx (cdr b))) f))) (cddr d)))))]
+    [(extern) (unless (and (list? d) (= (length d) 5) (eq? (caddr d) ':)) (oops "extern malformato: ~s" d))
+     (list `(extern ,(cadr d) : ,(sx (cadddr d)) ,(list-ref d 4)))]
+    [(import builtin) (list d)]
+    [(def) (oops "def non c'è più: (claim nome tipo) e poi (define (nome x …) corpo)")]
+    [else (oops "dichiarazione sconosciuta: ~s" d)]))
+
+(define (check-text name text) (parameterize ([claims (make-eq-hashtable)]) (check-text* name text)))
+(define (check-text* name text)
   (hashtable-set! file-texts name text)
-  (let-values ([(t opens) (brackets text)])
-    (let ([sfd (make-source-file-descriptor name (open-bytevector-input-port (string->utf8 t)))]
-          [p (open-string-input-port t)])
-      ;; Un errore non ferma il file: la dichiarazione dopo si controlla lo stesso, e alla fine
-      ;; gli errori escono insieme, uno per riga. Un def il cui corpo è sbagliato resta noto con
-      ;; la sua firma; i "nome sconosciuto" di un nome la cui dichiarazione è fallita si tacciono.
-      (let loop ([bfp 0] [errs '()] [failed '()])
-        (let-values ([(a next) (get-datum/annotations p sfd bfp)])
-          (if (eof-object? a)
+  (let ([sfd (make-source-file-descriptor name (open-bytevector-input-port (string->utf8 text)))]
+        [p (open-string-input-port text)])
+    ;; Un errore non ferma il file: la dichiarazione dopo si controlla lo stesso, e alla fine
+    ;; gli errori escono insieme, uno per riga. Una define il cui corpo è sbagliato resta nota con
+    ;; il suo claim; i "nome sconosciuto" di un nome la cui dichiarazione è fallita si tacciono.
+    (let loop ([bfp 0] [errs '()] [failed '()])
+      (let-values ([(a next) (get-datum/annotations p sfd bfp)])
+        (if (eof-object? a)
+            (let ([errs (append (map (lambda (n) (format "~a: claim senza define" n)) (vector->list (hashtable-keys (claims)))) errs)])
               (unless (null? errs)
-                (error 'disegno (fold-left (lambda (acc m) (string-append m "\n" acc)) (car errs) (cdr errs))))
-              (let* ([d (strip name opens a)]
-                     [m (guard (e [(and (who-condition? e) (eq? (condition-who e) 'disegno) (message-condition? e)) (condition-message e)])
-                          (with-pos d (lambda () (check-decl d))) #f)]
-                     [cascade? (and m (exists (lambda (n) (let ([s (format "nome sconosciuto: ~a" n)])
-                                                             (and (>= (string-length m) (string-length s))
-                                                                  (string=? s (substring m (- (string-length m) (string-length s)) (string-length m))))))
-                                              failed))])
-                (loop next (if (and m (not cascade?)) (cons m errs) errs)
-                      (if (and m (pair? d) (pair? (cdr d))) (cons (let ([n (cadr d)]) (if (pair? n) (car n) n)) failed) failed)))))))))
+                (error 'disegno (fold-left (lambda (acc m) (string-append m "\n" acc)) (car errs) (cdr errs)))))
+            (let* ([d (strip name a)]
+                   [m (guard (e [(and (who-condition? e) (eq? (condition-who e) 'disegno) (message-condition? e)) (condition-message e)])
+                        (with-pos d (lambda () (for-each (lambda (i) (with-pos (keep i d) (lambda () (check-decl i)))) (desugar-decl d))))
+                        #f)]
+                   [cascade? (and m (exists (lambda (n) (let ([s (format "nome sconosciuto: ~a" n)])
+                                                           (and (>= (string-length m) (string-length s))
+                                                                (string=? s (substring m (- (string-length m) (string-length s)) (string-length m))))))
+                                            failed))])
+              (loop next (if (and m (not cascade?)) (cons m errs) errs)
+                    (if (and m (pair? d) (pair? (cdr d))) (cons (let ([n (cadr d)]) (if (pair? n) (car n) n)) failed) failed))))))))
 
 ;; I percorsi relativi si risolvono rispetto alla cartella del file che li nomina.
 (define current-dir (make-parameter ""))
@@ -1258,7 +1359,7 @@
   (set! pmetas '())
   (set! absurds '())
   (set! implicit-pmetas '())
-  (let-values ([(trees rest explicit) (guard (x [(unify-failure? x) (oops "~a: clausola ~s impossibile o mal tipata" f pats)])
+  (let-values ([(trees rest explicit) (guard (x [(unify-failure? x) (oops "~a: il caso ~s è impossibile o mal tipato" f (cons f pats))])
                                         (check-pats ty pats))])
     (for-each absurd-check! absurds)
     (let ([syn (map tree->syn explicit)])                 ; → (clausola-a-runtime . sintassi risolta)
@@ -1269,7 +1370,7 @@
 (define (check-clause-body f pats body trees rest)
   (begin
     (let* ([named (filter (lambda (x) (not (eq? x '_))) (map meta-name (filter (lambda (m) (not (memv m implicit-pmetas))) pmetas)))]
-           [_ (unless (= (length named) (length (remove-dups named))) (oops "~a: variabile ripetuta in ~s" f pats))]
+           [_ (unless (= (length named) (length (remove-dups named))) (oops "~a: variabile ripetuta in ~s" f (cons f pats)))]
            [free (topo (filter (lambda (m) (not (meta-sol m))) (reverse pmetas)))]
            [c (fold-left (lambda (c m) (let ([c2 (bind c (meta-name m) (meta-type m))]) (solve! m (vvar (ctx-l c))) c2))
                          ctx0 free)]
@@ -1305,12 +1406,12 @@
 (define (fresh-sym) (set! fresh-count (+ fresh-count 1)) (string->symbol (format "?~a" fresh-count)))
 
 ;; Un caso come lo si scriverebbe in una clausola: [(right _) _ _]. Le variabili fresche sono _.
-(define (show-case cand)
+(define (show-case f cand)                              ; il caso mancante come chiamata: (scegli (right _) _ _)
   (define (pat p) (cond [(and (symbol? p) (char=? (string-ref (symbol->string p) 0) #\?)) '_]
                         [(and (pair? p) (null? (cdr p))) (pat (car p))]   ; (inverno) è inverno
                         [(pair? p) (map pat p)]
                         [else p]))
-  (format "[~{~s~^ ~}]" (map pat cand)))
+  (format "~s" (cons f (map pat cand))))
 
 (define (cover f ty pats)
   (let loop ([todo (list (map (lambda (_) (fresh-sym)) (car pats)))])
@@ -1318,11 +1419,11 @@
       (let ([cand (car todo)] [todo (cdr todo)])
         (set! pmetas '())
         (if (guard (x [(and (unify-failure? x) (eq? (unify-failure-kind x) 'conflict)) #f]
-                      [(unify-failure? x) (oops "~a: non so decidere se il caso ~a è possibile" f (show-case cand))])
+                      [(unify-failure? x) (oops "~a: non so decidere se il caso ~a è possibile" f (show-case f cand))])
               (call-with-values (lambda () (check-pats ty cand)) (lambda _ #t)))
             (let ([r (exists (lambda (q) (let ([r (match-syn* q cand)]) (and (not (eq? r 'no)) r))) pats)])
               (cond [(and (not r) (empty-split? f ty cand)) (loop todo)]
-                    [(not r) (oops "~a: manca il caso ~a" f (show-case cand))]
+                    [(not r) (oops "~a: manca il caso ~a" f (show-case f cand))]
                     [(eq? r 'yes) (loop todo)]
                     [else (loop (append (split f r cand) todo))]))
             (loop todo))))))                            ; caso impossibile: gli indici non si unificano
@@ -1469,29 +1570,36 @@
     [(type) (if (zero? (cadr t)) 'Type `(Type ,(cadr t)))]
     [(meta imeta) (string->symbol (format "?~a" (cadr t)))]
     [(lam) `(λ ,(cadr t) ,(sexp (cons (cadr t) names) (cadddr t)))]
-    [(pi) `(→ (,(cadr t) ,(sexp names (cadddr t))) ,(sexp (cons (cadr t) names) (list-ref t 4)))]
+    [(pi) (if (eq? (cadr t) '_) `(→ ,(sexp names (cadddr t)) ,(sexp (cons (cadr t) names) (list-ref t 4)))
+              `(Π ((,(cadr t) ,(sexp names (cadddr t)))) ,(sexp (cons (cadr t) names) (list-ref t 4))))]
     [(app) (let loop ([t t] [as '()])               ; mostra solo gli argomenti espliciti
              (cond [(not (eq? (car t) 'app)) (if (null? as) (sexp names t) (cons (sexp names t) as))]
                    [(eq? (cadddr t) 'e) (loop (cadr t) (cons (sexp names (caddr t)) as))]
                    [else (loop (cadr t) as)]))]))
 
-;; --- tipi leggibili, come si scrivono: (→ {A Type} [x A] B C) ---
-;; Le frecce annidate si appiattiscono; un binder senza nome è solo il suo tipo; gli impliciti
-;; stanno tra graffe. Serve all'hover dell'LSP e a disegno type.
+;; --- tipi leggibili, come si scrivono: (∀ ((A Type)) (Π ((x A)) (→ B C))) ---
+;; Le frecce annidate si appiattiscono; un binder senza nome è solo il suo tipo; binder vicini
+;; dello stesso genere stanno nello stesso Π (espliciti) o ∀ (impliciti). Serve all'hover
+;; dell'LSP e a disegno type.
 
 (define (render-term names t)
   (if (eq? (car t) 'pi)
-      (let loop ([names names] [t t] [parts '()])
+      (let loop ([names names] [t t] [parts '()])        ; parts: (genere nome dominio), genere ∈ Π ∀ →
         (if (eq? (car t) 'pi)
             (let* ([x (let ([s (symbol->string (cadr t))])   ; %r (interno) si mostra r
                         (if (and (> (string-length s) 1) (char=? (string-ref s 0) #\%)) (substring s 1 (string-length s)) s))]
                    [dom (render-term names (cadddr t))]
-                   [part (cond [(eq? (caddr t) 'i) (format "{~a ~a}" x dom)]
-                               [(string=? x "_") dom]
-                               [else (format "[~a ~a]" x dom)])])
-              (loop (cons (cadr t) names) (list-ref t 4) (cons part parts)))
-            (format "(→ ~a~a)" (apply string-append (map (lambda (p) (string-append p " ")) (reverse parts)))
-                    (render-term names t))))
+                   [kind (cond [(eq? (caddr t) 'i) '∀] [(string=? x "_") '→] [else 'Π])])
+              (loop (cons (cadr t) names) (list-ref t 4) (cons (list kind x dom) parts)))
+            (let render ([ps (reverse parts)])
+              (if (null? ps)
+                  (render-term names t)
+                  (let* ([k (car (car ps))]
+                         [run (let take ([ps ps]) (if (and (pair? ps) (eq? (car (car ps)) k)) (cons (car ps) (take (cdr ps))) '()))]
+                         [rest (list-tail ps (length run))])
+                    (if (eq? k '→)
+                        (format "(→ ~{~a ~}~a)" (map caddr run) (render rest))
+                        (format "(~a (~{~a~^ ~}) ~a)" k (map (lambda (p) (format "(~a ~a)" (cadr p) (caddr p))) run) (render rest))))))))
       (let ([s (sexp names t)])
         (call-with-string-output-port (lambda (p) (write s p))))))
 
