@@ -187,7 +187,7 @@
                [text (if (and (> n 0) (char=? (string-ref text (- n 1)) #\newline)) (substring text 0 (- n 1)) text)]
                [ch (list `(setSecret (name ,(gql-arg (caddr xs) resolve)) (plaintext ,text)))])
           (when (env? "DISEGNO_LOGS")
-            (sub-line (v-name v) (format "segreto ~a letto" (gql-arg (caddr xs) resolve))))   ; il comando sta in disegno plan
+            (secret-line (format "segreto ~a letto" (gql-arg (caddr xs) resolve))))   ; il comando sta in disegno plan
           (hashtable-set! secret-memo key ch)
           ch))))
 
@@ -350,12 +350,13 @@
 ;; allungano, e le osservazioni e i segreti che la riguardano le stanno sotto. La riga esce quando
 ;; arriva un'altra voce, un fallimento o la fine.
 (define held #f)                                         ; (nome tempo prova sotto-righe), in attesa
+(define waiting '())                                     ; segreti letti prima che una voce si apra
 (define (report-voce ok name what code dt proof tail rest)
   (if (and ok (voce-doc name))
       (if (and held (eq? (car held) name))
           (set! held (list name (+ (cadr held) dt) (string-append (caddr held) proof) (cadddr held)))
-          (begin (release!) (set! held (list name dt proof '()))))
-      (begin (release!) (print-voce ok name what code dt proof tail rest))))
+          (begin (release!) (set! held (list name dt proof waiting)) (set! waiting '())))
+      (begin (release!) (print-waiting) (print-voce ok name what code dt proof tail rest))))
 (define (release!)
   (when held
     (let ([h held])
@@ -363,12 +364,18 @@
       (print-voce #t (car h) "" #f (cadr h) (caddr h) "" '())
       (for-each (lambda (s) (printf "    ↳ ~a\n" s)) (reverse (cadddr h)))
       (flush-output-port))))
-;; ponytail: un segreto non sa la sua voce e va sotto quella aperta; uno letto prima del primo
-;; passo della voce dopo finirebbe sotto la precedente.
-(define (sub-line name text)                             ; un'osservazione o un segreto letto
-  (if (and held (or (not name) (eq? (car held) name)))
-      (set! held (list (car held) (cadr held) (caddr held) (cons text (cadddr held))))
-      (begin (release!) (printf "↳ ~a~a\n" (if (and (symbol? name) (voce-doc name)) (pad name) "") text) (flush-output-port))))
+(define (print-waiting)
+  (for-each (lambda (s) (printf "↳ ~a\n" s)) (reverse waiting))
+  (set! waiting '())
+  (flush-output-port))
+(define (attach! text) (set! held (list (car held) (cadr held) (caddr held) (cons text (cadddr held)))))
+(define (sub-line name text)                             ; un'osservazione: sotto la sua voce
+  (if (and held (eq? (car held) name))
+      (attach! text)
+      (begin (release!) (print-waiting) (printf "↳ ~a~a\n" (if (and (symbol? name) (voce-doc name)) (pad name) "") text) (flush-output-port))))
+;; ponytail: un segreto va sotto la voce aperta, o aspetta la prossima: dove è nato non dice per
+;; quale passo serve. Uno letto per la voce dopo, mentre la precedente è aperta, finisce sotto quella.
+(define (secret-line text) (if held (attach! text) (set! waiting (cons text waiting))))
 
 ;; La riga di una voce. In CI è il titolo di un gruppo chiuso (aperto se la voce fallisce, dove si
 ;; può) che contiene la prova.
@@ -407,7 +414,7 @@
   (format "~{~a~^, ~}" (fold-right (lambda (o acc) (if (and (pair? acc) (string=? o (car acc))) acc (cons o acc))) '() (map outcome done))))
 
 (define (summary done dt)                                ; la riga finale: realizzato, e che cosa
-  (release!)
+  (release!) (print-waiting)
   (printf "realizzato in ~a~@[: ~a~]\n" (secs dt) (and (pair? done) (outcomes done)))
   (flush-output-port))
 
@@ -518,7 +525,7 @@
                                    (let ([cmd (cdr (assoc "cmd" x))])
                                      ;; un passo che non è un nostro with-exec (un RUN di Dockerfile) non ha
                                      ;; flusso né voce: nel resoconto la prova sono le ultime righe dell'errore
-                                     (release!)
+                                     (release!) (print-waiting)
                                      (when (env? "DISEGNO_LOGS")
                                        (for-each (lambda (l) (printf "  │ ~a\n" l))
                                          (last-lines (lines (cond [(assoc "stdout" x) => cdr] [else ""])
@@ -528,13 +535,13 @@
         (lambda ()
           (let ([t0 (now-ns)] [done '()])
             (hashtable-clear! secret-memo)
-            (set! held #f)
+            (set! held #f) (set! waiting (quote ()))
             (parameterize ([run-id (number->string t0)] [fetch-secret fetch-live] [realize-dry #f])
               (realize (entry-value entry) resolve-live
                        (lambda (ch) (log-steps ch) (submit-leaf ch) (set! done (cons ch done)))))
             (when (env? "DISEGNO_LOGS") (summary (reverse done) (- (now-ns) t0)))
             (outcomes (reverse done))))
-        (lambda () (release!) (stop-stream!))))))
+        (lambda () (release!) (print-waiting) (stop-stream!))))))
 
 (define (exec-error e)                                   ; → le extensions di un EXEC_ERROR, o #f
   (and (irritants-condition? e) (pair? (condition-irritants e))

@@ -64,6 +64,17 @@
 (assert (eq? (parameterize ([current-voce 'senza-doc]) (enter-voce 'con-doc)) 'con-doc))
 (rifiuta "(claim due Nat)
 (define due 1 2)" "define:")
+;; Nel resoconto un segreto letto prima che la voce si apra le va sotto, e due tratti della stessa
+;; voce fanno una riga.
+(let ([out (with-output-to-string
+             (lambda ()
+               (secret-line "segreto a letto")
+               (report-voce #t 'con-doc "cmd" #f 1000000000 "" "" '())
+               (report-voce #t 'con-doc "cmd" #f 1000000000 "" "" '())
+               (release!)))])
+  (assert (contiene? out "prepara il container"))
+  (assert (contiene? out "2.0s"))
+  (assert (contiene? out "\n    ↳ segreto a letto\n")))
 ;; TODO, come in Pie: ogni buco della define con il suo contesto e l'obiettivo, risolto dopo
 ;; l'unificazione; la define è rifiutata.
 (let ([m (guard (e [(message-condition? e) (condition-message e)])
