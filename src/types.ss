@@ -122,7 +122,7 @@
     (cond [(and info (accelerate) (let ([f (assq (hashtable-ref builtin-of n #f) fast)]) (and f (fast-apply f sp))))]   ; prima: numeri nativi
           [info (and (>= (length sp) (car info))
                      (let ([r (if (hashtable-ref voci n #f)     ; il corpo di una voce: i suoi passi
-                                  (parameterize ([current-voce n]) (match-clauses (cdr info) (list-head sp (car info))))
+                                  (parameterize ([current-voce (enter-voce n)]) (match-clauses (cdr info) (list-head sp (car info))))
                                   (match-clauses (cdr info) (list-head sp (car info))))])
                        (and r (vapp-sp r (list-tail sp (car info))))))]
           [(and (eq? (g-kind g) 'extern) (assq (car (car (g-info g))) prims))
@@ -680,8 +680,12 @@
 ;; Una voce è una definizione del programma (non della libreria standard) che produce un pezzo di
 ;; piano: mentre se ne valuta il corpo, current-voce ne porta il nome. Gli argomenti li ha già
 ;; valutati il chiamante, e restano suoi.
+;; Una voce con docstring si presenta con quella, e la presta alle voci senza che chiama.
 (define current-voce (make-parameter #f))
-(define voci (make-eq-hashtable))
+(define voci (make-eq-hashtable))                        ; nome → docstring, o #t
+(define docs (make-eq-hashtable))                        ; nome → docstring della define
+(define (voce-doc n) (let ([d (hashtable-ref voci n #f)]) (and (string? d) d)))
+(define (enter-voce n) (if (and (not (voce-doc n)) (current-voce) (voce-doc (current-voce))) (current-voce) n))
 (define (plan-type? ty)                                  ; il risultato, dopo tutti gli argomenti, è un Obj
   (let loop ([t (force ty)] [l 0])
     (case (car t)
@@ -1087,8 +1091,11 @@
      (hashtable-set! (claims) (cadr d) (sx (caddr d)))
      '()]
     [(define) (need 3)
-     (unless (= (length d) 3) (oops "define: (define (nome x …) corpo)"))
+     (unless (or (= (length d) 3) (and (= (length d) 4) (string? (caddr d)))) (oops "define: (define (nome x …) corpo)"))
      (let* ([h (cadr d)] [name (if (pair? h) (car h) h)] [params (if (pair? h) (cdr h) '())]
+            [d (if (= (length d) 4)                     ; la docstring, come in Scheme: l'etichetta della voce
+                   (begin (hashtable-set! docs name (caddr d)) (list (car d) h (cadddr d)))
+                   (begin (hashtable-delete! docs name) d))]
             [t (or (hashtable-ref (claims) name #f) (oops "~a: manca il claim, (claim ~a tipo)" name name))])
        (hashtable-delete! (claims) name)
        (list (if (null? params)
@@ -1251,7 +1258,7 @@
   (let ([ty (begin (k-type t) (ev '() t))])
     (define-global! name (make-g 'def ty #f))
     (hashtable-set! sigs name t)
-    (when (and (not (privileged)) (plan-type? ty)) (hashtable-set! voci name #t))
+    (when (and (not (privileged)) (plan-type? ty)) (hashtable-set! voci name (hashtable-ref docs name #t)))
     (let* ([pats (map (lambda (c) (map norm-pat (car c))) clauses)]
            [_ (unless (apply = (map length pats)) (oops "~a: le clausole hanno numeri di pattern diversi" name))]
            [checked (map (lambda (ps c) (check-clause name ty ps (cdr c))) pats clauses)]   ; (clausola . sintassi risolta)

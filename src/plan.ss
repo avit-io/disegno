@@ -336,7 +336,8 @@
   (apply string-append (map (lambda (s) (if (or (string=? s "") (char=? (string-ref s (- (string-length s) 1)) #\newline)) s (string-append s "\n"))) ss)))
 
 (define (secs ns) (format "~as" (/ (round (/ ns 100000000)) 10.0)))
-(define (pad name) (let ([s (format "~a" name)]) (string-append s (make-string (max 1 (- 12 (string-length s))) #\space))))
+(define (pad name)                                       ; il nome di una voce, o la sua docstring
+  (let ([s (format "~a" (or (and (symbol? name) (voce-doc name)) name))]) (string-append s (make-string (max 2 (- 12 (string-length s))) #\space))))
 
 (define (last-lines text n)
   (let* ([ls (let loop ([cs (string->list text)] [cur '()] [acc '()])
@@ -350,7 +351,7 @@
 ;; può) che contiene la prova.
 (define sections 0)
 (define (report-voce ok name what code dt proof tail rest)
-  (let ([line (format "~a ~a~a~@[  exit ~a~]  ~a" (if ok "✓" "✗") (pad name) what code (secs dt))])
+  (let ([line (format "~a ~a~a~@[  exit ~a~]  ~a" (if ok "✓" "✗") (pad name) (if (and ok (voce-doc name)) "" what) code (secs dt))])   ; con la docstring, il comando sta nella prova
     (cond [(env? "GITHUB_ACTIONS") (printf "::group::~a\n~a::endgroup::\n" line proof)]
           [(env? "GITLAB_CI")
            (set! sections (+ sections 1))

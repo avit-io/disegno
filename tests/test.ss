@@ -53,6 +53,17 @@
 (rifiuta "(data Cattivo (mk (→ Cattivo ⊥)))" "strettamente positiva")
 ;; Annidato in una lista va bene (List è strettamente positiva nel parametro); sotto una freccia no.
 (check-string "(data Rosa (nodo (List Rosa)))")
+;; La docstring è l'etichetta di una voce, e le voci senza che chiama la ereditano.
+(check-string "(claim con-doc Container)
+(define con-doc \"prepara il container\" (pipe (container) (from \"alpine\")))
+(claim senza-doc Container)
+(define senza-doc (pipe (container) (from \"alpine\")))")
+(assert (equal? (voce-doc 'con-doc) "prepara il container"))
+(assert (not (voce-doc 'senza-doc)))
+(assert (eq? (parameterize ([current-voce 'con-doc]) (enter-voce 'senza-doc)) 'con-doc))
+(assert (eq? (parameterize ([current-voce 'senza-doc]) (enter-voce 'con-doc)) 'con-doc))
+(rifiuta "(claim due Nat)
+(define due 1 2)" "define:")
 (rifiuta "(data Cattivo2 (mk2 (List (→ Cattivo2 ⊥))))" "strettamente positiva")
 (rifiuta "(claim tipo-in-tipo Type)
 (define tipo-in-tipo Type)" "atteso")
@@ -739,7 +750,7 @@
                          (with-exec (list \"sh\" \"-c\" \"echo A; sleep 0.3; echo B >&2; sleep 0.3; echo C\"))
                          (with-exec (list \"sh\" \"-c\" \"echo male >&2; exit 3\")) (dir-of /tmp))))
 (claim prepara Container)
-(define prepara (pipe (container) (from \"alpine\") (with-exec (list \"sh\" \"-c\" \"echo prep~a\"))))
+(define prepara \"prepara l'ambiente\" (pipe (container) (from \"alpine\") (with-exec (list \"sh\" \"-c\" \"echo prep~a\"))))
 (claim in-diretta (Π ((src (Host ~s))) (Export Dir)))
 (define (in-diretta src)
   (overlay \"rotto\" (pipe prepara (with-dir /w src)
@@ -754,7 +765,7 @@
     ;; ambiente; in-diretta fallisce, e le ultime righe del passo dicono perché.
     (let* ([r (esegui 'in-diretta)] [msg (car r)] [out (cdr r)])
       (assert (> streamed 0))                                 ; le righe sono arrivate dal flusso
-      (assert (contiene? out "✓ prepara     ambiente  "))
+      (assert (contiene? out "✓ prepara l'ambiente  "))
       (assert (contiene? out "✗ in-diretta  <stringa>:12:26  exit 3  "))
       (assert (contiene? out (format "\n      male~a\n" n)))
       (assert (not (contiene? out (format "A~a" n))))         ; la prova di ciò che è andato non si stampa
@@ -773,7 +784,7 @@
     (putenv "GITHUB_ACTIONS" "true")
     (let ([out (cdr (esegui 'in-diretta))])
       (putenv "GITHUB_ACTIONS" "")
-      (assert (contiene? out "::group::✓ prepara     ambiente  "))
+      (assert (contiene? out "::group::✓ prepara l'ambiente  "))
       (assert (contiene? out (format "\"\nA~a\nB\nC\n" n)))
       (assert (contiene? out "::error file=<stringa>,line=12,col=26::passo fallito (exit 3)"))))
   ;; Le uscite vengono nell'ordine di then, e il resoconto mostra l'effetto con il suo comando.
