@@ -12,6 +12,10 @@
   (Kind.bool)
   (Kind.export))
 
+; Un argomento di una build da Dockerfile: nome e valore (BuildArg dello schema).
+(data Build-arg
+  (build-arg String String))
+
 (data Obj : (→ Kind Type)
   (%host-dir : (Π ((path String)) (Obj Kind.directory)))
   (%host-secret : (Π ((name String)) (Obj Kind.secret)))
@@ -95,7 +99,7 @@
   (Directory.chown : (Π ((self (Obj Kind.directory)) (path Abs) (owner String)) (Obj Kind.directory)))
   (Directory.diff : (Π ((self (Obj Kind.directory)) (other (Obj Kind.directory))) (Obj Kind.directory)))
   (Directory.directory : (Π ((self (Obj Kind.directory)) (path Abs)) (Obj Kind.directory)))
-  (Directory.docker-build : (Π ((self (Obj Kind.directory)) (dockerfile String) (secrets (List (Obj Kind.secret)))) (Obj Kind.container)))
+  (Directory.docker-build : (Π ((self (Obj Kind.directory)) (dockerfile String) (buildArgs (List Build-arg)) (secrets (List (Obj Kind.secret)))) (Obj Kind.container)))
   (Directory.exists : (Π ((self (Obj Kind.directory)) (path Abs)) (Obj Kind.bool)))
   (Directory.file : (Π ((self (Obj Kind.directory)) (path Abs)) (Obj Kind.file)))
   (Directory.filter : (Π ((self (Obj Kind.directory)) (exclude (List String)) (include (List String))) (Obj Kind.directory)))
@@ -245,7 +249,7 @@
     ((Directory.chown x0 x1 x2) (:: (any (Directory.chown x0 x1 x2)) (++ (nodes x0) vuota)))
     ((Directory.diff x0 x1) (:: (any (Directory.diff x0 x1)) (++ (nodes x0) (++ (nodes x1) vuota))))
     ((Directory.directory x0 x1) (:: (any (Directory.directory x0 x1)) (++ (nodes x0) vuota)))
-    ((Directory.docker-build x0 x1 x2) (:: (any (Directory.docker-build x0 x1 x2)) (++ (nodes x0) vuota)))
+    ((Directory.docker-build x0 x1 x2 x3) (:: (any (Directory.docker-build x0 x1 x2 x3)) (++ (nodes x0) vuota)))
     ((Directory.exists x0 x1) (:: (any (Directory.exists x0 x1)) (++ (nodes x0) vuota)))
     ((Directory.file x0 x1) (:: (any (Directory.file x0 x1)) (++ (nodes x0) vuota)))
     ((Directory.filter x0 x1 x2) (:: (any (Directory.filter x0 x1 x2)) (++ (nodes x0) vuota)))
@@ -366,7 +370,7 @@
     ((Directory.chown x0 x1 x2) (:: (any (Directory.chown x0 x1 x2)) (chain x0)))
     ((Directory.diff x0 x1) (:: (any (Directory.diff x0 x1)) (chain x0)))
     ((Directory.directory x0 x1) (:: (any (Directory.directory x0 x1)) (chain x0)))
-    ((Directory.docker-build x0 x1 x2) (:: (any (Directory.docker-build x0 x1 x2)) (chain x0)))
+    ((Directory.docker-build x0 x1 x2 x3) (:: (any (Directory.docker-build x0 x1 x2 x3)) (chain x0)))
     ((Directory.exists x0 x1) (:: (any (Directory.exists x0 x1)) (chain x0)))
     ((Directory.file x0 x1) (:: (any (Directory.file x0 x1)) (chain x0)))
     ((Directory.filter x0 x1 x2) (:: (any (Directory.filter x0 x1 x2)) (chain x0)))

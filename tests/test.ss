@@ -406,13 +406,14 @@
 (rifiuta "(claim push-dopo-sync (Π ((s Secret)) (Precedes (argocd-command? \"sync\") (git-command? \"push\") (rilascio-prova s))))
 (define (push-dopo-sync s) auto)" "auto")
 
-;; Una build da Dockerfile con un segreto per nome: RUN --mount=type=secret,id=ssh-key lo vede.
+;; Una build da Dockerfile con un argomento e un segreto per nome: ARG VERSIONE e
+;; RUN --mount=type=secret,id=ssh-key li vedono.
 (check-string (format "
 (claim contesto Dir)
-(define contesto (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nRUN --mount=type=secret,id=ssh-key mkdir /out && test \\\"$(cat /run/secrets/ssh-key)\\\" = chiave && echo letto > /out/esito\\n\"))
+(define contesto (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nARG VERSIONE\\nRUN --mount=type=secret,id=ssh-key mkdir /out && test \\\"$(cat /run/secrets/ssh-key)\\\" = chiave && echo letto $VERSIONE > /out/esito\\n\"))
 (claim con-dockerfile (Export Dir))
 (define con-dockerfile
-  (overlay ~s (dir-of (build-dockerfile contesto \"Dockerfile\"
+  (overlay ~s (dir-of (build-dockerfile contesto \"Dockerfile\" (list (build-arg \"VERSIONE\" \"1.2\"))
                                         (list (secret-from (from (container) \"busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\") (list \"echo\" \"chiave\") \"ssh-key\")))
                       /out)))"
   (string-append dir "/out15")))
@@ -757,7 +758,7 @@
     (check-string (format "(claim contesto-rotto Dir)
 (define contesto-rotto (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nRUN echo docker~a >&2 && exit 4\\n\"))
 (claim build-rotta (Export Dir))
-(define build-rotta (overlay \"rotto\" (dir-of (build-dockerfile contesto-rotto \"Dockerfile\" (list)) /tmp)))" n))
+(define build-rotta (overlay \"rotto\" (dir-of (build-dockerfile contesto-rotto \"Dockerfile\" (list) (list)) /tmp)))" n))
     (let ([r (esegui 'build-rotta)])
       (assert (contiene? (cdr r) (format "│ docker~a\n" n)))
       (assert (and (car r) (contiene? (car r) "passo fallito (exit 4)"))))
@@ -787,7 +788,7 @@
   (for-each (lambda (e f t) (run e) (assert (string=? (call-with-input-file (string-append dir "/out14/" f) get-string-all) t)))
             '(con-registro con-gitops con-argocd) '("registro" "gitops" "argocd") '("pubblicata\n" "aggiornato\n" "risponde\n"))
   (run 'con-dockerfile)
-  (assert (string=? (call-with-input-file (string-append dir "/out15/esito") get-string-all) "letto\n"))
+  (assert (string=? (call-with-input-file (string-append dir "/out15/esito") get-string-all) "letto 1.2\n"))
   (run 'filtri)
   (assert (zero? (system (format "test -x ~a/out9/run.sh" dir))))
   (assert (not (file-exists? (string-append dir "/out9/note.txt"))))

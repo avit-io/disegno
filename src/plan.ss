@@ -106,6 +106,9 @@
           [(and (eq? (car v) 'vglob) (bi? (cadr v) 'cons))
            (let* ([xs (explicit (caddr v))] [x (gql-arg (car xs) resolve)]) (cons x (gql-arg (cadr xs) resolve)))]
           [(and (eq? (car v) 'vglob) (or (bi? (cadr v) 'root) (bi? (cadr v) 'slash))) (abs-string v resolve)]
+          ;; un oggetto di input dello schema: (build-arg n v) è {name: n, value: v}
+          [(and (eq? (car v) 'vglob) (eq? (cadr v) 'build-arg))
+           (let ([xs (explicit (caddr v))]) `(%input (name . ,(gql-arg (car xs) resolve)) (value . ,(gql-arg (cadr xs) resolve))))]
           ;; un valore raffinato (Image, Segment, Arg…) va al motore con il suo primo campo
           [(and (eq? (car v) 'vglob) (eq? (g-kind (gget (cadr v))) 'con) (pair? (explicit (caddr v))))
            (gql-arg (car (explicit (caddr v))) resolve)]

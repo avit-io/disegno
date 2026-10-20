@@ -24,6 +24,7 @@
 
 (define (gql-value v)
   (cond [(string? v) (json-string v)]
+        [(and (pair? v) (eq? (car v) '%input)) (format "{~{~a~^, ~}}" (map (lambda (f) (format "~a: ~a" (car f) (gql-value (cdr f)))) (cdr v)))]
         [(list? v) (format "[~{~a~^, ~}]" (map gql-value v))]
         [(boolean? v) (if v "true" "false")]
         [else (format "~a" v)]))

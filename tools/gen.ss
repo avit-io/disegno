@@ -54,10 +54,11 @@
     (let ([k (get t "kind")] [n (get t "name")])
       (cond [(equal? k "NON_NULL") (loop (get t "ofType"))]
             [(equal? k "LIST") (let ([e (loop (get t "ofType"))])   ; liste di testi o di oggetti (per ID)
-                                  (cond [(eq? e 'String) '(List String)] [(and (pair? e) (eq? (car e) 'Obj)) `(List ,e)] [else #f]))]
+                                  (cond [(memq e '(String Build-arg)) `(List ,e)] [(and (pair? e) (eq? (car e) 'Obj)) `(List ,e)] [else #f]))]
             [(equal? n "String") 'String]
             [(equal? n "Int") 'Nat]                     ; ponytail: Int → Nat, bastano porte e conteggi
             [(equal? n "Boolean") 'Bool]
+            [(and (equal? k "INPUT_OBJECT") (equal? n "BuildArg")) 'Build-arg]   ; (build-arg nome valore)
             [(equal? n "ID") (let ([e (expected a)]) (and e (member e allowed) (obj e)))]
             [else #f]))))
 
@@ -77,7 +78,7 @@
   '(("Directory" "filter" "include" "exclude")           ; i glob dei file da tenere e da togliere
     ("Directory" "withNewFile" "permissions")            ; un file eseguibile
     ("Container" "asService" "useEntrypoint")           ; un service con l'entrypoint dell'immagine
-    ("Directory" "dockerBuild" "dockerfile" "secrets"))) ; una build da Dockerfile, con i suoi segreti (id = nome del segreto)
+    ("Directory" "dockerBuild" "dockerfile" "buildArgs" "secrets"))) ; una build da Dockerfile, con argomenti e segreti (id = nome del segreto)
 
 (define (wanted? type n a)
   (or (required? a)
@@ -166,6 +167,7 @@
     (format p "; Generato da gen.ss dallo schema di Dagger: non modificare a mano.~%~%")
     (format p "(data Kind~%~{  (~a)~^~%~})~%~%"
             (map (lambda (k) (cadr (obj k))) (append allowed '("bool" "export"))))
+    (format p "; Un argomento di una build da Dockerfile: nome e valore (BuildArg dello schema).~%(data Build-arg~%  (build-arg String String))~%~%")
     (format p "(data Obj : (→ Kind Type)~%~{  (~a : ~a)~^~%~})~%(builtin obj Obj)~%~%"
             (apply append (map (lambda (c) (list (car c) (signature c))) all)))
     (for-each (lambda (k) (format p "(claim ~a Type)~%(define ~a ~a)~%~%" k k (obj k))) allowed)
