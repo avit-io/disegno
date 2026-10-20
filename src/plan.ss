@@ -187,8 +187,7 @@
                [text (if (and (> n 0) (char=? (string-ref text (- n 1)) #\newline)) (substring text 0 (- n 1)) text)]
                [ch (list `(setSecret (name ,(gql-arg (caddr xs) resolve)) (plaintext ,text)))])
           (when (env? "DISEGNO_LOGS")
-            (printf "↳ ~a segreto ~a letto\n" (pad (or (v-name v) (entry-name))) (gql-arg (caddr xs) resolve))   ; il comando sta in disegno plan
-            (flush-output-port))
+            (sub-line (v-name v) (format "segreto ~a letto" (gql-arg (caddr xs) resolve))))   ; il comando sta in disegno plan
           (hashtable-set! secret-memo key ch)
           ch))))
 
@@ -347,10 +346,32 @@
          [k (length ls)])
     (if (> k n) (list-tail ls (- k n)) ls)))
 
+;; Una voce con docstring è una riga sola: i suoi passi consecutivi (anche di catene diverse) la
+;; allungano, e le osservazioni e i segreti che la riguardano le stanno sotto. La riga esce quando
+;; arriva un'altra voce, un fallimento o la fine.
+(define held #f)                                         ; (nome tempo prova sotto-righe), in attesa
+(define (report-voce ok name what code dt proof tail rest)
+  (if (and ok (voce-doc name))
+      (if (and held (eq? (car held) name))
+          (set! held (list name (+ (cadr held) dt) (string-append (caddr held) proof) (cadddr held)))
+          (begin (release!) (set! held (list name dt proof '()))))
+      (begin (release!) (print-voce ok name what code dt proof tail rest))))
+(define (release!)
+  (when held
+    (let ([h held])
+      (set! held #f)
+      (print-voce #t (car h) "" #f (cadr h) (caddr h) "" '())
+      (for-each (lambda (s) (printf "    ↳ ~a\n" s)) (reverse (cadddr h)))
+      (flush-output-port))))
+(define (sub-line name text)                             ; un'osservazione o un segreto letto
+  (if (and held (eq? (car held) name))
+      (set! held (list (car held) (cadr held) (caddr held) (cons text (cadddr held))))
+      (begin (release!) (printf "↳ ~a~a\n" (if (and (symbol? name) (voce-doc name)) (pad name) "") text) (flush-output-port))))
+
 ;; La riga di una voce. In CI è il titolo di un gruppo chiuso (aperto se la voce fallisce, dove si
 ;; può) che contiene la prova.
 (define sections 0)
-(define (report-voce ok name what code dt proof tail rest)
+(define (print-voce ok name what code dt proof tail rest)
   (let ([line (format "~a ~a~a~@[  exit ~a~]  ~a" (if ok "✓" "✗") (pad name) (if (and ok (voce-doc name)) "" what) code (secs dt))])   ; con la docstring, il comando sta nella prova
     (cond [(env? "GITHUB_ACTIONS") (printf "::group::~a\n~a::endgroup::\n" line proof)]
           [(env? "GITLAB_CI")
@@ -367,10 +388,8 @@
 ;; Un'osservazione (la condizione di un branch): che cosa si è chiesto al mondo, e la risposta.
 (define (report-observation ch b)
   (let* ([last (last-of ch)] [exec (and (eq? (car last) 'exitCode) (last-of (list-head ch (- (length ch) 1))))])
-    (printf "↳ ~a~a → ~a\n" (pad (voce-of (or exec last)))
-            (if exec (format "passa? ~a" (show-args (step-args exec))) (gql-field last))
-            (if b "vero" "falso"))
-    (flush-output-port)))
+    (sub-line (voce-of (or exec last))
+              (format "~a → ~a" (if exec (format "passa? ~a" (show-args (step-args exec))) (gql-field last)) (if b "vero" "falso")))))
 
 (define (outcome ch)                                     ; che cosa ha fatto un'uscita, in parole
   (let ([last (last-of ch)])
@@ -378,12 +397,15 @@
       [(export) (format "esportato ~a" (cadr (assq 'path (cdr last))))]
       [(publish) (format "pubblicato ~a" (cadr (assq 'address (cdr last))))]
       [(start) "service avviato"]
-      [(exitCode) (format "effetto ~a" (show-args (step-args (last-of (list-head ch (- (length ch) 1))))))]
+      [(exitCode) (let ([step (last-of (list-head ch (- (length ch) 1)))])   ; la docstring della voce, se c'è
+                    (or (voce-doc (voce-of step)) (format "effetto ~a" (show-args (step-args step)))))]
       [else "?"])))
 
-(define (outcomes done) (format "~{~a~^, ~}" (map outcome done)))
+(define (outcomes done)                                  ; le uscite in parole, senza ripetere la stessa voce
+  (format "~{~a~^, ~}" (fold-right (lambda (o acc) (if (and (pair? acc) (string=? o (car acc))) acc (cons o acc))) '() (map outcome done))))
 
 (define (summary done dt)                                ; la riga finale: realizzato, e che cosa
+  (release!)
   (printf "realizzato in ~a~@[: ~a~]\n" (secs dt) (and (pair? done) (outcomes done)))
   (flush-output-port))
 
@@ -494,6 +516,7 @@
                                    (let ([cmd (cdr (assoc "cmd" x))])
                                      ;; un passo che non è un nostro with-exec (un RUN di Dockerfile) non ha
                                      ;; flusso né voce: nel resoconto la prova sono le ultime righe dell'errore
+                                     (release!)
                                      (when (env? "DISEGNO_LOGS")
                                        (for-each (lambda (l) (printf "  │ ~a\n" l))
                                          (last-lines (lines (cond [(assoc "stdout" x) => cdr] [else ""])
@@ -503,12 +526,13 @@
         (lambda ()
           (let ([t0 (now-ns)] [done '()])
             (hashtable-clear! secret-memo)
+            (set! held #f)
             (parameterize ([run-id (number->string t0)] [fetch-secret fetch-live] [realize-dry #f])
               (realize (entry-value entry) resolve-live
                        (lambda (ch) (log-steps ch) (submit-leaf ch) (set! done (cons ch done)))))
             (when (env? "DISEGNO_LOGS") (summary (reverse done) (- (now-ns) t0)))
             (outcomes (reverse done))))
-        stop-stream!))))
+        (lambda () (release!) (stop-stream!))))))
 
 (define (exec-error e)                                   ; → le extensions di un EXEC_ERROR, o #f
   (and (irritants-condition? e) (pair? (condition-irritants e))

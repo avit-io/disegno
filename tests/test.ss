@@ -328,6 +328,11 @@
   (assert (contiene? (p) "withNewFile(path: \"/rollback\", contents: \"10.0.42\""))
   (putenv "DISEGNO_PROVA_TIPO" "") (putenv "DISEGNO_PROVA_TAG" ""))   ; vuota vale come assente
 (assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'param-male) "") "non è il nome di una variabile d'ambiente"))
+;; Un valore bloccato ricorda la voce in cui è nato, e la riprende quando il runner lo sblocca
+;; (in be-tsid: un apply su argomenti calcolati dopo, i cui passi finivano sotto main).
+(let ([v (parameterize ([current-voce 'con-doc]) (reduce '+ (list (cons '(vrigid 0 ()) 'e) (cons '(vrigid 1 ()) 'e))))])
+  (assert (eq? (list-ref v 4) 'con-doc))
+  (assert (eq? (in-voce-of v current-voce) 'con-doc)))
 
 ;; otherwise: se a fallisce si realizza b, poi si fallisce lo stesso. A secco il piano mostra b
 ;; dopo il segno «se qualcosa prima fallisce». Per Before, b conta come se a fosse fallito subito.
@@ -805,6 +810,17 @@
     (assert (contiene? (cdr r2) "realizzato in "))
     (assert (contiene? (cdr r2) ": effetto sh -c \"echo effetto\", esportato "))
     (assert (string=? (call-with-input-file (string-append dir "/out5/dopo") get-string-all) "sì\n")))
+  ;; Una voce con docstring è una riga sola anche con due effetti (due catene), e la riga finale
+  ;; dice l'etichetta, non i comandi.
+  (let ([n (time-nanosecond (current-time))])
+    (check-string (format "(claim due-passi (Export Dir))
+(define due-passi \"fa due cose\"
+  (begin (apply (pipe (container) (from \"alpine\")) (list \"sh\" \"-c\" \"echo uno~a\"))
+         (apply (pipe (container) (from \"alpine\")) (list \"sh\" \"-c\" \"echo due~a\"))))" n n))
+    (set! logged '())
+    (let ([out (cdr (esegui 'due-passi))])
+      (assert (= 1 (length (filter (lambda (l) (contiene? l "fa due cose  ")) (last-lines out 50)))))
+      (assert (contiene? out ": fa due cose\n"))))
   (run 'segreto)
   (assert (string=? (call-with-input-file (string-append dir "/out6/esito") get-string-all) "ricevuto\n"))
   (run 'cli-aws)

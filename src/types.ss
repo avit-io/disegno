@@ -96,14 +96,14 @@
     (case (car f)
       [(vlam) (ev (cons u (cadddr f)) (list-ref f 4))]
       [(vflex vrigid) `(,(car f) ,(cadr f) ,(append (caddr f) a))]
-      [(vglob) (reduce (cadr f) (append (caddr f) a))]
+      [(vglob) (in-voce-of f (lambda () (reduce (cadr f) (append (caddr f) a))))]
       [else (ufail 'mismatch)])))
 (define (vapp-sp f sp) (fold-left (lambda (f a) (vapp f (car a) (cdr a))) f sp))
 
 (define (force v)
   (case (car v)
     [(vflex) (let ([s (meta-sol (cadr v))]) (if s (force (vapp-sp s (caddr v))) v))]
-    [(vglob) (let ([r (try-reduce (cadr v) (caddr v))]) (if r (force r) (numeral v)))]
+    [(vglob) (let ([r (in-voce-of v (lambda () (try-reduce (cadr v) (caddr v))))]) (if r (force r) (numeral v)))]
     [else v]))
 
 ;; Numerali nativi: nella logica Nat è zero/add1, nel valutatore un numero è un intero di Scheme
@@ -116,7 +116,12 @@
           [else v])))
 
 ;; Una def si riduce quando ha tutti gli argomenti e una clausola combacia; altrimenti resta bloccata.
-(define (reduce n sp) (or (try-reduce n sp) `(vglob ,n ,sp)))
+;; Un valore bloccato (su un input che il runner risolve dopo, come Host-env) ricorda la voce in
+;; cui è nato: quando si sblocca, i suoi passi restano di quella voce.
+(define (reduce n sp)
+  (or (try-reduce n sp) (if (and (current-voce) (not (con? n))) `(vglob ,n ,sp #f ,(current-voce)) `(vglob ,n ,sp))))
+(define (in-voce-of v thunk)
+  (if (and (> (length v) 4) (list-ref v 4)) (parameterize ([current-voce (list-ref v 4)]) (thunk)) (thunk)))
 (define (try-reduce n sp)
   (let* ([g (gget n)] [info (and (eq? (g-kind g) 'def) (g-info g))])
     (cond [(and info (accelerate) (let ([f (assq (hashtable-ref builtin-of n #f) fast)]) (and f (fast-apply f sp))))]   ; prima: numeri nativi
