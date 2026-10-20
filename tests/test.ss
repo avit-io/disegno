@@ -285,10 +285,14 @@
     [k] (then (start localstack) (let [a (aws k k \"eu-west-1\" (emulated localstack))]
           (then (apply (cli a) [\"aws\" \"secretsmanager\" \"create-secret\" \"--name\" \"cicd/test/argocd\"
                                 \"--secret-string\" \"{\\\"host\\\":\\\"argocd.example\\\",\\\"token\\\":\\\"t0k\\\"}\"])
-                (branch (probe (with-secret-variable (from (container) \"alpine\") \"T\" (secrets-manager-key a \"cicd/test/argocd\" \"token\"))
-                               [\"sh\" \"-c\" \"test \\\"$T\\\" = t0k\"])
+                (then (apply (cli a) [\"aws\" \"secretsmanager\" \"create-secret\" \"--name\" \"cicd/test/chiave\"
+                                      \"--secret-binary\" \"dW5vCmR1ZQo=\"])   ; uno\\ndue\\n, come una chiave SSH salvata binaria
+                (branch (probe (pipe (from (container) \"alpine\")
+                                     (with-secret-variable \"T\" (secrets-manager-key a \"cicd/test/argocd\" \"token\"))
+                                     (with-secret-variable \"K\" (secrets-manager-first a [\"cicd/test/assente\" \"cicd/test/chiave\"] \"chiave\")))
+                               [\"sh\" \"-c\" \"test \\\"$T\\\" = t0k && test \\\"$K\\\" = \\\"$(printf 'uno\\\\ndue')\\\"\"])
                   (esito-sm \"ricevuto\\n\")
-                  (esito-sm \"diverso\\n\"))))))"
+                  (esito-sm \"diverso\\n\")))))))"
   (string-append dir "/out11")))
 (let* ([evs (cdr (car (all-plans 'con-segreti)))]
        [obs (plan->graphql (cadr (find (lambda (e) (eq? (car e) 'se)) evs)))])

@@ -174,7 +174,7 @@
 ; diversi (per ambiente, per piattaforma, comune). Con un nome scelto: un Dockerfile cerca il
 ; segreto per id (RUN --mount=type=secret,id=ssh-key).
 (def first-secret-script : String
-  "k=\"$1\"; shift; for id in \"$@\"; do v=$(aws secretsmanager get-secret-value --secret-id \"$id\" --query SecretString --output text 2>/dev/null) || continue; if [ -z \"$k\" ]; then printf '%s' \"$v\"; else printf '%s' \"$v\" | jq -er --arg k \"$k\" '.[$k]'; fi; exit $?; done; echo \"nessuno di: $*\" >&2; exit 1")
+  "k=\"$1\"; shift; for id in \"$@\"; do v=$(aws secretsmanager get-secret-value --secret-id \"$id\" --output json 2>/dev/null | jq -er '.SecretString // (.SecretBinary | @base64d)') || continue; if [ -z \"$k\" ]; then printf '%s' \"$v\"; else printf '%s' \"$v\" | jq -er --arg k \"$k\" '.[$k]'; fi; exit $?; done; echo \"nessuno di: $*\" >&2; exit 1")
 
 (def secrets-manager-first : (→ Aws (List String) String Secret)        ; id in ordine, nome
   [a ids name] (secret-from (cli-jq a) (++ ["sh" "-c" first-secret-script "sh" ""] (map arg-text ids)) name))
