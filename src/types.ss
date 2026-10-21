@@ -505,7 +505,7 @@
            [(gget e) => (lambda (g) (values `(glob ,e) (g-type g)))]
            [(root-field e) => (lambda (n) (values `(glob ,n) (g-type (gget n))))]
            [(path-literal? e) (values (path-term c e) `(vglob ,(bi 'abs) ()))]
-           [else (oops "nome sconosciuto: ~a" e)])]
+           [else (unknown-name e)])]
     [(let-form? e) (let-values ([(c body) (let-bind c e)]) (infer c body))]
     [(head? e '%match) (oops "match ha bisogno di un tipo atteso: scrivi (the T (match …))")]
     [(and (pair? e) (eq? (car e) 'the) (= (length e) 3))   ; (the T e): e controllato contro T
@@ -901,7 +901,7 @@
     (let walk ([e e] [bound '()])
       (cond
         [(symbol? e)
-         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ TODO %br %imp pipe let auto λ the))) (if (variable-shaped? e) (set! acc (cons e acc)) (oops "nome sconosciuto: ~a" e)))]
+         (unless (or (memq e bound) (memq e acc) (gget e) (root-field e) (path-literal? e) (memq e '(→ Type _ TODO %br %imp pipe let auto λ the))) (if (variable-shaped? e) (set! acc (cons e acc)) (unknown-name e)))]
         [(lambda-form? e) (walk (caddr e) (append (cdr (cadr e)) bound))]   ; λ lega i suoi nomi
         [(let-form? e)                                   ; let lega in sequenza
          (let loop ([bs (cdr (cadr e))] [bound bound])
@@ -979,6 +979,40 @@
       (unless (file-exists? f) (oops "import: il modulo ~a non esiste" m))
       (hashtable-set! imported m #t)
       (parameterize ([privileged #t]) (check-file f)))))
+
+;; An unknown name that a module not yet imported declares says which import it needs.
+;; ponytail: modules are scanned by reading their declarations, not by checking them; names
+;; the generator produces (Container, with-exec…) are not found.
+(define (unknown-name e)
+  (let ([m (module-of e)])
+    (if m
+        (oops "nome sconosciuto: ~a, sta in ~a: (import ~a)" e m m)
+        (oops "nome sconosciuto: ~a" e))))
+
+(define (module-of name)
+  (find (lambda (m) (and (not (hashtable-ref imported m #f)) (memq name (declared-names m))))
+        (map (lambda (f) (string->symbol (path-root f)))
+             (list-sort string<? (filter (lambda (f) (equal? (path-extension f) "disegno")) (directory-list (at-root "lib")))))))
+
+(define module-names (make-eq-hashtable))               ; module → names it declares
+(define (declared-names m)
+  (or (hashtable-ref module-names m #f)
+      (let ([names (guard (e [#t '()])
+                     (call-with-input-file (at-root (format "lib/~a.disegno" m))
+                       (lambda (p) (let loop ([acc '()])
+                                     (let ([d (read p)]) (if (eof-object? d) acc (loop (append (decl-names d) acc))))))))])
+        (hashtable-set! module-names m names)
+        names)))
+
+(define (decl-names d)                                   ; names a claim, extern, data or record declares
+  (if (and (pair? d) (memq (car d) '(claim extern data record)) (pair? (cdr d)))
+      (let* ([head (cadr d)] [name (if (pair? head) (car head) head)]
+             [clauses (filter symbol? (map (lambda (x) (and (pair? x) (car x))) (cddr d)))])
+        (case (car d)
+          [(data) (cons name clauses)]
+          [(record) (cons name (map (lambda (f) (string->symbol (format "~a.~a" name f))) clauses))]
+          [else (list name)]))
+      '()))
 
 ;; (record Service [name : String] [replicas : Nat] [ok : (≥ replicas 1)]) è zucchero per
 ;; un data con il solo costruttore service e le proiezioni Service.name, Service.replicas, ...

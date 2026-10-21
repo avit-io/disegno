@@ -738,6 +738,10 @@
 (define male (⊕ /out /bin))
 (claim peggio Nat)
 (define peggio \"x\")
+(claim buco (→ Nat Nat))
+(define (buco n) (add1 TODO))
+(claim porta Port)
+(define porta 80)
 ")))))
               (msg "textDocument/didChange" `(("textDocument" . (("uri" . ,uri))) ("contentChanges" . ,(vector '(("text" . "(import paths)
 (claim bene Abs)
@@ -764,6 +768,10 @@
     (assert (contiene? r "\"name\":\"bene\",\"kind\":12"))
     (assert (contiene? r "\"name\":\"r\",\"kind\":12"))
     (assert (contiene? r "\"diagnostics\":[]"))
+    ;; a TODO: on the hole, as information, with its context and goal
+    (assert (contiene? r "{\"range\":{\"start\":{\"line\":6,\"character\":23},\"end\":{\"line\":6,\"character\":27}},\"severity\":3,\"source\":\"disegno\",\"message\":\"TODO\\n  n : Nat\\n  ──────────\\n  Nat\"}"))
+    ;; an unknown name: on the name, with the module that declares it
+    (assert (contiene? r "{\"range\":{\"start\":{\"line\":7,\"character\":13},\"end\":{\"line\":7,\"character\":17}},\"severity\":1,\"source\":\"disegno\",\"message\":\"nome sconosciuto: Port, sta in net: (import net)\"}"))
     (assert (contiene? r "\"id\":3,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```disegno\\nAbs.⊕ : (→ Abs Rel Abs)\\n"))   ; e le altre varianti di ⊕
     (assert (contiene? r "\"id\":2,\"result\":null"))))
 
