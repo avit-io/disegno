@@ -34,7 +34,22 @@
                           (filter values (map type-of-global names))))])
       (if (null? lines)
           (exit 1)
-          (begin (for-each (lambda (l) (display l) (newline)) lines) (exit 0))))))
+          (begin (for-each (lambda (l) (display l) (newline)) lines) (exit 0)))))
+  ;; disegno names prog.disegno: the global names the program sees, one per line, for completion.
+  ;; A Type.name also gives its short form, resolved by the type of the first argument.
+  (when (and (= (length args) 2) (equal? (car args) "names"))
+    (import! 'prelude)
+    (guard (e [#t #f]) (check-file (cadr args)))
+    (let ([seen (make-hashtable string-hash string=?)])
+      (vector-for-each
+        (lambda (n)
+          (let* ([s (symbol->string n)] [dot (let loop ([i (- (string-length s) 1)]) (cond [(< i 1) #f] [(char=? (string-ref s i) #\.) i] [else (loop (- i 1))]))])
+            (unless (char=? (string-ref s 0) #\%)
+              (hashtable-set! seen s #t)
+              (when dot (hashtable-set! seen (substring s (+ dot 1) (string-length s)) #t)))))
+        (hashtable-keys globals))
+      (for-each (lambda (s) (display s) (newline)) (list-sort string<? (vector->list (hashtable-keys seen))))
+      (exit 0))))
 
 (define-values (mode file)
   (let ([args (command-line-arguments)])

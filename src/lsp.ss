@@ -5,6 +5,7 @@
 ;; Content-Length conta byte, non caratteri.
 ;; Hover: il tipo del nome globale sotto il cursore (disegno type). Definizione: dove è definito
 ;; (disegno where), anche nella libreria standard. Simboli: le dichiarazioni del file.
+;; Completion: the global names (disegno names) and the forms; resolve gives the type.
 ;; ponytail: hover e definizione solo per i nomi globali; le variabili locali verranno se servono.
 
 (define lsp-in (standard-input-port))
@@ -226,6 +227,42 @@
                                  `(("name" . ,(symbol->string n)) ("kind" . ,(cdr k)) ("range" . ,r) ("selectionRange" . ,r)))))))
                  decls)))))))
 
+;; --- completion: the global names the program sees, and the forms of the language ---
+
+;; ponytail: names are computed at the first completion and again after a save, not at every
+;; keystroke; local variables are not offered (the reader keeps no positions of atoms).
+(define names-cache (make-hashtable string-hash string=?))  ; uri → names
+(define (refresh-names! uri)
+  (let ([r (run-on (hashtable-ref documents uri "") "names")])
+    (hashtable-set! names-cache uri (if (cadddr r) (lines (cadr r)) '()))))
+
+(define keywords '("claim" "define" "data" "record" "import" "Π" "∀" "λ" "let" "list" "match" "match*" "cond" "when"
+                   "unless" "begin" "the" "pipe" "auto" "TODO" "Type" "→"))
+
+(define (prefix-at text line character)                  ; the part of the word before the cursor
+  (let* ([ls (split-on text #\newline)]
+         [s (if (< line (length ls)) (list-ref ls line) "")]
+         [end (min character (string-length s))])
+    (let loop ([j end]) (if (and (> j 0) (not (delim? (string-ref s (- j 1))))) (loop (- j 1)) (substring s j end)))))
+
+(define (completion msg params)
+  (let* ([uri (get (get params "textDocument") "uri")] [pos (get params "position")]
+         [prefix (prefix-at (hashtable-ref documents uri "") (get pos "line") (get pos "character"))]
+         [item (lambda (kind) (lambda (s) `(("label" . ,s) ("kind" . ,kind) ("data" . ,uri))))])
+    (unless (hashtable-contains? names-cache uri) (refresh-names! uri))
+    (respond msg
+      `(("isIncomplete" . #f)
+        ("items" . ,(list->vector
+                      (append (map (item 14) (filter (lambda (s) (prefix? prefix s)) keywords))
+                              (map (item 3) (filter (lambda (s) (prefix? prefix s)) (hashtable-ref names-cache uri '()))))))))))
+
+;; The type of the item picked, with the variants of a short name, as the hover shows it.
+(define (completion-resolve msg item)
+  (let* ([uri (get item "data")] [label (get item "label")]
+         [r (and uri (string? label) (not (member label keywords)) (not (memv #\' (string->list label)))
+                 (run-on (hashtable-ref documents uri "") "type" label))])
+    (respond msg (if (and r (cadddr r)) (append item `(("detail" . ,(string-trim (cadr r))))) item))))
+
 ;; --- il ciclo ---
 
 (define (serve)
@@ -236,7 +273,8 @@
           (cond
             [(equal? method "initialize")
              (respond msg `(("capabilities" . (("textDocumentSync" . (("openClose" . #t) ("change" . 1) ("save" . #t)))
-                                               ("hoverProvider" . #t) ("definitionProvider" . #t) ("documentSymbolProvider" . #t)))
+                                               ("hoverProvider" . #t) ("definitionProvider" . #t) ("documentSymbolProvider" . #t)
+                                               ("completionProvider" . (("resolveProvider" . #t)))))
                             ("serverInfo" . (("name" . "disegno")))))]
             [(equal? method "textDocument/didOpen")
              (let ([doc (get params "textDocument")])
@@ -248,12 +286,16 @@
                  (hashtable-set! documents uri (get (car (last-pair changes)) "text")))
                (unless (input-port-ready? lsp-in) (publish-diagnostics uri)))]
             [(equal? method "textDocument/didSave")
-             (publish-diagnostics (get (get params "textDocument") "uri"))]
+             (publish-diagnostics (get (get params "textDocument") "uri"))
+             (hashtable-delete! names-cache (get (get params "textDocument") "uri"))]
             [(equal? method "textDocument/didClose")
-             (hashtable-delete! documents (get (get params "textDocument") "uri"))]
+             (hashtable-delete! documents (get (get params "textDocument") "uri"))
+             (hashtable-delete! names-cache (get (get params "textDocument") "uri"))]
             [(equal? method "textDocument/hover") (hover msg params)]
             [(equal? method "textDocument/definition") (definition msg params)]
             [(equal? method "textDocument/documentSymbol") (document-symbols msg params)]
+            [(equal? method "textDocument/completion") (completion msg params)]
+            [(equal? method "completionItem/resolve") (completion-resolve msg params)]
             [(equal? method "shutdown") (respond msg 'null)]
             [(equal? method "exit") (exit 0)]
             [(get msg "id") (send `(("jsonrpc" . "2.0") ("id" . ,(get msg "id"))

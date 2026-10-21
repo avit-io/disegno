@@ -754,6 +754,8 @@
               (msg "textDocument/definition" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 4) ("character" . 11)))) 4)
               (msg "textDocument/definition" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 2) ("character" . 9)))) 5)
               (msg "textDocument/documentSymbol" `(("textDocument" . (("uri" . ,uri)))) 6)
+              (msg "textDocument/completion" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 1) ("character" . 9)))) 7)
+              (msg "completionItem/resolve" `(("label" . "bene") ("kind" . 3) ("data" . ,uri)) 8)
               (msg "shutdown" '(("x" . 1)) 2)
               (msg "exit" '(("x" . 1)))))) 'replace)
   (system (format "scheme --script ~a lsp < ~a > ~a" (at-root "src/main.ss") in out))
@@ -767,6 +769,10 @@
     (assert (contiene? r (format "\"id\":5,\"result\":[{\"uri\":\"~a\",\"range\":{\"start\":{\"line\":2,\"character\":0}" uri)))   ; bene: la sua define
     (assert (contiene? r "\"name\":\"bene\",\"kind\":12"))
     (assert (contiene? r "\"name\":\"r\",\"kind\":12"))
+    ;; completion: the prefix «be» gives the global bene and the form begin; resolve gives the type
+    (assert (contiene? r (format "{\"label\":\"bene\",\"kind\":3,\"data\":\"~a\"}" uri)))
+    (assert (contiene? r "{\"label\":\"begin\",\"kind\":14"))
+    (assert (contiene? r "\"id\":8,\"result\":{\"label\":\"bene\",\"kind\":3,\"data\":\"file:///tmp/prova-lsp.disegno\",\"detail\":\"bene : Abs\"}"))
     (assert (contiene? r "\"diagnostics\":[]"))
     ;; a TODO: on the hole, as information, with its context and goal
     (assert (contiene? r "{\"range\":{\"start\":{\"line\":6,\"character\":23},\"end\":{\"line\":6,\"character\":27}},\"severity\":3,\"source\":\"disegno\",\"message\":\"TODO\\n  n : Nat\\n  ──────────\\n  Nat\"}"))

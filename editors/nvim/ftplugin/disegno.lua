@@ -6,7 +6,7 @@ vim.bo.errorformat = "%f:%l:%c: %m"
 vim.bo.lisp = true
 pcall(vim.treesitter.start)
 
--- Il server LSP è lo stesso binario: disegno lsp (diagnostica mentre si scrive, hover, gd, simboli).
+-- Il server LSP è lo stesso binario: disegno lsp (diagnostica mentre si scrive, hover, gd, simboli, completamento).
 vim.lsp.start({
   name = "disegno",
   cmd = { "@disegno@", "lsp" },

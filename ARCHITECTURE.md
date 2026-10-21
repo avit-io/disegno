@@ -267,6 +267,6 @@ Tutto il resto, cioè l'elaboratore, la libreria non `extern` e i programmi, lo 
 ## Che cosa si cambierebbe per primo
 
 In ordine di valore per costo:
-1. **Posizioni dei nomi nel reader**: hover e definizione sulle variabili locali.
+1. **Posizioni dei nomi nel reader**: hover, definizione e completamento delle variabili locali.
 2. **Definizioni mutue**: oggi non servono alla libreria.
 3. **Cumulatività degli universi**, con `≡` in `Type 1` (§4): quando un programma vero vorrà un tipo come valore.
