@@ -512,13 +512,16 @@
 ;; RUN --mount=type=secret,id=ssh-key li vedono.
 (check-string (format "
 (claim contesto Dir)
-(define contesto (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nARG VERSIONE\\nRUN --mount=type=secret,id=ssh-key mkdir /out && test \\\"$(cat /run/secrets/ssh-key)\\\" = chiave && echo letto $VERSIONE > /out/esito\\n\"))
+(define contesto (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nARG VERSIONE\\nARG DISEGNO_RUN\\nRUN --mount=type=secret,id=ssh-key mkdir /out && test \\\"$(cat /run/secrets/ssh-key)\\\" = chiave && echo letto $VERSIONE > /out/esito\\n\"))
 (claim con-dockerfile (Export Dir))
 (define con-dockerfile
   (overlay ~s (dir-of (build-dockerfile contesto \"Dockerfile\" (list (build-arg \"VERSIONE\" \"1.2\"))
                                         (list (secret-from (from (container) \"busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\") (list \"echo\" \"chiave\") \"ssh-key\")))
                       /out)))"
   (string-append dir "/out15")))
+;; With secrets the build also gets DISEGNO_RUN; without, the arguments stay as written.
+(let ([p (plan->graphql (cadr (cadr (car (all-plans 'con-dockerfile)))))])
+  (assert (contiene? p "{name: \"VERSIONE\", value: \"1.2\"}, {name: \"DISEGNO_RUN\", value: \"<esecuzione>\"}")))
 
 ;; Argomenti opzionali promossi: i permessi di un file, i glob di filter, l'entrypoint di un service.
 (check-string (format "

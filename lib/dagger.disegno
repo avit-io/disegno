@@ -107,8 +107,8 @@
 
 ; Una build da Dockerfile: i segreti arrivano per nome (RUN --mount=type=secret,id=ssh-key).
 ; Il valore di un segreto non entra nella chiave di cache di BuildKit: un RUN che lo copia in un
-; file resta in cache anche se il segreto cambia. Un argomento che il Dockerfile dichiara prima di
-; quel RUN, e che cambia (una versione), lo fa rieseguire.
+; file resta in cache anche se il segreto cambia. Con dei segreti il runner passa anche
+; DISEGNO_RUN, diverso a ogni esecuzione: un ARG DISEGNO_RUN prima di quel RUN lo fa rieseguire.
 (claim build-dockerfile (→ Dir String (List Build-arg) (List Secret) Container))   ; sorgente, Dockerfile, argomenti, segreti
 (define (build-dockerfile src dockerfile args secrets) (Directory.docker-build src dockerfile args secrets))
 

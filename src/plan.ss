@@ -90,6 +90,15 @@
           [(probe) (append (fresh-exec v resolve '(expect ANY)) '((exitCode)))]   ; il mondo, fuori dalla cache
           [(secret-from) ((fetch-secret) v resolve)]                          ; a secco il comando, dal vivo setSecret
           [(with-fresh-exec) (fresh-exec v resolve)]                        ; with-exec fuori dalla cache
+          ;; A secret's value is not in BuildKit's cache key: with secrets the build also gets
+          ;; DISEGNO_RUN, so an ARG DISEGNO_RUN before the RUN that reads the secret reruns it.
+          [(Directory.docker-build)
+           (let* ([ch (method 'dockerBuild)] [f (list-ref ch (- (length ch) 1))])
+             (if (null? (cadr (assq 'secrets (cdr f))))
+                 ch
+                 (let ([run `(%input (name . "DISEGNO_RUN") (value . ,(run-id)))])
+                   (append (list-head ch (- (length ch) 1))
+                           (list (cons (car f) (map (lambda (a) (if (eq? (car a) 'buildArgs) (list 'buildArgs (append (cadr a) (list run))) a)) (cdr f))))))))]
           [(overlay replace publish apply then skip start otherwise fail) (oops "un'uscita (Export) sta in cima al piano, o in then e branch")]
           [else (let ([segs (split-dots (symbol->string c))])
                   (if (string=? (car segs) "Query")
