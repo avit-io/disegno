@@ -1,31 +1,31 @@
-; Dagger: il piano come dato, i nomi corti e le proprietà del piano.
+; Dagger: the plan as data, the short names and the plan's properties.
 
 (import text paths net)
 
 (extern image-ref? : (→ String Bool) %image-ref?)
 
-; --- valori raffinati: il letterale resta, il tipo cambia ---
-; Un record (valore, prova) accoglie un letterale: "golang:1.25-alpine" atteso come Image diventa
-; (image "golang:1.25-alpine" auto). Se è malformato è un errore di tipo, non del container.
+; --- refined values: the literal stays, the type changes ---
+; A record (value, proof) takes a literal: "golang:1.25-alpine" expected as an Image becomes
+; (image "golang:1.25-alpine" auto). If it is malformed it is a type error, not a container one.
 
 (record Image
   (raw String)
   (ok (So (image-ref? raw))))
 
-; La riga di comando resta lo scalpello: si tipano i valori che vi si interpolano, non la sintassi.
+; The command line stays the chisel: the values interpolated into it are typed, not its syntax.
 
 (data Arg
   (arg-text String)
   (arg-path Abs))
 
-; --- il piano è un dato: Kind, Obj, gli alias Container, Directory… e nodes, generati (gen.ss) ---
+; --- the plan is data: Kind, Obj, the aliases Container, Directory… and nodes, generated (gen.ss) ---
 
-(import engine)                            ; generato: usa Arg, Image, Abs, Port
+(import engine)                            ; generated: uses Arg, Image, Abs, Port
 
-; Due tempi, due condizionali: if (nel prelude) decide su valori noti quando si costruisce il piano;
-; branch su osservazioni, che esistono solo durante l'esecuzione. Un (Remote Bool) non è un Bool.
-; ponytail: l'argomento di Remote ed Export è documentazione; esistono solo osservazioni booleane
-; ed export di directory. Servirà un Kind indicizzato quando ce ne saranno altri.
+; Two times, two conditionals: if (in the prelude) decides on known values when the plan is built;
+; branch on observations, which exist only during execution. A (Remote Bool) is not a Bool.
+; ponytail: the argument of Remote and Export is documentation; there are only boolean observations
+; and directory exports. An indexed Kind will be needed when there are others.
 
 (claim Remote (→ Type Type))
 (define (Remote _) (Obj Kind.bool))
@@ -33,34 +33,34 @@
 (claim Export (→ Type Type))
 (define (Export _) (Obj Kind.export))
 
-; Confine con l'host: l'utente legge l'host solo tramite (Host "percorso") nella firma di main.
+; The boundary with the host: the user reads the host only through (Host "path") in main's signature.
 
 (claim Host (→ String Type))
 (define (Host _) Directory)
 (builtin host Host)
 
-; Un segreto dall'host: (Host-secret "AWS_ACCESS_KEY_ID") nella firma di main, letto da una
-; variabile d'ambiente. Il valore non torna mai al linguaggio e non compare nel piano: si passa ai
-; container con with-secret-variable o with-mounted-secret.
+; A secret from the host: (Host-secret "AWS_ACCESS_KEY_ID") in main's signature, read from an
+; environment variable. The value never comes back to the language and does not appear in the plan:
+; it is handed to containers with with-secret-variable or with-mounted-secret.
 (claim Host-secret (→ String Type))
 (define (Host-secret _) Secret)
 (builtin host-secret Host-secret)
 
-; Un parametro del piano: (Host-env "TAG" "") nella firma di main, letto dall'ambiente quando si
-; costruisce il piano, con un valore di default. È un input, non un'osservazione: il piano è una
-; funzione dei parametri, e i teoremi valgono per ogni valore.
+; A plan parameter: (Host-env "TAG" "") in main's signature, read from the environment when the plan
+; is built, with a default value. It is an input, not an observation: the plan is a function of its
+; parameters, and the theorems hold for every value.
 (claim Host-env (→ String String Type))
 (define (Host-env _ _) String)
 (builtin host-env Host-env)
 
-; Un parametro scelto fra i costruttori di un data: (Host-choice "ENVIRONMENT" Env dev). Il valore
-; è il costruttore che si chiama come la variabile; un nome che non c'è ferma la costruzione del
-; piano. Così il programma non conosce valori sconosciuti, e non deve inventarne uno.
+; A parameter chosen among a data's constructors: (Host-choice "ENVIRONMENT" Env dev). The value
+; is the constructor named like the variable; a name that is not there stops building the plan.
+; So the program knows no unknown values, and does not have to invent one.
 (claim Host-choice (Π ((name String) (A Type)) (→ A Type)))
 (define (Host-choice _ A _) A)
 (builtin host-choice Host-choice)
 
-; --- nomi corti: file system del motore, valori immutabili; scrivere è costruire una nuova directory ---
+; --- short names: the engine's file system, immutable values; writing is building a new directory ---
 
 (claim Dir Type)
 (define Dir Directory)
@@ -71,7 +71,7 @@
 (claim with-file (→ Dir Abs String Dir))        ; rw-r--r--, 0644
 (define (with-file d path contents) (Directory.with-new-file d path contents 420))
 
-(claim with-executable (→ Dir Abs String Dir))  ; rwxr-xr-x, 0755: uno script
+(claim with-executable (→ Dir Abs String Dir))  ; rwxr-xr-x, 0755: a script
 (define (with-executable d path contents) (Directory.with-new-file d path contents 493))
 
 (claim without (→ Dir Abs Dir))
@@ -86,9 +86,9 @@
 (claim exists? (→ Dir Abs (Remote Bool)))
 (define (exists? d path) (Directory.exists d path))
 
-; --- container: with-exec dichiara un comando, non lo esegue ---
-; I campi dello schema si scrivono senza prefisso: (from c "alpine") è Container.from perché c è
-; un Container, (container) è il campo radice Query.container. Qui solo i nomi curati.
+; --- container: with-exec declares a command, it does not run it ---
+; Schema fields are written without a prefix: (from c "alpine") is Container.from because c is
+; a Container, (container) is the root field Query.container. Only the curated names here.
 
 (claim with-dir (→ Container Abs Dir Container))
 (define (with-dir c path source) (Container.with-directory c path source))
@@ -99,17 +99,17 @@
 (claim dir-of (→ Container Abs Dir))
 (define (dir-of c path) (Container.directory c path))
 
-; Un valore di configurazione, in chiaro o segreto: l'host di un servizio a volte sta in un
-; segreto. Nel container diventa una variabile d'ambiente in entrambi i casi.
+; A configuration value, plain or secret: a service's host sometimes lives in a secret. In the
+; container it becomes an environment variable in both cases.
 (data Setting
   (public String)
   (private Secret))
 
-; Una build da Dockerfile: i segreti arrivano per nome (RUN --mount=type=secret,id=ssh-key).
-; Il valore di un segreto non entra nella chiave di cache di BuildKit: un RUN che lo copia in un
-; file resta in cache anche se il segreto cambia. Con dei segreti il runner passa anche
-; DISEGNO_RUN, diverso a ogni esecuzione: un ARG DISEGNO_RUN prima di quel RUN lo fa rieseguire.
-(claim build-dockerfile (→ Dir String (List Build-arg) (List Secret) Container))   ; sorgente, Dockerfile, argomenti, segreti
+; A Dockerfile build: secrets arrive by name (RUN --mount=type=secret,id=ssh-key).
+; A secret's value is not part of BuildKit's cache key: a RUN copying it into a file stays
+; cached even if the secret changes. With secrets the runner also passes DISEGNO_RUN, different
+; on every run: an ARG DISEGNO_RUN before that RUN makes it run again.
+(claim build-dockerfile (→ Dir String (List Build-arg) (List Secret) Container))   ; source, Dockerfile, arguments, secrets
 (define (build-dockerfile src dockerfile args secrets) (Directory.docker-build src dockerfile args secrets))
 
 (claim with-setting (→ Container String Setting Container))
@@ -118,7 +118,7 @@
     ((public s)  (with-env c name s))
     ((private s) (Container.with-secret-variable c name s))))
 
-; --- proprietà del piano: si calcolano sul dato ---
+; --- properties of the plan: computed on the data ---
 
 (claim image-of (→ Any (List Image)))
 (define (image-of n)
@@ -129,15 +129,15 @@
 (claim images (→ (Obj k) (List Image)))
 (define (images p) (concat-map image-of (nodes p)))
 
-; Un'immagine con tag è un punto mobile, una con digest un punto fisso: pinned vuol dire fissa.
+; An image with a tag is a moving point, one with a digest a fixed point: pinned means fixed.
 (claim pinned? (→ Image Bool))
 (define (pinned? i) (contains? (Image.raw i) "@sha256:"))
 
-; Proprietà d'ordine. Un piano, seguito per ogni esito dei branch, è una storia: osservazioni
-; vere (seen) e uscite realizzate (done), nell'ordine in cui avvengono; then concatena, branch
-; sceglie. Non si scende nelle directory, quindi le proprietà valgono anche per un input astratto:
-; (Π ((src Dir)) (Before … (release src))). Un'osservazione nella storia dice che quel test ha
-; risposto sì in quel momento: è la verità di quel test, non del mondo, e non diventa un assioma.
+; Order properties. A plan, followed for each outcome of the branches, is a history: true
+; observations (seen) and realized outputs (done), in the order they happen; then concatenates,
+; branch chooses. Directories are not entered, so the properties hold for an abstract input too:
+; (Π ((src Dir)) (Before … (release src))). An observation in the history says that test answered
+; yes at that moment: it is that test's truth, not the world's, and it does not become an axiom.
 
 (data Event
   (seen (Remote Bool))
@@ -149,10 +149,10 @@
     ((branch c a b) (++ (map (:: (seen c)) (histories a)) (histories b)))
     ((then a b)     (concat-map (λ (h) (map (++ h) (histories b))) (histories a)))
     (skip           (list (list)))
-    ((otherwise a b) (++ (histories a) (histories b)))   ; b dopo un fallimento di a: il caso peggiore, b da solo
+    ((otherwise a b) (++ (histories a) (histories b)))   ; b after a failure of a: the worst case, b alone
     (e              (list (list (done e))))))
 
-; (earlier w? e? g h): in h, ogni uscita che soddisfa e? viene dopo un evento che soddisfa w?.
+; (earlier w? e? g h): in h, every output satisfying e? comes after an event satisfying w?.
 (claim allowed? (→ (→ (Export Dir) Bool) Bool Event Bool))
 (define (allowed? e? g n)
   (match n
@@ -162,7 +162,7 @@
 (claim earlier (→ (→ Event Bool) (→ (Export Dir) Bool) Bool (List Event) Bool))
 (define (earlier w? e? g n)
   (match n
-    (vuota     true)
+    (nil       true)
     ((:: x xs) (and (allowed? e? g x) (earlier w? e? (or g (w? x)) xs)))))
 
 (claim seen? (→ (→ (Remote Bool) Bool) Event Bool))
@@ -177,15 +177,15 @@
     ((done x) (s? x))
     ((seen _) false)))
 
-; (Before t? e? p): ogni uscita che soddisfa e? avviene dopo un'osservazione vera che soddisfa t?.
+; (Before t? e? p): every output satisfying e? happens after a true observation satisfying t?.
 (claim Before (→ (→ (Remote Bool) Bool) (→ (Export Dir) Bool) (Export Dir) Type))
 (define (Before t? e? p) (So (all (earlier (seen? t?) e? false) (histories p))))
 
-; (Precedes s? e? p): ogni uscita che soddisfa e? avviene dopo un'uscita che soddisfa s?.
+; (Precedes s? e? p): every output satisfying e? happens after an output satisfying s?.
 (claim Precedes (→ (→ (Export Dir) Bool) (→ (Export Dir) Bool) (Export Dir) Type))
 (define (Precedes s? e? p) (So (all (earlier (done? s?) e? false) (histories p))))
 
-(claim test? (→ (Remote Bool) Bool))        ; un test, nel container o sul mondo
+(claim test? (→ (Remote Bool) Bool))        ; a test, in the container or on the world
 (define (test? n)
   (match n
     ((passes? _) true)
@@ -204,9 +204,9 @@
     ((apply _ _) true)
     (_           false)))
 
-; Montaggi lungo la catena di un container: dove vengono collocati directory, file e cache.
-; Due container diversi non si contendono il file system, quindi si guarda solo la catena (chain),
-; che non scende negli argomenti: la proprietà vale per ogni sorgente.
+; Mounts along a container's chain: where directories, files and caches are placed.
+; Two different containers do not compete for the file system, so only the chain is looked at
+; (chain), which does not go down into the arguments: the property holds for every source.
 
 (claim mount-of (→ Any (List Abs)))
 (define (mount-of n)
@@ -224,7 +224,7 @@
 (claim Disjoint-mounts (→ (Obj k) Type))
 (define (Disjoint-mounts p) (Pairwise ⋔ (mounts p)))
 
-; Porte esposte lungo la catena di un container: nessuna porta allocata due volte.
+; Ports exposed along a container's chain: no port allocated twice.
 
 (claim port-of (→ Any (List Port)))
 (define (port-of n)

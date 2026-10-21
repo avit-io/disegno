@@ -1,9 +1,9 @@
-; Controlli: proprietà della libreria standard e dei piani, scritte come teoremi.
-; Il type checker le verifica a ogni esecuzione dei test (test.ss): se una modifica rompe una
-; legge, un letterale o una garanzia sui piani, questo file smette di compilare.
-; Le leggi generali si dimostrano per induzione; i casi concreti li calcola auto.
+; Checks: properties of the standard library and of plans, written as theorems.
+; The type checker verifies them on every test run (test.ss): if a change breaks a law, a
+; literal or a guarantee on plans, this file stops compiling.
+; General laws are proved by induction; auto computes the concrete cases.
 
-; --- aritmetica e liste ---
+; --- arithmetic and lists ---
 
 (import dagger time files)
 
@@ -13,19 +13,19 @@
     (zero refl)
     ((add1 a) (cong add1 (+-assoc a b c)))))
 
-(claim ++-vuota (Π ((xs (List A))) (≡ (++ xs vuota) xs)))
-(define (++-vuota xs)
+(claim ++-nil (Π ((xs (List A))) (≡ (++ xs nil) xs)))
+(define (++-nil xs)
   (match xs
-    (vuota     refl)
-    ((:: x xs) (cong (:: x) (++-vuota xs)))))
+    (nil       refl)
+    ((:: x xs) (cong (:: x) (++-nil xs)))))
 
 (claim ++-assoc (Π ((xs (List A)) (ys (List A)) (zs (List A))) (≡ (++ (++ xs ys) zs) (++ xs (++ ys zs)))))
 (define (++-assoc xs ys zs)
   (match xs
-    (vuota refl)
+    (nil refl)
     ((:: x xs) (cong (:: x) (++-assoc xs ys zs)))))
 
-; --- percorsi: lo spazio affine ---
+; --- paths: the affine space ---
 
 (claim ⊑-trans (→ (⊑ p q) (⊑ q r) (⊑ p r)))
 (define (⊑-trans n h)
@@ -36,172 +36,172 @@
 (claim ⊕-here (Π ((p Abs)) (≡ (⊕ p here) p)))
 (define (⊕-here p) refl)
 
-(claim legge (Π ((p Abs) (q Abs) (h (⊑ p q))) (≡ (⊕ q (⊖ p q h)) p)))
-(define (legge p q h) (Affine.law percorsi p q h))
+(claim path-law (Π ((p Abs) (q Abs) (h (⊑ p q))) (≡ (⊕ q (⊖ p q h)) p)))
+(define (path-law p q h) (Affine.law path-affine p q h))
 
-(claim ⊖-ritorno (≡ (⊖ /out/bin/hello /out auto) "bin/hello"))
-(define ⊖-ritorno auto)
+(claim ⊖-back (≡ (⊖ /out/bin/hello /out auto) "bin/hello"))
+(define ⊖-back auto)
 
-(claim separati (⋔ /src /go/pkg/mod))
-(define separati auto)
+(claim apart-paths (⋔ /src /go/pkg/mod))
+(define apart-paths auto)
 
-; --- letterali: il letterale resta, il tipo cambia ---
+; --- literals: the literal stays, the type changes ---
 
-(claim letterale-immagine (≡ (Image.raw "golang:1.25-alpine") "golang:1.25-alpine"))
-(define letterale-immagine auto)
+(claim image-literal (≡ (Image.raw "golang:1.25-alpine") "golang:1.25-alpine"))
+(define image-literal auto)
 
-(claim letterale-punto (≡ /go/pkg/mod (/ (/ (/ root "go") "pkg") "mod")))
-(define letterale-punto auto)
+(claim point-literal (≡ /go/pkg/mod (/ (/ (/ root "go") "pkg") "mod")))
+(define point-literal auto)
 
-(claim letterale-vettore (≡ (⊕ /out "bin/hello") /out/bin/hello))
-(define letterale-vettore auto)
+(claim vector-literal (≡ (⊕ /out "bin/hello") /out/bin/hello))
+(define vector-literal auto)
 
-; --- piani: le garanzie che oggi stanno in linter e policy ---
+; --- plans: the guarantees that today live in linters and policies ---
 
-(claim piano-pinnato (All pinned? (images (pipe (container) (from "alpine@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1")))))
-(define piano-pinnato auto)
+(claim pinned-plan (All pinned? (images (pipe (container) (from "alpine@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1")))))
+(define pinned-plan auto)
 
-(claim immagini-in-ordine (≡ (images (pipe (container) (from "a") (with-dir /w (dir-of (from (container) "b") root)))) (list "a" "b")))
-(define immagini-in-ordine auto)
+(claim images-in-order (≡ (images (pipe (container) (from "a") (with-dir /w (dir-of (from (container) "b") root)))) (list "a" "b")))
+(define images-in-order auto)
 
-(claim publish-protetto (Π ((src Dir)) (Before test? publish?
+(claim guarded-publish (Π ((src Dir)) (Before test? publish?
                                                (branch (passes? (try-exec (with-dir (from (container) "alpine") /src src) (list "make" "test")))
                                                        (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
                                                        (overlay "report" src)))))
-(define (publish-protetto src) auto)
+(define (guarded-publish src) auto)
 
-; Un controllo sul contenuto, guardato da Dagger, conta come test: pubblicare solo se il
-; report dice PASS soddisfa Before.
-(claim publish-se-pass (Π ((src Dir)) (Before test? publish?
+; A check on the contents, looked at by Dagger, counts as a test: publishing only if the
+; report says PASS satisfies Before.
+(claim publish-if-pass (Π ((src Dir)) (Before test? publish?
                                               (branch (includes? (file-of src /report.txt) "PASS")
                                                       (publish (with-dir (from (container) "alpine") /app src) "registry.example.com/app:1")
                                                       (overlay "report" src)))))
-(define (publish-se-pass src) auto)
+(define (publish-if-pass src) auto)
 
-; Che cosa scrive una directory: per ogni sorgente, sotto /site e senza sovrapposizioni.
-(claim scritture (Π ((src Dir)) (× (Writes-within /site (put (with-file empty /site/a "1") /site/src src))
+; What a directory writes: for every source, under /site and without overlaps.
+(claim writes-under-site (Π ((src Dir)) (× (Writes-within /site (put (with-file empty /site/a "1") /site/src src))
                                    (Disjoint-writes (put (with-file empty /site/a "1") /site/src src)))))
-(define (scritture src) auto)
+(define (writes-under-site src) auto)
 
-(claim scritture-sovrapposte (¬ (Disjoint-writes (put (with-file empty /site/src/a "1") /site/src empty))))
-(define scritture-sovrapposte auto)
+(claim overlapping-writes (¬ (Disjoint-writes (put (with-file empty /site/src/a "1") /site/src empty))))
+(define overlapping-writes auto)
 
-(claim montaggi (Π ((src Dir)) (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /cache (cache-volume "c"))))))
-(define (montaggi src) auto)
+(claim disjoint-mount-paths (Π ((src Dir)) (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /cache (cache-volume "c"))))))
+(define (disjoint-mount-paths src) auto)
 
-(claim montaggi-visti (≡ (mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /cache (cache-volume "c"))))
+(claim mounts-seen (≡ (mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /cache (cache-volume "c"))))
                          (list /cache /src)))
-(define montaggi-visti auto)
+(define mounts-seen auto)
 
-; --- negazioni: ciò che non deve valere, come teorema ---
-; Un pattern assurdo () dichiara che a quella posizione non c'è alcun valore; la clausola non ha
-; corpo. Per avere (⊑ /out /src) servirebbe ⊑-step su una prova di (⊑ root /src): impossibile.
+; --- negations: what must not hold, as a theorem ---
+; An absurd pattern () declares there is no value at that position; the clause has no body.
+; To have (⊑ /out /src) ⊑-step on a proof of (⊑ root /src) would be needed: impossible.
 
-(claim fuori-a-mano (¬ (⊑ /out /src)))
-(define (fuori-a-mano n)
+(claim outside-by-hand (¬ (⊑ /out /src)))
+(define (outside-by-hand n)
   (match n
     ((⊑-step ()))))
 
-(claim fuori (¬ (⊑ /out /src)))
-(define fuori auto)
+(claim outside (¬ (⊑ /out /src)))
+(define outside auto)
 
-(claim non-pinnata (¬ (All pinned? (images (from (container) "alpine")))))
-(define non-pinnata auto)
+(claim not-pinned (¬ (All pinned? (images (from (container) "alpine")))))
+(define not-pinned auto)
 
-(claim annidati-non-disgiunti (¬ (⋔ /src /src/cache)))
-(define annidati-non-disgiunti auto)
+(claim nested-not-disjoint (¬ (⋔ /src /src/cache)))
+(define nested-not-disjoint auto)
 
-(claim montaggi-sovrapposti (¬ (Disjoint-mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /src/cache (cache-volume "c"))))))
-(define montaggi-sovrapposti auto)
+(claim overlapping-mounts (¬ (Disjoint-mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /src/cache (cache-volume "c"))))))
+(define overlapping-mounts auto)
 
-(claim zero-non-è-uno (¬ (≡ 0 1)))
-(define (zero-non-è-uno n)
+(claim zero-is-not-one (¬ (≡ 0 1)))
+(define (zero-is-not-one n)
   (match n
     (())))
 
-; --- naturali e accelerazione: la legge vale anche sui numeri grandi, calcolati nativamente ---
+; --- naturals and acceleration: the law holds on big numbers too, computed natively ---
 
-(claim legge-naturali (≡ (+ 1000000 (∸ 4294967296 1000000)) 4294967296))
-(define legge-naturali auto)
+(claim nat-law (≡ (+ 1000000 (∸ 4294967296 1000000)) 4294967296))
+(define nat-law auto)
 
-; --- tempo: istanti e durate ---
+; --- time: instants and durations ---
 
-(claim inizio Instant)
-(define inizio "2026-10-15T00:00:00Z")
-(claim fine Instant)
-(define fine "2026-10-16T00:00:00Z")
+(claim day-start Instant)
+(define day-start "2026-10-15T00:00:00Z")
+(claim day-end Instant)
+(define day-end "2026-10-16T00:00:00Z")
 
-(claim un-giorno-dopo (≡ (⊕ inizio "1d") fine))
-(define un-giorno-dopo auto)
+(claim a-day-later (≡ (⊕ day-start "1d") day-end))
+(define a-day-later auto)
 
-(claim durata (≡ (⊖ fine inizio auto) "24h"))
-(define durata auto)
+(claim day-length (≡ (⊖ day-end day-start auto) "24h"))
+(define day-length auto)
 
-(claim finestre-separate (Apart (window inizio "1h") (window fine "1h")))
-(define finestre-separate auto)
+(claim apart-windows (Apart (window day-start "1h") (window day-end "1h")))
+(define apart-windows auto)
 
-(claim finestre-sovrapposte (¬ (Apart (window inizio "2h") (window (⊕ inizio "1h") "1h"))))
-(define finestre-sovrapposte auto)
+(claim overlapping-windows (¬ (Apart (window day-start "2h") (window (⊕ day-start "1h") "1h"))))
+(define overlapping-windows auto)
 
-; --- indirizzi: punti raffinati e blocchi CIDR come regioni ---
+; --- addresses: refined points and CIDR blocks as regions ---
 
 (claim gateway Ip)
 (define gateway "10.0.0.1")
 
-(claim indirizzo-dopo (≡ (⊕ gateway 1 auto) "10.0.0.2"))
-(define indirizzo-dopo auto)
+(claim next-address (≡ (⊕ gateway 1 auto) "10.0.0.2"))
+(define next-address auto)
 
-(claim dentro-il-blocco (So (in? "10.0.0.5" "10.0.0.0/24")))
-(define dentro-il-blocco auto)
+(claim in-the-block (So (in? "10.0.0.5" "10.0.0.0/24")))
+(define in-the-block auto)
 
-(claim subnet-disgiunte (Disjoint-subnets (list "10.0.0.0/24" "10.0.1.0/24" "10.1.0.0/16")))
-(define subnet-disgiunte auto)
+(claim disjoint-subnets (Disjoint-subnets (list "10.0.0.0/24" "10.0.1.0/24" "10.1.0.0/16")))
+(define disjoint-subnets auto)
 
-(claim subnet-annidate (¬ (Disjoint-subnets (list "10.0.0.0/8" "10.1.0.0/16"))))
-(define subnet-annidate auto)
+(claim nested-subnets (¬ (Disjoint-subnets (list "10.0.0.0/8" "10.1.0.0/16"))))
+(define nested-subnets auto)
 
-; --- porte: nessuna porta allocata due volte ---
+; --- ports: no port allocated twice ---
 
-(claim porte-distinte (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 9090))))
-(define porte-distinte auto)
+(claim distinct-ports (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 9090))))
+(define distinct-ports auto)
 
-(claim porte-doppie (¬ (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 8080)))))
-(define porte-doppie auto)
+(claim double-ports (¬ (Distinct-ports (pipe (container) (with-exposed-port 8080) (with-exposed-port 8080)))))
+(define double-ports auto)
 
-; --- stringhe: il letterale si compone, il calcolo avviene sui letterali ---
+; --- strings: the literal is composed, the computation happens on literals ---
 
-(claim resa (≡ (string-append "porta = " (show 8080)) "porta = 8080"))
-(define resa auto)
+(claim rendered (≡ (string-append "port = " (show 8080)) "port = 8080"))
+(define rendered auto)
 
-(claim resa-cidr (≡ (render-cidr "10.0.1.0/24") "10.0.1.0/24"))
-(define resa-cidr auto)
+(claim rendered-cidr (≡ (render-cidr "10.0.1.0/24") "10.0.1.0/24"))
+(define rendered-cidr auto)
 
-; --- il linguaggio puro: λ, the, impliciti, Σ, Either, transport, ex falso ---
+; --- the pure language: λ, the, implicits, Σ, Either, transport, ex falso ---
 
 (claim id (∀ ((A Type)) (→ A A)))
 (define id (λ (x) x))
 
-(claim applica (≡ ((the (→ Nat Nat) (λ (n) (add1 n))) 1) 2))
-(define applica auto)
+(claim applied (≡ ((the (→ Nat Nat) (λ (n) (add1 n))) 1) 2))
+(define applied auto)
 
-(claim un-testimone (Σ Nat (λ (n) (≡ (+ n n) 4))))
-(define un-testimone (pair 2 refl))
+(claim a-witness (Σ Nat (λ (n) (≡ (+ n n) 4))))
+(define a-witness (pair 2 refl))
 
-(claim il-testimone (≡ (fst un-testimone) 2))
-(define il-testimone auto)
+(claim the-witness (≡ (fst a-witness) 2))
+(define the-witness auto)
 
 (claim ex-falso (→ ⊥ A))
 (define (ex-falso n)
   (match n
     (())))
 
-(claim sposta (→ (≡ x y) (≡ y y) (≡ x y)))
-(define (sposta e p) (transport (sym e) (λ (m) (≡ m y)) p))
+(claim move (→ (≡ x y) (≡ y y) (≡ x y)))
+(define (move e p) (transport (sym e) (λ (m) (≡ m y)) p))
 
-(claim nomi-come-variabili (→ Nat (→ Nat Nat) Nat))   ; step e port sono costruttori altrove
-(define (nomi-come-variabili port n)
+(claim names-as-variables (→ Nat (→ Nat Nat) Nat))   ; step and port are constructors elsewhere
+(define (names-as-variables port n)
   (match n
     (step (step port))))
 
-(claim atteso-negli-argomenti (→ Bool (Σ Nat (λ (n) (≡ n n)))))   ; il tipo atteso scende dentro if
-(define (atteso-negli-argomenti b) (if b (pair 1 refl) (pair 2 refl)))
+(claim expected-in-arguments (→ Bool (Σ Nat (λ (n) (≡ n n)))))   ; the expected type goes down into if
+(define (expected-in-arguments b) (if b (pair 1 refl) (pair 2 refl)))

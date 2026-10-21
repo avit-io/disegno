@@ -1,6 +1,6 @@
-// Grammatica tree-sitter di Disegno: la sintassi è quella di Scheme, con le quadre sinonimo
-// delle tonde (R6RS) e i letterali di punto (/out). L'evidenziazione
-// di claim, define, data, tipi e operatori sta nelle query (queries/highlights.scm), non qui.
+// Disegno's tree-sitter grammar: the syntax is Scheme's, with brackets a synonym of
+// parentheses (R6RS) and point literals (/out). Highlighting of claim, define, data, types
+// and operators is in the queries (queries/highlights.scm), not here.
 module.exports = grammar({
   name: 'disegno',
 
@@ -17,7 +17,7 @@ module.exports = grammar({
     comment: _ => token(seq(';', /.*/)),
     string: _ => token(seq('"', repeat(choice(/[^"\\]/, /\\./)), '"')),
     number: _ => /[0-9]+/,
-    path: _ => /\/[^\s()\[\];,"]+/,                       // un punto: /go/pkg/mod
+    path: _ => /\/[^\s()\[\];,"]+/,                       // a point: /go/pkg/mod
     symbol: _ => token(choice('/', /[^\s()\[\];,"0-9\/][^\s()\[\];,"]*/)),
   },
 });

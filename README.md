@@ -55,10 +55,10 @@ docker run --rm --user "$(id -u):$(id -g)" --group-add "$(stat -c %g /var/run/do
 ```
 
 
-In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza terminale stampa invece un resoconto: una riga per voce del programma (le definizioni che costruiscono un pezzo di piano), con esito e tempo; «ambiente» per le voci che preparano soltanto, il comando di lavoro per le altre; la risposta delle osservazioni dei `branch`; e in fondo che cosa è stato realizzato. L'output dei comandi è la prova: su GitHub Actions e GitLab sta nel gruppo richiudibile della voce. Una voce fallita mostra le ultime righe e la posizione del suo `with-exec` (`file:riga:colonna`, anche nel terminale); su GitHub anche un'annotazione su quel file e quella riga.
+In un terminale `run` mostra la TUI di Dagger. In CI (variabile `CI`) o senza terminale stampa invece un resoconto: una riga per voce del programma (le definizioni che costruiscono un pezzo di piano), con esito e tempo; «environment» per le voci che preparano soltanto, il comando di lavoro per le altre; la risposta delle osservazioni dei `branch`; e in fondo che cosa è stato realizzato. L'output dei comandi è la prova: su GitHub Actions e GitLab sta nel gruppo richiudibile della voce. Una voce fallita mostra le ultime righe e la posizione del suo `with-exec` (`file:riga:colonna`, anche nel terminale); su GitHub anche un'annotazione su quel file e quella riga.
 
 ```
-✓ ambiente    ambiente  6.4s
+✓ ambiente    environment  6.4s
 ✓ test        sh -c "echo test; sleep 1; cat dati.txt; echo ok"  1.2s
 ✗ pubblica    release.disegno:10:15  exit 7  0.2s
       errore: registry irraggiungibile

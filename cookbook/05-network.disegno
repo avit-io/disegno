@@ -60,7 +60,7 @@
 (claim render (→ (List Subnet) String))
 (define (render n)
   (match n
-    (vuota     "")
+    (nil       "")
     ((:: s ss) (string-append (Subnet.name s) " = " (render-cidr (Subnet.block s)) "\n" (render ss)))))
 
 (claim main (Π ((src (Host "."))) (Export Dir)))

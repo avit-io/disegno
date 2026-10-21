@@ -9,7 +9,7 @@
 (define lsp-in (standard-input-port))
 (define lsp-out (standard-output-port))
 
-(define (read-message)                                   ; → oggetto JSON, o #f a fine input
+(define (read-message)                                   ; → JSON object, or #f at end of input
   (let loop ([len #f])
     (let ([line (read-header-line)])
       (cond [(not line) #f]
@@ -18,7 +18,7 @@
              (loop (string->number (string-trim (substring line 15 (string-length line)))))]
             [else (loop len)]))))
 
-(define (read-header-line)                               ; una riga di intestazione, senza \r\n
+(define (read-header-line)                               ; one header line, without \r\n
   (let loop ([acc '()])
     (let ([b (get-u8 lsp-in)])
       (cond [(eof-object? b) (and (pair? acc) (list->string (reverse acc)))]
@@ -42,15 +42,15 @@
 (define (position line col) `(("line" . ,line) ("character" . ,col)))
 (define (range line col) `(("start" . ,(position line col)) ("end" . ,(position line (+ col 1)))))
 
-;; --- il documento in un processo a sé ---
+;; --- the document in a process of its own ---
 
-(define documents (make-hashtable string-hash string=?))  ; uri → testo
+(define documents (make-hashtable string-hash string=?))  ; uri → text
 
 (define (uri->path uri) (if (and (> (string-length uri) 7) (string=? (substring uri 0 7) "file://")) (substring uri 7 (string-length uri)) uri))
 
 (define scheme-bin (or (getenv "DISEGNO_SCHEME") "scheme"))
 
-;; Il testo in un file temporaneo, poi disegno <args…> sul file; → (stdout stderr successo?)
+;; The text in a temporary file, then disegno <args…> on the file; → (stdout stderr success?)
 (define (run-on text . args)
   (let* ([tmp (format "/tmp/disegno-lsp-~a.disegno" (random 1000000000))]
          [out (string-append tmp ".out")] [err (string-append tmp ".err")])
@@ -62,7 +62,7 @@
       (delete-file tmp)
       r)))
 
-;; "file:riga:colonna: messaggio" → (file riga colonna messaggio), o #f
+;; "file:line:col: message" → (file line col message), or #f
 (define (parse-location s)
   (let ([parts (split-on s #\:)])
     (and (>= (length parts) 3) (string->number (cadr parts)) (string->number (caddr parts))
@@ -72,7 +72,7 @@
 
 (define (lines s) (filter (lambda (l) (not (string=? l ""))) (split-on s #\newline)))
 
-;; --- diagnostica ---
+;; --- diagnostics ---
 
 ;; The checker's lines: "file:line:col: message" opens a diagnostic, an unlocated line continues
 ;; the previous one (the context and goal of a TODO). Only this file's diagnostics are kept.
@@ -134,9 +134,9 @@
             [else (loop (+ j 1) depth)]))))
 
 
-;; --- il nome sotto il cursore ---
+;; --- the name under the cursor ---
 
-(define (word-at text line character)                    ; il simbolo che contiene la posizione, o #f
+(define (word-at text line character)                    ; the symbol containing the position, or #f
   (let* ([lines (split-on text #\newline)]
          [s (and (< line (length lines)) (list-ref lines line))])
     (and s
@@ -174,7 +174,7 @@
                             (filter values (map parse-location (lines (cadr r))))))
                      'null))))
 
-;; --- simboli: le dichiarazioni del file, lette senza controllarle ---
+;; --- symbols: the file's declarations, read without checking them ---
 
 (define symbol-kinds '((claim . 12) (data . 10) (record . 23) (extern . 12)))   ; Function, Enum, Struct
 
@@ -182,7 +182,7 @@
   (let*-values ([(text) (hashtable-ref documents (get (get params "textDocument") "uri") "")] [(t) text])
     (let* ([sfd (make-source-file-descriptor "doc" (open-bytevector-input-port (string->utf8 t)))]
            [p (open-string-input-port t)]
-           [decls (guard (e [#t '()])                   ; un testo a metà: i simboli letti fin lì
+           [decls (guard (e [#t '()])                   ; a half-written text: the symbols read so far
                     (let loop ([bfp 0] [acc '()])
                       (let-values ([(a next) (guard (e [#t (values (eof-object) bfp)]) (get-datum/annotations p sfd bfp))])
                         (if (eof-object? a) (reverse acc) (loop next (cons a acc))))))])
@@ -229,7 +229,7 @@
                  (at-cursor `(("textDocument" . (("uri" . ,(get data "uri")))) ("position" . ,(get data "position"))) "type" label))])
     (respond msg (if (and r (cadddr r)) (append item `(("detail" . ,(string-trim (cadr r))))) item))))
 
-;; --- il ciclo ---
+;; --- the loop ---
 
 (define (serve)
   (let loop ()
@@ -246,7 +246,7 @@
              (let ([doc (get params "textDocument")])
                (hashtable-set! documents (get doc "uri") (get doc "text"))
                (publish-diagnostics (get doc "uri")))]
-            [(equal? method "textDocument/didChange")      ; si controlla solo se non arriva già altro
+            [(equal? method "textDocument/didChange")      ; checked only if nothing else is already waiting
              (let ([uri (get (get params "textDocument") "uri")] [changes (get params "contentChanges")])
                (when (pair? changes)
                  (hashtable-set! documents uri (get (car (last-pair changes)) "text")))
@@ -263,5 +263,5 @@
             [(equal? method "shutdown") (respond msg 'null)]
             [(equal? method "exit") (exit 0)]
             [(get msg "id") (send `(("jsonrpc" . "2.0") ("id" . ,(get msg "id"))
-                                    ("error" . (("code" . -32601) ("message" . "metodo non supportato")))))])
+                                    ("error" . (("code" . -32601) ("message" . "method not supported")))))])
           (loop))))))

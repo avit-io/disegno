@@ -28,7 +28,7 @@
 
 ; --- armonia ---
 ; Che cosa succede se si dimentica un caso? Togli la clausola (inverno primavera) e verifica: il
-; checker risponde «successiva: manca il caso (successiva inverno)». È il controllo dell'armonia
+; checker risponde «successiva: missing case (successiva inverno)». È il controllo dell'armonia
 ; di Dummett: un'eliminazione deve rispondere a ogni introduzione, altrimenti pretenderebbe di
 ; usare un elemento senza sapere come è fatto.
 

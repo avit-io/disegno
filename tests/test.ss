@@ -1,20 +1,20 @@
-;; Controlli: nucleo, type checker, piano (a secco) e, sotto `dagger api with-session`, esecuzione dal vivo.
-;; Uso: scheme --script tests/test.ss   (dal vivo: dagger api with-session scheme --script tests/test.ss)
+;; Checks: core, type checker, plan (dry) and, under `dagger api with-session`, live execution.
+;; Usage: scheme --script tests/test.ss   (live: dagger api with-session scheme --script tests/test.ss)
 (define root (path-parent (path-parent (car (command-line)))))   ; <root>/tests/test.ss
 (define (at-root p) (if (string=? root "") p (string-append root "/" p)))
 (load (at-root "src/core.ss"))
 (load (at-root "src/types.ss"))
 (load (at-root "src/plan.ss"))
 
-(define (contiene? s sub)
+(define (contains? s sub)
   (let ([n (string-length s)] [k (string-length sub)])
     (let loop ([i 0]) (and (<= (+ i k) n) (or (string=? (substring s i (+ i k)) sub) (loop (+ i 1)))))))
 
-;; --- nucleo ---
+;; --- core ---
 
-(define ciao '((container) (from (address "alpine")) (withExec (args ("echo" "ciao"))) (stdout)))
-(assert (string=? (plan->graphql ciao)
-                  "container { from(address: \"alpine\") { withExec(args: [\"echo\", \"ciao\"]) { stdout } } }"))
+(define hello '((container) (from (address "alpine")) (withExec (args ("echo" "hello"))) (stdout)))
+(assert (string=? (plan->graphql hello)
+                  "container { from(address: \"alpine\") { withExec(args: [\"echo\", \"hello\"]) { stdout } } }"))
 (assert (string=? (base64 (string->utf8 "tok:")) "dG9rOg=="))
 (assert (string=? (json-string "a\"b\n") "\"a\\\"b\\n\""))
 (assert (equal? (json-read "{\"data\": {\"a\": [1, true, null, \"x\\u0041\\n\"]}}")
@@ -23,8 +23,8 @@
 ;; --- type checker ---
 
 (import! 'prelude)
-(for-each import! '(dagger time net files aws git argocd)) ; per i frammenti qui sotto; le ricette importano da sé
-;; L'accelerazione è fidata: su numeri piccoli deve coincidere con le clausole unarie.
+(for-each import! '(dagger time net files aws git argocd)) ; for the snippets below; the recipes import by themselves
+;; Acceleration is trusted: on small numbers it must agree with the unary clauses.
 (for-each
   (lambda (f)
     (for-each
@@ -34,86 +34,86 @@
             (let* ([t (fold-left (lambda (acc x) `(app ,acc (num ,x) e)) `(glob ,(bi (car f))) (list-head (list a b) (cadr f)))]
                    [on (reify 0 (ev '() t))]
                    [off (parameterize ([accelerate #f]) (reify 0 (ev '() t)))])
-              (unless (equal? on off) (error 'prova (format "accelerazione di ~a su ~a ~a: ~s invece di ~s" (car f) a b on off)))))
+              (unless (equal? on off) (error 'test (format "acceleration of ~a on ~a ~a: ~s instead of ~s" (car f) a b on off)))))
           (iota 7)))
       (iota 7)))
   fast)
 
 (check-file (at-root "cookbook/00-basics.disegno"))
-(check-file (at-root "tests/checks.disegno"))                          ; le leggi e le garanzie, come teoremi
+(check-file (at-root "tests/checks.disegno"))                          ; the laws and the guarantees, as theorems
 
-(define (rifiuta src atteso)
+(define (rejects src expected)
   (let ([msg (guard (e [(message-condition? e) (condition-message e)]) (check-string src) #f)])
-    (unless (and msg (contiene? msg atteso))
-      (error 'prova (format "~a: atteso un errore con «~a», ottenuto ~s" src atteso msg)))))
+    (unless (and msg (contains? msg expected))
+      (error 'test (format "~a: expected an error with «~a», got ~s" src expected msg)))))
 
-(rifiuta "(claim assurdo ⊥)
-(define assurdo assurdo)" "ricorsione non strutturale")
-(rifiuta "(claim postulato ⊥)" "claim senza define")
-(rifiuta "(data Cattivo (mk (→ Cattivo ⊥)))" "strettamente positiva")
-;; Annidato in una lista va bene (List è strettamente positiva nel parametro); sotto una freccia no.
-(check-string "(data Rosa (nodo (List Rosa)))")
-;; La docstring è l'etichetta di una voce, e le voci senza che chiama la ereditano.
-(check-string "(claim con-doc Container)
-(define con-doc \"prepara il container\" (pipe (container) (from \"alpine\")))
-(claim senza-doc Container)
-(define senza-doc (pipe (container) (from \"alpine\")))")
-(assert (equal? (voce-doc 'con-doc) "prepara il container"))
-(assert (not (voce-doc 'senza-doc)))
-(assert (eq? (parameterize ([current-voce 'con-doc]) (enter-voce 'senza-doc)) 'con-doc))
-(assert (eq? (parameterize ([current-voce 'senza-doc]) (enter-voce 'con-doc)) 'con-doc))
-(rifiuta "(claim due Nat)
-(define due 1 2)" "define:")
-;; Nel resoconto un segreto letto prima che la voce si apra le va sotto, e due tratti della stessa
-;; voce fanno una riga.
+(rejects "(claim absurd ⊥)
+(define absurd absurd)" "recursion is not structural")
+(rejects "(claim postulate ⊥)" "claim without define")
+(rejects "(data Bad (mk (→ Bad ⊥)))" "strictly positively")
+;; Nested in a list is day-end (List is strictly positive in its parameter); under an arrow it is not.
+(check-string "(data Rose (node (List Rose)))")
+;; The docstring is an item's label, and the items without one that it calls inherit it.
+(check-string "(claim with-doc Container)
+(define with-doc \"prepares the container\" (pipe (container) (from \"alpine\")))
+(claim without-doc Container)
+(define without-doc (pipe (container) (from \"alpine\")))")
+(assert (equal? (item-doc 'with-doc) "prepares the container"))
+(assert (not (item-doc 'without-doc)))
+(assert (eq? (parameterize ([current-item 'with-doc]) (enter-item 'without-doc)) 'with-doc))
+(assert (eq? (parameterize ([current-item 'without-doc]) (enter-item 'with-doc)) 'with-doc))
+(rejects "(claim two Nat)
+(define two 1 2)" "define:")
+;; In the report a secret read before the item opens goes below it, and two stretches of the
+;; same item make one line.
 (let ([out (with-output-to-string
              (lambda ()
-               (secret-line "segreto a letto")
-               (report-voce #t 'con-doc "cmd" #f 1000000000 "" "" '())
-               (report-voce #t 'con-doc "cmd" #f 1000000000 "" "" '())
+               (secret-line "secret a read")
+               (report-item #t 'with-doc "cmd" #f 1000000000 "" "" '())
+               (report-item #t 'with-doc "cmd" #f 1000000000 "" "" '())
                (release!)))])
-  (assert (contiene? out "prepara il container"))
-  (assert (contiene? out "2.0s"))
-  (assert (contiene? out "\n    ↳ segreto a letto\n")))
-;; Una domanda, voce che restituisce (Remote Bool), dà la docstring all'osservazione; i suoi passi
-;; restano della voce che la pone.
-(check-string "(claim c-e-file? (→ String (Remote Bool)))
-(define (c-e-file? p) \"c'è il file?\" (probe (pipe (container) (from \"alpine\")) (list \"test\" \"-f\" p)))
-(claim chiede (Export Dir))
-(define chiede \"controlla\" (unless (c-e-file? \"/x\") (apply (pipe (container) (from \"alpine\")) (list \"true\"))))")
+  (assert (contains? out "prepares the container"))
+  (assert (contains? out "2.0s"))
+  (assert (contains? out "\n    ↳ secret a read\n")))
+;; A question, an item returning (Remote Bool), gives the observation its docstring; its steps
+;; belong to the item that asks it.
+(check-string "(claim has-file? (→ String (Remote Bool)))
+(define (has-file? p) \"is the file there?\" (probe (pipe (container) (from \"alpine\")) (list \"test\" \"-f\" p)))
+(claim asks (Export Dir))
+(define asks \"checks\" (unless (has-file? \"/x\") (apply (pipe (container) (from \"alpine\")) (list \"true\"))))")
 (let ([seen #f])
-  (parameterize ([observe (lambda (ch) (set! seen ch) #f)]) (exits resolve-dry 'chiede))
+  (parameterize ([observe (lambda (ch) (set! seen ch) #f)]) (exits resolve-dry 'asks))
   (let ([exec (list-ref seen (- (length seen) 2))])
-    (assert (eq? (hashtable-ref step-question exec #f) 'c-e-file?))
-    (assert (eq? (voce-of exec) 'chiede))))
-;; TODO, come in Pie: ogni buco della define con il suo contesto e l'obiettivo, risolto dopo
-;; l'unificazione; la define è rifiutata.
+    (assert (eq? (hashtable-ref step-question exec #f) 'has-file?))
+    (assert (eq? (item-of exec) 'asks))))
+;; TODO, as in Pie: every hole of the define with its context and goal, solved after
+;; unification; the define is rejected.
 (let ([m (guard (e [(message-condition? e) (condition-message e)])
-           (check-string "(claim piu-zero (Π ((n Nat)) (≡ (+ n 0) n)))
-(define (piu-zero n)
+           (check-string "(claim plus-zero (Π ((n Nat)) (≡ (+ n 0) n)))
+(define (plus-zero n)
   (match n
     (zero TODO)
     ((add1 k) (cong add1 TODO))))") #f)])
-  (assert (and m (contiene? m "TODO\n  ──────────\n  (≡ 0 0)")))
-  (assert (contiene? m "<stringa>:5:26: TODO\n  k : Nat\n  ──────────\n  (≡ (+ k 0) k)")))
-(rifiuta "(claim t Type)
-(define t (the TODO Nat))" "non si sa")
-(rifiuta "(data Cattivo2 (mk2 (List (→ Cattivo2 ⊥))))" "strettamente positiva")
-(rifiuta "(claim tipo-in-tipo Type)
-(define tipo-in-tipo Type)" "atteso")
-(rifiuta "(data U : Type (u : (→ Type U)))" "livello")
-(rifiuta "(claim pred (→ Nat Nat))
+  (assert (and m (contains? m "TODO\n  ──────────\n  (≡ 0 0)")))
+  (assert (contains? m "<string>:5:26: TODO\n  k : Nat\n  ──────────\n  (≡ (+ k 0) k)")))
+(rejects "(claim t Type)
+(define t (the TODO Nat))" "is not known here")
+(rejects "(data Bad2 (mk2 (List (→ Bad2 ⊥))))" "strictly positively")
+(rejects "(claim type-in-type Type)
+(define type-in-type Type)" "expected")
+(rejects "(data U : Type (u : (→ Type U)))" "level")
+(rejects "(claim pred (→ Nat Nat))
 (define (pred n)
   (match n
-    ((add1 k) k)))" "manca il caso")
-(rifiuta "(claim scegli (→ (Either A B) (→ A C) (→ B C) C))
-(define (scegli n f _)
+    ((add1 k) k)))" "missing case")
+(rejects "(claim pick (→ (Either A B) (→ A C) (→ B C) C))
+(define (pick n f _)
   (match n
-    ((left a) (f a))))" "manca il caso (scegli (right _) _ _)")   ; come una chiamata, senza metavariabili
-(rifiuta "(claim giro (→ Nat Nat))
-(define (giro n) (giro n))" "ricorsione non strutturale")
-;; match su un valore calcolato: una define ausiliaria chiusa sul contesto. Calcola nelle prove;
-;; copre i casi; non nasconde una chiamata alla define in corso.
+    ((left a) (f a))))" "missing case (pick (right _) _ _)")   ; as a call, without metavariables
+(rejects "(claim spin (→ Nat Nat))
+(define (spin n) (spin n))" "recursion is not structural")
+;; match on a computed value: an auxiliary define closed over the context. It computes in proofs;
+;; it covers the cases; it does not hide a call to the define in progress.
 (check-string "(claim mx-neg (→ Bool Bool))
 (define (mx-neg b) (match b (true false) (false true)))
 (claim mx-zero? (→ Nat Bool Bool))
@@ -122,489 +122,489 @@
     (match* (n m)
       ((zero true) true)
       ((_ _) false))))
-(claim mx-prova (≡ (mx-zero? 0 false) true))
-(define mx-prova refl)")
-(rifiuta "(claim mx-manca (→ Bool Bool))
-(define (mx-manca b) (match (mx-neg b) (true true)))" "manca il caso")
-(rifiuta "(claim mx-giro (→ Nat Nat))
-(define (mx-giro n) (match (mx-neg true) (true (mx-giro n)) (false 0)))" "non può richiamare mx-giro")
-(rifiuta "(claim mx-libero Type)
-(define mx-libero (≡ (match true (true false) (false true)) false))" "annotalo con the")
-(rifiuta "(claim falso (≡ 1 2))
-(define falso refl)" "atteso")
-(rifiuta "(claim testa-vuota (→ (Vec A 0) A))
-(define (testa-vuota nil) nil)" "atteso")
-(rifiuta "(extern bugia : ⊥ boh)" "riservato alla libreria standard")
-(rifiuta "(claim furto Dir)
-(define furto (%host-dir \"/etc\"))" "riservato al nucleo")
-(rifiuta "(claim diverse (≡ \"a\" \"b\"))
-(define diverse refl)" "atteso")
+(claim mx-proof (≡ (mx-zero? 0 false) true))
+(define mx-proof refl)")
+(rejects "(claim mx-missing (→ Bool Bool))
+(define (mx-missing b) (match (mx-neg b) (true true)))" "missing case")
+(rejects "(claim mx-spin (→ Nat Nat))
+(define (mx-spin n) (match (mx-neg true) (true (mx-spin n)) (false 0)))" "cannot call mx-spin")
+(rejects "(claim mx-free Type)
+(define mx-free (≡ (match true (true false) (false true)) false))" "annotate it with the")
+(rejects "(claim wrong (≡ 1 2))
+(define wrong refl)" "expected")
+(rejects "(claim head-of-empty (→ (Vec A 0) A))
+(define (head-of-empty nil) nil)" "expected")
+(rejects "(extern lie : ⊥ nope)" "reserved to the standard library")
+(rejects "(claim theft Dir)
+(define theft (%host-dir \"/etc\"))" "reserved to the core")
+(rejects "(claim different (≡ \"a\" \"b\"))
+(define different refl)" "expected")
 (parameterize ([privileged #t])
-  (rifiuta "(extern mente : (→ Dir ⊥) Directory.boh)" "tipo opaco")
-  (rifiuta "(extern osserva : (→ Dir String) Directory.name)" "tipo opaco"))
+  (rejects "(extern lies : (→ Dir ⊥) Directory.nope)" "opaque engine type")
+  (rejects "(extern observes : (→ Dir String) Directory.name)" "opaque engine type"))
 
-;; --- piano ---
+;; --- plan ---
 
-(define dir (format "~a/disegno-prova" (or (getenv "TMPDIR") "/tmp")))
+(define dir (format "~a/disegno-test-dir" (or (getenv "TMPDIR") "/tmp")))
 (check-string (format "
 (claim gen-config (→ Dir Dir))
-(define (gen-config src) (with-file src /config/app.toml \"porta = 8080\\n\"))
+(define (gen-config src) (with-file src /config/app.toml \"port = 8080\\n\"))
 
 (claim main (Π ((src (Host ~s))) (Export Dir)))
-(define (main src) (replace ~s (put (with-file empty /LEGGIMI \"ciao\\n\") /cfg (gen-config src))))"
+(define (main src) (replace ~s (put (with-file empty /README \"hello\\n\") /cfg (gen-config src))))"
   (string-append dir "/in") (string-append dir "/out")))
 
-(define secco (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))))))
-(assert (contiene? secco "directory { withNewFile(path: \"/LEGGIMI\", contents: \"ciao\\n\", permissions: 420) { withDirectory(path: \"/cfg\", source: \"<host { directory(path:"))
-(assert (contiene? secco "withNewFile(path: \\\"/config/app.toml\\\""))
-(assert (contiene? secco "} }>\") { export(path:"))
-(assert (contiene? secco "wipe: true"))
+(define dry (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))))))
+(assert (contains? dry "directory { withNewFile(path: \"/README\", contents: \"hello\\n\", permissions: 420) { withDirectory(path: \"/cfg\", source: \"<host { directory(path:"))
+(assert (contains? dry "withNewFile(path: \\\"/config/app.toml\\\""))
+(assert (contains? dry "} }>\") { export(path:"))
+(assert (contains? dry "wipe: true"))
 
-;; Container: la directory dell'host entra nel container, un comando la elabora, il risultato esce.
+;; Container: the host directory goes into the container, a command processes it, the result comes out.
 (check-string (format "
-(claim costruisci (Π ((src (Host ~s))) (Export Dir)))
-(define (costruisci src)
+(claim build (Π ((src (Host ~s))) (Export Dir)))
+(define (build src)
   (replace ~s
            (pipe (container)
                  (from \"alpine\")
                  (with-dir /w src)
                  (with-workdir /w)
-                 (with-exec (list \"sh\" \"-c\" \"cat dati.txt dati.txt > doppio.txt\"))
+                 (with-exec (list \"sh\" \"-c\" \"cat data.txt data.txt > double.txt\"))
                  (dir-of /w))))"
   (string-append dir "/in") (string-append dir "/out2")))
-(define secco2 (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))) 'costruisci)))
-(assert (contiene? secco2 "container { from(address: \"alpine\") { withDirectory(path: \"/w\", source: \"<host"))
-(assert (contiene? secco2 "withExec(args: [\"sh\", \"-c\", \"cat dati.txt dati.txt > doppio.txt\"]) { directory(path: \"/w\")"))
-(rifiuta "(claim mista (List String))
-(define mista (list \"a\" 1))" "atteso")
-(rifiuta "(claim pipe Dir)
-(define pipe empty)" "parola riservata")
-(check-string "(claim immagini (≡ (images (pipe (container) (from \"a\") (with-dir /w (dir-of (from container \"b\") root))))
+(define dry2 (plan->graphql (plan (lambda (ch) (format "<~a>" (plan->graphql ch))) 'build)))
+(assert (contains? dry2 "container { from(address: \"alpine\") { withDirectory(path: \"/w\", source: \"<host"))
+(assert (contains? dry2 "withExec(args: [\"sh\", \"-c\", \"cat data.txt data.txt > double.txt\"]) { directory(path: \"/w\")"))
+(rejects "(claim mixed (List String))
+(define mixed (list \"a\" 1))" "expected")
+(rejects "(claim pipe Dir)
+(define pipe empty)" "reserved word")
+(check-string "(claim image-list (≡ (images (pipe (container) (from \"a\") (with-dir /w (dir-of (from container \"b\") root))))
                    (list \"a\" \"b\")))
-(define immagini auto)")
-(rifiuta "(claim dev-pinnate (All pinned? (images (from container \"alpine\"))))
-(define dev-pinnate auto)" "auto: nessuna prova di (Holds pinned? \"alpine\")")
-(rifiuta "(claim falso-branch (All pinned? (images (branch (Directory.exists empty /x) (from container \"a@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1\") (from container \"b\")))))
-(define falso-branch auto)" "auto: nessuna prova di")
-(rifiuta "(claim sotto App)
-(define sotto (app \"api\" prod 2 auto))" "auto: la proposizione si riduce a ⊥")
-(rifiuta "(claim falso-auto (≡ (+ 1 1) 3))
-(define falso-auto auto)" "atteso")
-(check-string "(claim nome-api (≡ (App.name api) \"api\"))
-(define nome-api auto)")
-(check-string "(claim raddoppia (→ Nat Nat))
-(define (raddoppia n) (+ n n))
-(claim otto (≡ (pipe 2 raddoppia raddoppia) 8))
-(define otto refl)")
+(define image-list auto)")
+(rejects "(claim must-pin (All pinned? (images (from container \"alpine\"))))
+(define must-pin auto)" "auto: no proof of (Holds pinned? \"alpine\")")
+(rejects "(claim wrong-branch (All pinned? (images (branch (Directory.exists empty /x) (from container \"a@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1\") (from container \"b\")))))
+(define wrong-branch auto)" "auto: no proof of")
+(rejects "(claim under App)
+(define under (app \"api\" prod 2 auto))" "auto: the proposition reduces to ⊥")
+(rejects "(claim wrong-auto (≡ (+ 1 1) 3))
+(define wrong-auto auto)" "expected")
+(check-string "(claim api-name (≡ (App.name api) \"api\"))
+(define api-name auto)")
+(check-string "(claim twice (→ Nat Nat))
+(define (twice n) (+ n n))
+(claim eight (≡ (pipe 2 twice twice) 8))
+(define eight refl)")
 
-;; branch: la condizione è un test nel container; i due rami sono entrambi nel piano.
+;; branch: the condition is a test in the container; both branches are in the plan.
 (check-string (format "
-(claim prova-in (→ Dir String Container))
-(define (prova-in src file) (pipe (container) (from \"alpine\") (with-dir /w src) (try-exec (list \"test\" \"-f\" file))))
+(claim test-in (→ Dir String Container))
+(define (test-in src file) (pipe (container) (from \"alpine\") (with-dir /w src) (try-exec (list \"test\" \"-f\" file))))
 
-(claim esito (→ (Remote Bool) Dir))
-(define (esito c) (branch c (with-file empty /esito \"passa\\n\") (with-file empty /esito \"fallisce\\n\")))
+(claim outcome (→ (Remote Bool) Dir))
+(define (outcome c) (branch c (with-file empty /outcome \"passes\\n\") (with-file empty /outcome \"fails\\n\")))
 
-(claim verifica (Π ((src (Host ~s))) (Export Dir)))
-(define (verifica src)
-  (replace ~s (put (esito (passes? (prova-in src \"/w/dati.txt\")))
-                   /manca (esito (exists? src /manca.txt)))))"
+(claim verify (Π ((src (Host ~s))) (Export Dir)))
+(define (verify src)
+  (replace ~s (put (outcome (passes? (test-in src \"/w/data.txt\")))
+                   /missing (outcome (exists? src /missing.txt)))))"
   (string-append dir "/in") (string-append dir "/out3")))
-(define piani (all-plans 'verifica))
-(assert (= (length piani) 4))
-(assert (contiene? (plan->graphql (car (car (car (car piani)))))
-                   "withExec(args: [\"test\", \"-f\", \"/w/dati.txt\"], expect: ANY) { exitCode }"))
-(assert (equal? (map (lambda (p) (map cdr (car p))) piani) '((#t #t) (#t #f) (#f #t) (#f #f))))
-(rifiuta "(claim confuso (→ (Remote Bool) Dir))
-(define (confuso c) (if c empty empty))" "atteso")
-(rifiuta "(claim scelta (→ Bool Dir))
-(define (scelta b) (branch b empty empty))" "atteso")
+(define plans (all-plans 'verify))
+(assert (= (length plans) 4))
+(assert (contains? (plan->graphql (car (car (car (car plans)))))
+                   "withExec(args: [\"test\", \"-f\", \"/w/data.txt\"], expect: ANY) { exitCode }"))
+(assert (equal? (map (lambda (p) (map cdr (car p))) plans) '((#t #t) (#t #f) (#f #t) (#f #f))))
+(rejects "(claim confused (→ (Remote Bool) Dir))
+(define (confused c) (if c empty empty))" "expected")
+(rejects "(claim choice (→ Bool Dir))
+(define (choice b) (branch b empty empty))" "expected")
 
-;; Il contenuto dei file lo guarda Dagger: osservazioni come passes?, il testo non torna al linguaggio.
+;; Dagger looks at the files' contents: observations like passes?, the text does not come back to the language.
 (check-string (format "
-(claim contenuto (Π ((src (Host ~s))) (Export Dir)))
-(define (contenuto src)
-  (let ((f (file-of src /dati.txt)))
+(claim content (Π ((src (Host ~s))) (Export Dir)))
+(define (content src)
+  (let ((f (file-of src /data.txt)))
     (replace ~s (pipe empty
-                      (put /include (esito (includes? f \"dati\")))
-                      (put /assente (esito (includes? f \"assente\")))
-                      (put /regex (esito (matches? f \"^d.t+i$\")))
-                      (put /vuoto (esito (empty? f)))
-                      (put /uguale (esito (same-content? f f)))))))"
+                      (put /include (outcome (includes? f \"data\")))
+                      (put /absent (outcome (includes? f \"absent\")))
+                      (put /regex (outcome (matches? f \"^d.t+a$\")))
+                      (put /empty-file (outcome (empty? f)))
+                      (put /same (outcome (same-content? f f)))))))"
   (string-append dir "/in") (string-append dir "/out4")))
-(assert (= (length (all-plans 'contenuto)) 32))
+(assert (= (length (all-plans 'content)) 32))
 
-;; Effetti in sequenza: then realizza in ordine, apply è un effetto fuori dalla cache (una
-;; variabile nuova a ogni esecuzione, subito prima del comando), skip non fa niente.
+;; Effects in sequence: then realizes in order, apply is an effect outside the cache (a new
+;; variable on each run, right before the command), skip does nothing.
 (check-string (format "
-(claim sequenza (Export Dir))
-(define sequenza
+(claim sequence (Export Dir))
+(define sequence
   (begin
-    (apply (from (container) \"alpine\") (list \"sh\" \"-c\" \"echo effetto\"))
+    (apply (from (container) \"alpine\") (list \"sh\" \"-c\" \"echo effect\"))
     skip
-    (overlay ~s (with-file empty /dopo \"sì\\n\"))))"
+    (overlay ~s (with-file empty /after \"yes\\n\"))))"
   (string-append dir "/out5")))
-(let ([es (exits resolve-dry 'sequenza)])
+(let ([es (exits resolve-dry 'sequence)])
   (assert (= (length es) 2))
-  (assert (contiene? (plan->graphql (car es)) "withEnvVariable(name: \"DISEGNO_RUN\", value: \"<esecuzione>-"))
-  (assert (contiene? (plan->graphql (car es)) "\") { withExec(args: [\"sh\", \"-c\", \"echo effetto\"]) { exitCode }"))
-  (assert (contiene? (plan->graphql (cadr es)) "export(path:")))
-;; Fuori dalla cache: due esecuzioni danno a DISEGNO_RUN valori diversi, quindi per Dagger il
-;; comando è un altro; la costruzione prima della variabile resta la stessa, e resta in cache.
-(let ([a (parameterize ([run-id "1"]) (plan->graphql (car (exits resolve-dry 'sequenza))))]
-      [b (parameterize ([run-id "2"]) (plan->graphql (car (exits resolve-dry 'sequenza))))])
+  (assert (contains? (plan->graphql (car es)) "withEnvVariable(name: \"DISEGNO_RUN\", value: \"<run>-"))
+  (assert (contains? (plan->graphql (car es)) "\") { withExec(args: [\"sh\", \"-c\", \"echo effect\"]) { exitCode }"))
+  (assert (contains? (plan->graphql (cadr es)) "export(path:")))
+;; Outside the cache: two runs give DISEGNO_RUN different values, so for Dagger the command
+;; is another; the construction before the variable stays the same, and stays cached.
+(let ([a (parameterize ([run-id "1"]) (plan->graphql (car (exits resolve-dry 'sequence))))]
+      [b (parameterize ([run-id "2"]) (plan->graphql (car (exits resolve-dry 'sequence))))])
   (assert (not (string=? a b)))
-  (assert (contiene? a "value: \"1-")) (assert (contiene? b "value: \"2-")))
-;; E dentro la stessa esecuzione due comandi freschi identici restano due: valori diversi.
-(check-string "(claim due-volte (Export Dir))
-(define due-volte
+  (assert (contains? a "value: \"1-")) (assert (contains? b "value: \"2-")))
+;; And within the same run two identical fresh commands stay two: different values.
+(check-string "(claim run-twice (Export Dir))
+(define run-twice
   (begin
     (apply (from (container) \"alpine\") (list \"true\"))
     (apply (from (container) \"alpine\") (list \"true\"))))")
-(let ([es (exits resolve-dry (quote due-volte))]) (assert (not (string=? (plan->graphql (car es)) (plan->graphql (cadr es))))))
-(rifiuta "(claim dentro Container)
-(define dentro (with-dir (from (container) \"a\") /x (overlay \"o\" empty)))" "atteso")
+(let ([es (exits resolve-dry (quote run-twice))]) (assert (not (string=? (plan->graphql (car es)) (plan->graphql (cadr es))))))
+(rejects "(claim inside Container)
+(define inside (with-dir (from (container) \"a\") /x (overlay \"o\" empty)))" "expected")
 
-;; Segreti: (Host-secret "NOME") nella firma, letto da una variabile d'ambiente. Il piano nomina la
-;; variabile, mai il valore; il container lo riceve con with-secret-variable.
+;; Secrets: (Host-secret "NAME") in the signature, read from an environment variable. The plan names
+;; the variable, never the value; the container gets it with with-secret-variable.
 (check-string (format "
-(claim segreto (Π ((s (Host-secret \"PATH\"))) (Export Dir)))
-(define (segreto s)
+(claim secret-test (Π ((s (Host-secret \"PATH\"))) (Export Dir)))
+(define (secret-test s)
   (branch (probe (with-secret-variable (from (container) \"alpine\") \"S\" s) (list \"sh\" \"-c\" \"test -n \\\"$S\\\"\"))
-          (overlay ~s (with-file empty /esito \"ricevuto\\n\"))
-          (overlay ~s (with-file empty /esito \"vuoto\\n\"))))
-(claim segreto-male (Π ((s (Host-secret \"1 X\"))) (Export Dir)))
-(define (segreto-male s) skip)"
+          (overlay ~s (with-file empty /outcome \"received\\n\"))
+          (overlay ~s (with-file empty /outcome \"empty-file\\n\"))))
+(claim bad-secret (Π ((s (Host-secret \"1 X\"))) (Export Dir)))
+(define (bad-secret s) skip)"
   (string-append dir "/out6") (string-append dir "/out6")))
-(let ([p (plan->graphql (cadr (car (cdr (car (all-plans 'segreto))))))])
-  (assert (contiene? p "withSecretVariable(name: \"S\", secret: \"<secret(uri: \\\"env://PATH\\\")>\")"))
-  (assert (not (contiene? p (getenv "PATH")))))
-(assert (contiene? (guard (e [#t (condition-message e)]) (all-plans 'segreto-male) "") "non è il nome di una variabile d'ambiente"))
-(rifiuta "(claim leggi String)
-(define leggi (Query.secret \"env://HOME\"))" "nome sconosciuto")
+(let ([p (plan->graphql (cadr (car (cdr (car (all-plans 'secret-test))))))])
+  (assert (contains? p "withSecretVariable(name: \"S\", secret: \"<secret(uri: \\\"env://PATH\\\")>\")"))
+  (assert (not (contains? p (getenv "PATH")))))
+(assert (contains? (guard (e [#t (condition-message e)]) (all-plans 'bad-secret) "") "is not the name of an environment variable"))
+(rejects "(claim read-env String)
+(define read-env (Query.secret \"env://HOME\"))" "unknown name")
 
-;; re?: la corrispondenza è con tutta la stringa; termina anche sui pattern che ripetono il vuoto.
+;; re?: the match is against the whole string; it terminates even on patterns repeating the empty one.
 (for-each (lambda (c) (unless (eq? (re? (car c) (cadr c)) (caddr c))
-                        (error 'prova (format "re? ~s ~s: atteso ~a" (car c) (cadr c) (caddr c)))))
-  '(("abc" "abc" #t) ("abc" "abcd" #f) ("a.c" "axc" #t) ("[a-z]+" "ciao" #t) ("[a-z]+" "Ciao" #f)
+                        (error 'test (format "re? ~s ~s: expected ~a" (car c) (cadr c) (caddr c)))))
+  '(("abc" "abc" #t) ("abc" "abcd" #f) ("a.c" "axc" #t) ("[a-z]+" "hello" #t) ("[a-z]+" "Hello" #f)
     ("[^0-9]*" "abc" #t) ("[^0-9]*" "a1" #f) ("\\d{3}" "123" #t) ("\\d{3}" "12" #f) ("a{2,}" "aaaa" #t)
     ("a{2,3}" "aaaa" #f) ("(ab|cd)+" "abcdab" #t) ("(ab|cd)+" "abc" #f) ("colou?r" "color" #t)
     ("\\w+@\\w+\\.it" "x_1@dominio.it" #t) ("(a*)*" "aaaa" #t) ("(a*)*b" "aaaa" #f) ("(a?){3}" "" #t)
     ("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" "my-bucket.logs" #t) ("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]" "-bucket" #f)
     ("a]" "a]" #t) ("" "" #t) ("" "x" #f)))
-(for-each (lambda (p) (assert (guard (e [(message-condition? e) (contiene? (condition-message e) "malformata")]) (re? p "x") #f)))
+(for-each (lambda (p) (assert (guard (e [(message-condition? e) (contains? (condition-message e) "malformed")]) (re? p "x") #f)))
           '("(" "a)" "[a" "*a" "a{2" "a{3,1}" "[z-a]"))
 (check-string "(claim logs-bucket Bucket)
 (define logs-bucket \"my-app.logs\")")
-(rifiuta "(claim bucket-male Bucket)
-(define bucket-male \"My_Bucket\")" "«My_Bucket» non è un Bucket valido")
+(rejects "(claim bad-bucket Bucket)
+(define bad-bucket \"My_Bucket\")" "«My_Bucket» is not a valid Bucket")
 
-;; AWS: la CLI fissata, con le credenziali come segreti; dal vivo risponde, senza toccare AWS.
+;; AWS: the pinned CLI, with credentials as secrets; live it answers, without touching AWS.
 (check-string (format "
 (claim cli-aws (Π ((s (Host-secret \"PATH\"))) (Export Dir)))
 (define (cli-aws s)
   (branch (probe (cli (aws s s \"eu-west-1\" cloud)) (list \"sh\" \"-c\" \"aws --version && test -n \\\"$AWS_ACCESS_KEY_ID\\\" && test \\\"$AWS_DEFAULT_REGION\\\" = eu-west-1\"))
-          (overlay ~s (with-file empty /esito \"risponde\\n\"))
-          (overlay ~s (with-file empty /esito \"no\\n\"))))"
+          (overlay ~s (with-file empty /outcome \"answers\\n\"))
+          (overlay ~s (with-file empty /outcome \"no\\n\"))))"
   (string-append dir "/out7") (string-append dir "/out7")))
-(rifiuta "(claim r Region)
-(define r \"eu-west-9\")" "«eu-west-9» non è un Region valido")
+(rejects "(claim r Region)
+(define r \"eu-west-9\")" "«eu-west-9» is not a valid Region")
 
-;; LocalStack come service: il Parameter Store vero, emulato. Si scrive, poi si chiede; il service
-;; è lo stesso per tutta la sessione. Dal vivo solo con DISEGNO_TEST_KEY (la shell lo esporta).
+;; LocalStack as a service: the real Parameter Store, emulated. Write, then ask; the service is
+;; the same for the whole session. Live only with DISEGNO_TEST_KEY (the shell exports it).
 (check-string (format "
-(claim esito-ls (→ String (Export Dir)))
-(define (esito-ls t) (overlay ~s (with-file empty /esito t)))
-(claim con-localstack (Π ((k (Host-secret \"DISEGNO_TEST_KEY\"))) (Export Dir)))
-(define (con-localstack k)
+(claim outcome-ls (→ String (Export Dir)))
+(define (outcome-ls t) (overlay ~s (with-file empty /outcome t)))
+(claim with-localstack (Π ((k (Host-secret \"DISEGNO_TEST_KEY\"))) (Export Dir)))
+(define (with-localstack k)
   (begin
     (start localstack)
     (let ((a (aws k k \"eu-west-1\" (emulated localstack))))
       (begin
-        (put-parameter a /app/test/porta \"5432\")
+        (put-parameter a /app/test/port \"5432\")
         (put-secure-parameter a /app/test/password k)
-        (branch (parameter-is? a /app/test/porta \"5432\")
-                (branch (parameter-is? a /app/test/porta \"9999\")
-                        (esito-ls \"confonde i valori\\n\")
+        (branch (parameter-is? a /app/test/port \"5432\")
+                (branch (parameter-is? a /app/test/port \"9999\")
+                        (outcome-ls \"mixes up the values\\n\")
                         (branch (parameter-exists? a /app/test/password)
-                                (esito-ls \"scritto\\n\")
-                                (esito-ls \"manca la password\\n\")))
-                (esito-ls \"porta non scritta\\n\"))))))"
+                                (outcome-ls \"scritto\\n\")
+                                (outcome-ls \"password missing\\n\")))
+                (outcome-ls \"port not written\\n\"))))))"
   (string-append dir "/out8")))
-(assert (= (length (all-plans 'con-localstack)) 4))
+(assert (= (length (all-plans 'with-localstack)) 4))
 (check-string (format "
-(claim esito-s3 (→ String (Export Dir)))
-(define (esito-s3 t) (overlay ~s (with-file empty /esito t)))
-(claim bucket-prova Bucket)
-(define bucket-prova \"prova-disegno\")
-(claim con-s3 (Π ((k (Host-secret \"DISEGNO_TEST_KEY\"))) (Export Dir)))
-(define (con-s3 k)
+(claim outcome-s3 (→ String (Export Dir)))
+(define (outcome-s3 t) (overlay ~s (with-file empty /outcome t)))
+(claim test-bucket Bucket)
+(define test-bucket \"disegno-test\")
+(claim with-s3 (Π ((k (Host-secret \"DISEGNO_TEST_KEY\"))) (Export Dir)))
+(define (with-s3 k)
   (begin
     (start localstack)
     (let ((a (aws k k \"eu-west-1\" (emulated localstack))))
       (begin
-        (make-bucket a bucket-prova)
-        (s3-sync a (with-file empty /index.html \"<h1>ciao</h1>\\n\") bucket-prova /site)
-        (branch (s3-includes? a bucket-prova /site/index.html \"ciao\")
-                (branch (s3-exists? a bucket-prova /site/manca.html)
-                        (esito-s3 \"trova ciò che non c'è\\n\")
-                        (esito-s3 \"pubblicato\\n\"))
-                (esito-s3 \"pagina assente\\n\"))))))"
+        (make-bucket a test-bucket)
+        (s3-sync a (with-file empty /index.html \"<h1>hello</h1>\\n\") test-bucket /site)
+        (branch (s3-includes? a test-bucket /site/index.html \"hello\")
+                (branch (s3-exists? a test-bucket /site/missing.html)
+                        (outcome-s3 \"finds what is not there\\n\")
+                        (outcome-s3 \"published\\n\"))
+                (outcome-s3 \"page absent\\n\"))))))"
   (string-append dir "/out10")))
-;; Parametri del piano: (Host-env "NOME" "default"), letti dall'ambiente quando si costruisce il
-;; piano. Decidono anche gli if: il piano è una funzione dei parametri.
+;; Plan parameters: (Host-env "NAME" "default"), read from the environment when the plan is
+;; built. They decide the ifs too: the plan is a function of its parameters.
 (check-string (format "
-(claim param (Π ((t (Host-env \"DISEGNO_PROVA_TAG\" \"1.0\")) (k (Host-env \"DISEGNO_PROVA_TIPO\" \"release\"))) (Export Dir)))
+(claim param (Π ((t (Host-env \"DISEGNO_TEST_TAG\" \"1.0\")) (k (Host-env \"DISEGNO_TEST_KIND\" \"release\"))) (Export Dir)))
 (define (param t k)
   (if (same? k \"rollback\")
       (overlay ~s (with-file empty /rollback t))
       (overlay ~s (with-file empty /release t))))
-(claim param-male (Π ((t (Host-env \"1 X\" \"\"))) (Export Dir)))
-(define (param-male t) skip)"
+(claim bad-param (Π ((t (Host-env \"1 X\" \"\"))) (Export Dir)))
+(define (bad-param t) skip)"
   (string-append dir "/out12") (string-append dir "/out12")))
 (let ([p (lambda () (plan->graphql (plan resolve-dry 'param)))])
-  (assert (contiene? (p) "withNewFile(path: \"/release\", contents: \"1.0\""))
-  (putenv "DISEGNO_PROVA_TIPO" "rollback") (putenv "DISEGNO_PROVA_TAG" "10.0.42")
-  (assert (contiene? (p) "withNewFile(path: \"/rollback\", contents: \"10.0.42\""))
-  (putenv "DISEGNO_PROVA_TIPO" "") (putenv "DISEGNO_PROVA_TAG" ""))   ; vuota vale come assente
-(assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'param-male) "") "non è il nome di una variabile d'ambiente"))
-;; (Host-choice "NOME" Tipo default): il costruttore con quel nome; un nome sconosciuto ferma il
-;; piano. (fail "msg"): a secco un evento del piano, dal vivo l'errore.
+  (assert (contains? (p) "withNewFile(path: \"/release\", contents: \"1.0\""))
+  (putenv "DISEGNO_TEST_KIND" "rollback") (putenv "DISEGNO_TEST_TAG" "10.0.42")
+  (assert (contains? (p) "withNewFile(path: \"/rollback\", contents: \"10.0.42\""))
+  (putenv "DISEGNO_TEST_KIND" "") (putenv "DISEGNO_TEST_TAG" ""))   ; empty counts as absent
+(assert (contains? (guard (e [#t (condition-message e)]) (plan resolve-dry 'bad-param) "") "is not the name of an environment variable"))
+;; (Host-choice "NAME" Type default): the constructor with that name; an unknown name stops the
+;; plan. (fail "msg"): dry an event of the plan, live the error.
 (check-string (format "
-(data Amb (sviluppo) (produzione))
-(claim per-amb (Π ((a (Host-choice \"DISEGNO_PROVA_AMB\" Amb sviluppo))) (Export Dir)))
-(define (per-amb a)
+(data Stage (development) (production))
+(claim per-stage (Π ((a (Host-choice \"DISEGNO_TEST_STAGE\" Stage development))) (Export Dir)))
+(define (per-stage a)
   (match a
-    (sviluppo (overlay ~s (with-file empty /sviluppo \"\")))
-    (produzione (fail \"niente prod da qui\"))))
-(claim scelta-male (Π ((a (Host-choice \"DISEGNO_PROVA_AMB\" Nat zero))) (Export Dir)))
-(define (scelta-male a) skip)"
+    (development (overlay ~s (with-file empty /development \"\")))
+    (production (fail \"no prod from here\"))))
+(claim bad-choice (Π ((a (Host-choice \"DISEGNO_TEST_STAGE\" Nat zero))) (Export Dir)))
+(define (bad-choice a) skip)"
   (string-append dir "/out12")))
-(assert (contiene? (plan->graphql (plan resolve-dry 'per-amb)) "/sviluppo"))
-(putenv "DISEGNO_PROVA_AMB" "produzione")
-(assert (equal? (cdr (car (all-plans 'per-amb))) '((fallisce "niente prod da qui"))))
-(putenv "DISEGNO_PROVA_AMB" "collaudo")
-(assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'per-amb) "") "«collaudo» non è uno tra sviluppo, produzione"))
-(assert (contiene? (guard (e [#t (condition-message e)]) (plan resolve-dry 'scelta-male) "") "soli costruttori senza argomenti"))
-(putenv "DISEGNO_PROVA_AMB" "")
-(check-string "(claim amb-nome (≡ (Amb.name produzione) \"produzione\"))
-(define amb-nome refl)")   ; D.name, l'inverso di Host-choice, generato con il data
-;; Un valore bloccato (qui le credenziali lette da Secrets Manager) ricorda la voce in cui è nato,
-;; e la riprende quando il runner lo sblocca: i passi di ECR restano di lavora, non di main.
+(assert (contains? (plan->graphql (plan resolve-dry 'per-stage)) "/development"))
+(putenv "DISEGNO_TEST_STAGE" "production")
+(assert (equal? (cdr (car (all-plans 'per-stage))) '((fails "no prod from here"))))
+(putenv "DISEGNO_TEST_STAGE" "staging")
+(assert (contains? (guard (e [#t (condition-message e)]) (plan resolve-dry 'per-stage) "") "«staging» is not one of development, production"))
+(assert (contains? (guard (e [#t (condition-message e)]) (plan resolve-dry 'bad-choice) "") "constructors without arguments only"))
+(putenv "DISEGNO_TEST_STAGE" "")
+(check-string "(claim stage-name (≡ (Stage.name production) \"production\"))
+(define stage-name refl)")   ; D.name, the inverse of Host-choice, generated with the data
+;; A stuck value (here the credentials read from Secrets Manager) remembers the item it was born
+;; in, and takes it back when the runner unsticks it: the ECR steps belong to work, not to main.
 (check-string "(import aws delivery)
-(claim conto (→ Bool Account))
-(define (conto b) (match b (true \"111111111111\") (false \"222222222222\")))
-(claim altro-aws (→ Aws Aws))
-(define (altro-aws boot) (aws (secrets-manager-key-first boot (list \"a\") \"username\" \"u\") (secrets-manager-key-first boot (list \"a\") \"password\" \"p\") \"eu-west-1\" cloud))
-(claim lavora (→ Aws Bool (Export Dir)))
-(define (lavora boot b) \"pubblica\"
-  (let ((reg (ecr (altro-aws boot) (conto b))))
+(claim account-of (→ Bool Account))
+(define (account-of b) (match b (true \"111111111111\") (false \"222222222222\")))
+(claim other-aws (→ Aws Aws))
+(define (other-aws boot) (aws (secrets-manager-key-first boot (list \"a\") \"username\" \"u\") (secrets-manager-key-first boot (list \"a\") \"password\" \"p\") \"eu-west-1\" cloud))
+(claim work (→ Aws Bool (Export Dir)))
+(define (work boot b) \"publishes\"
+  (let ((reg (ecr (other-aws boot) (account-of b))))
     (unless (Registry.has? reg \"repo\" \"tag\") (Registry.push reg (pipe (container) (from \"alpine\")) \"repo\" \"tag\"))))
-(claim etichettato (Π ((id (Host-secret \"AWS_ACCESS_KEY_ID\")) (key (Host-secret \"AWS_SECRET_ACCESS_KEY\")) (s (Host-env \"DISEGNO_PROVA_S\" \"x\"))) (Export Dir)))
-(define (etichettato id key s) (lavora (aws id key \"eu-west-1\" cloud) (same? s \"x\")))")
-(assert (equal? (map (lambda (ch) (voce-of (last-of (filter (lambda (s) (eq? (car s) 'withExec)) ch))))
-                     (parameterize ([observe (lambda (ch) #f)]) (exits resolve-dry 'etichettato)))
-                '(lavora lavora)))
+(claim labelled (Π ((id (Host-secret \"AWS_ACCESS_KEY_ID\")) (key (Host-secret \"AWS_SECRET_ACCESS_KEY\")) (s (Host-env \"DISEGNO_TEST_S\" \"x\"))) (Export Dir)))
+(define (labelled id key s) (work (aws id key \"eu-west-1\" cloud) (same? s \"x\")))")
+(assert (equal? (map (lambda (ch) (item-of (last-of (filter (lambda (s) (eq? (car s) 'withExec)) ch))))
+                     (parameterize ([observe (lambda (ch) #f)]) (exits resolve-dry 'labelled)))
+                '(work work)))
 
-;; otherwise: se a fallisce si realizza b, poi si fallisce lo stesso. A secco il piano mostra b
-;; dopo il segno «se qualcosa prima fallisce». Per Before, b conta come se a fosse fallito subito.
+;; otherwise: if a fails b is realized, then it fails anyway. Dry the plan shows b after the
+;; mark «if something before fails». For Before, b counts as if a had failed right away.
 (check-string (format "
-(claim con-riserva (Export Dir))
-(define con-riserva
+(claim with-fallback (Export Dir))
+(define with-fallback
   (otherwise (begin
-               (overlay ~s (with-file empty /prima \"sì\\n\"))
+               (overlay ~s (with-file empty /before \"yes\\n\"))
                (apply (from (container) \"alpine\") (list \"sh\" \"-c\" \"exit 3\")))
-             (overlay ~s (with-file empty /riserva \"sì\\n\"))))
-(claim rilascio-o-report (→ Dir (Export Dir)))
-(define (rilascio-o-report src)
+             (overlay ~s (with-file empty /fallback \"yes\\n\"))))
+(claim release-or-report (→ Dir (Export Dir)))
+(define (release-or-report src)
   (otherwise (when (passes? (try-exec (with-dir (from (container) \"alpine\") /w src) (list \"true\")))
                (apply (from (container) \"alpine\") (list \"echo\" \"deploy\")))
-             (overlay \"report\" (with-file empty /fallito \"sì\\n\"))))
-(claim deploy-protetto (Π ((src Dir)) (Before test? apply? (rilascio-o-report src))))
-(define (deploy-protetto src) auto)"
+             (overlay \"report\" (with-file empty /failed \"yes\\n\"))))
+(claim guarded-deploy (Π ((src Dir)) (Before test? apply? (release-or-report src))))
+(define (guarded-deploy src) auto)"
   (string-append dir "/out13") (string-append dir "/out13")))
-(assert (equal? (map car (cdr (car (all-plans 'con-riserva)))) '(uscita uscita altrimenti uscita)))
-;; Un apply come riserva non è protetto dal test: Before lo vede, perché b conta da solo.
-(rifiuta "(claim riserva-scoperta (Π ((src Dir)) (Before test? apply? (otherwise (rilascio-o-report src) (apply (from (container) \"alpine\") (list \"echo\" \"report\"))))))
-(define (riserva-scoperta src) auto)" "auto")
+(assert (equal? (map car (cdr (car (all-plans 'with-fallback)))) '(output output otherwise output)))
+;; An apply as a fallback is not guarded by the test: Before sees it, because b counts alone.
+(rejects "(claim unguarded-fallback (Π ((src Dir)) (Before test? apply? (otherwise (release-or-report src) (apply (from (container) \"alpine\") (list \"echo\" \"report\"))))))
+(define (unguarded-fallback src) auto)" "auto")
 
-;; Segreti letti a esecuzione: Secrets Manager su LocalStack. Il segreto si crea (qui, in chiaro:
-;; è un test), poi un container lo riceve da secrets-manager-key e lo confronta. Il piano del
-;; consumatore mostra il comando che lo legge, mai il valore.
+;; Secrets read at run time: Secrets Manager on LocalStack. The secret is created (here, in plain
+;; text: it is a test), then a container gets it from secrets-manager-key and compares it. The
+;; consumer's plan shows the command that reads it, never the value.
 (check-string (format "
-(claim esito-sm (→ String (Export Dir)))
-(define (esito-sm t) (overlay ~s (with-file empty /esito t)))
-(claim con-segreti (Π ((k (Host-secret \"DISEGNO_TEST_KEY\"))) (Export Dir)))
-(define (con-segreti k)
+(claim outcome-sm (→ String (Export Dir)))
+(define (outcome-sm t) (overlay ~s (with-file empty /outcome t)))
+(claim with-secrets (Π ((k (Host-secret \"DISEGNO_TEST_KEY\"))) (Export Dir)))
+(define (with-secrets k)
   (begin
     (start localstack)
     (let ((a (aws k k \"eu-west-1\" (emulated localstack))))
       (begin
         (apply (cli a) (list \"aws\" \"secretsmanager\" \"create-secret\" \"--name\" \"cicd/test/argocd\"
                              \"--secret-string\" \"{\\\"host\\\":\\\"argocd.example\\\",\\\"token\\\":\\\"t0k\\\"}\"))
-        (apply (cli a) (list \"aws\" \"secretsmanager\" \"create-secret\" \"--name\" \"cicd/test/chiave\"
+        (apply (cli a) (list \"aws\" \"secretsmanager\" \"create-secret\" \"--name\" \"cicd/test/key\"
                              \"--secret-binary\" \"dW5vCmR1ZQo=\"))
         (branch (probe (pipe (from (container) \"alpine\")
                              (with-secret-variable \"T\" (secrets-manager-key a \"cicd/test/argocd\" \"token\"))
-                             (with-secret-variable \"K\" (secrets-manager-first a (list \"cicd/test/assente\" \"cicd/test/chiave\") \"chiave\"))
-                             ;; il segreto c'è ma la chiave no: vale il default, e nient'altro
-                             (with-secret-variable \"D\" (secrets-manager-key-first-or a (list \"cicd/test/argocd\") \"server\" \"riserva\" \"argocd-server\")))
-                       (list \"sh\" \"-c\" \"test \\\"$T\\\" = t0k && test \\\"$K\\\" = \\\"$(printf 'uno\\\\ndue')\\\" && test \\\"$D\\\" = riserva\"))
-                (esito-sm \"ricevuto\\n\")
-                (esito-sm \"diverso\\n\"))))))"
+                             (with-secret-variable \"K\" (secrets-manager-first a (list \"cicd/test/absent\" \"cicd/test/key\") \"key\"))
+                             ;; the secret is there but the key is not: the default holds, and nothing else
+                             (with-secret-variable \"D\" (secrets-manager-key-first-or a (list \"cicd/test/argocd\") \"server\" \"fallback\" \"argocd-server\")))
+                       (list \"sh\" \"-c\" \"test \\\"$T\\\" = t0k && test \\\"$K\\\" = \\\"$(printf 'uno\\\\ndue')\\\" && test \\\"$D\\\" = fallback\"))
+                (outcome-sm \"received\\n\")
+                (outcome-sm \"different\\n\"))))))"
   (string-append dir "/out11")))
-(let* ([evs (cdr (car (all-plans 'con-segreti)))]
-       [obs (plan->graphql (cadr (find (lambda (e) (eq? (car e) 'se)) evs)))])
-  (assert (contiene? obs "secretFrom(name: \\\"cicd/test/argocd:token\\\", args: [\\\"sh\\\", \\\"-c\\\""))   ; il nome e il comando, dentro la stringa GraphQL
-  (assert (contiene? obs "\\\"cicd/test/argocd\\\", \\\"token\\\"]"))
-  (assert (not (contiene? obs "argocd.example"))))                   ; il valore del segreto non è nel piano
+(let* ([evs (cdr (car (all-plans 'with-secrets)))]
+       [obs (plan->graphql (cadr (find (lambda (e) (eq? (car e) 'if)) evs)))])
+  (assert (contains? obs "secretFrom(name: \\\"cicd/test/argocd:token\\\", args: [\\\"sh\\\", \\\"-c\\\""))   ; the name and the command, inside the GraphQL string
+  (assert (contains? obs "\\\"cicd/test/argocd\\\", \\\"token\\\"]"))
+  (assert (not (contains? obs "argocd.example"))))                   ; the secret's value is not in the plan
 
-;; delivery: Registry, Gitops e Deployer, con le loro implementazioni. Un registro e un server git
-;; come service, per provare push, «c'è?», clone, kustomize, commit e push senza servizi esterni.
+;; delivery: Registry, Gitops and Deployer, with their implementations. A registry and a git server
+;; as services, to try push, «is it there?», clone, kustomize, commit and push without external services.
 (check-string (format "
-(claim esito-d (→ Segment String (Export Dir)))
-(define (esito-d p t) (overlay ~s (with-file empty (/ root p) t)))
-(claim immagine-prova Container)
-(define immagine-prova (pipe (container) (from \"busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\")))
-(claim con-registro (Export Dir))
-(define con-registro
+(claim outcome-d (→ Segment String (Export Dir)))
+(define (outcome-d p t) (overlay ~s (with-file empty (/ root p) t)))
+(claim test-image Container)
+(define test-image (pipe (container) (from \"busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\")))
+(claim with-registry (Export Dir))
+(define with-registry
   (begin
     (start registry-service)
-    (Registry.push (local-registry registry-service) immagine-prova \"prova/app\" \"v1\")
+    (Registry.push (local-registry registry-service) test-image \"prova/app\" \"v1\")
     (branch (Registry.has? (local-registry registry-service) \"prova/app\" \"v1\")
-            (esito-d \"registro\" \"pubblicata\\n\")
-            (esito-d \"registro\" \"assente\\n\"))))
-(claim server-git Service)
-(define server-git
+            (outcome-d \"registry\" \"pushed\\n\")
+            (outcome-d \"registry\" \"absent\\n\"))))
+(claim git-server Service)
+(define git-server
   (pipe git-tool
         (with-exec (list \"sh\" \"-c\" \"apk add -q --no-cache git-daemon && git init -q --bare -b main /srv/app.git && git init -q -b main /tmp/w && cd /tmp/w && mkdir -p console/test/app && printf 'resources: []\\\\n' > console/test/app/kustomization.yaml && git add -A && git -c user.name=t -c user.email=t@t commit -qm init && git push -q /srv/app.git main\"))
         (with-exposed-port 9418)
         (with-default-args (list \"git\" \"daemon\" \"--reuseaddr\" \"--export-all\" \"--enable=receive-pack\" \"--base-path=/srv\" \"/srv\"))
         (as-service false)))
-(claim repo-prova Gitops)
-(define repo-prova (kustomize-gitops \"git://git:9418/app.git\" \"main\" anonymous (through \"git\" server-git) (author \"Disegno\" \"ci@disegno.invalid\")))
-(claim con-gitops (Export Dir))
-(define con-gitops
+(claim test-repo Gitops)
+(define test-repo (kustomize-gitops \"git://git:9418/app.git\" \"main\" anonymous (through \"git\" git-server) (author \"Disegno\" \"ci@disegno.invalid\")))
+(claim with-gitops (Export Dir))
+(define with-gitops
   (begin
-    (start server-git)
-    (Gitops.set-image repo-prova (list \"console/test/app\") \"registry:5000/prova/app:v2\" \"immagine v2\")
-    (branch (probe (with-dir immagine-prova /r (clone \"git://git:9418/app.git\" \"main\" anonymous (through \"git\" server-git)))
+    (start git-server)
+    (Gitops.set-image test-repo (list \"console/test/app\") \"registry:5000/prova/app:v2\" \"image v2\")
+    (branch (probe (with-dir test-image /r (clone \"git://git:9418/app.git\" \"main\" anonymous (through \"git\" git-server)))
                    (list \"grep\" \"-q\" \"newTag: v2\" \"/r/console/test/app/kustomization.yaml\"))
-            (esito-d \"gitops\" \"aggiornato\\n\")
-            (esito-d \"gitops\" \"invariato\\n\"))))
-(claim con-argocd (Π ((s (Host-secret \"PATH\"))) (Export Dir)))
-(define (con-argocd s)
+            (outcome-d \"gitops\" \"updated\\n\")
+            (outcome-d \"gitops\" \"unchanged\\n\"))))
+(claim with-argocd (Π ((s (Host-secret \"PATH\"))) (Export Dir)))
+(define (with-argocd s)
   (branch (probe (argocd-cli (argocd (public \"argocd.invalid\") (token s) false)) (argocd-args (list \"version\" \"--client\")))
-          (esito-d \"argocd\" \"risponde\\n\")
-          (esito-d \"argocd\" \"no\\n\")))
-(claim rilascio-prova (→ Secret (Export Dir)))
-(define (rilascio-prova s)
+          (outcome-d \"argocd\" \"answers\\n\")
+          (outcome-d \"argocd\" \"no\\n\")))
+(claim test-release (→ Secret (Export Dir)))
+(define (test-release s)
   (begin
-    (Gitops.set-image repo-prova (list \"console/test/app\") \"registry:5000/prova/app:v3\" \"v3\")
+    (Gitops.set-image test-repo (list \"console/test/app\") \"registry:5000/prova/app:v3\" \"v3\")
     (Deployer.deploy (argocd-deployer (argocd (public \"argocd.invalid\") (token s) false) 300) \"app\")))
-(claim sync-dopo-push (Π ((s Secret)) (Precedes (git-command? \"push\") (argocd-command? \"sync\") (rilascio-prova s))))
-(define (sync-dopo-push s) auto)"
+(claim sync-after-push (Π ((s Secret)) (Precedes (git-command? \"push\") (argocd-command? \"sync\") (test-release s))))
+(define (sync-after-push s) auto)"
   (string-append dir "/out14")))
-(rifiuta "(claim push-dopo-sync (Π ((s Secret)) (Precedes (argocd-command? \"sync\") (git-command? \"push\") (rilascio-prova s))))
-(define (push-dopo-sync s) auto)" "auto")
+(rejects "(claim push-after-sync (Π ((s Secret)) (Precedes (argocd-command? \"sync\") (git-command? \"push\") (test-release s))))
+(define (push-after-sync s) auto)" "auto")
 
-;; Una build da Dockerfile con un argomento e un segreto per nome: ARG VERSIONE e
-;; RUN --mount=type=secret,id=ssh-key li vedono.
+;; A Dockerfile build with an argument and a secret by name: ARG VERSION and
+;; RUN --mount=type=secret,id=ssh-key see them.
 (check-string (format "
-(claim contesto Dir)
-(define contesto (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nARG VERSIONE\\nARG DISEGNO_RUN\\nRUN --mount=type=secret,id=ssh-key mkdir /out && test \\\"$(cat /run/secrets/ssh-key)\\\" = chiave && echo letto $VERSIONE > /out/esito\\n\"))
-(claim con-dockerfile (Export Dir))
-(define con-dockerfile
-  (overlay ~s (dir-of (build-dockerfile contesto \"Dockerfile\" (list (build-arg \"VERSIONE\" \"1.2\"))
-                                        (list (secret-from (from (container) \"busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\") (list \"echo\" \"chiave\") \"ssh-key\")))
+(claim context Dir)
+(define context (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nARG VERSION\\nARG DISEGNO_RUN\\nRUN --mount=type=secret,id=ssh-key mkdir /out && test \\\"$(cat /run/secrets/ssh-key)\\\" = key && echo read $VERSION > /out/outcome\\n\"))
+(claim with-dockerfile (Export Dir))
+(define with-dockerfile
+  (overlay ~s (dir-of (build-dockerfile context \"Dockerfile\" (list (build-arg \"VERSION\" \"1.2\"))
+                                        (list (secret-from (from (container) \"busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\") (list \"echo\" \"key\") \"ssh-key\")))
                       /out)))"
   (string-append dir "/out15")))
 ;; With secrets the build also gets DISEGNO_RUN; without, the arguments stay as written.
-(let ([p (plan->graphql (cadr (cadr (car (all-plans 'con-dockerfile)))))])
-  (assert (contiene? p "{name: \"VERSIONE\", value: \"1.2\"}, {name: \"DISEGNO_RUN\", value: \"<esecuzione>\"}")))
+(let ([p (plan->graphql (cadr (cadr (car (all-plans 'with-dockerfile)))))])
+  (assert (contains? p "{name: \"VERSION\", value: \"1.2\"}, {name: \"DISEGNO_RUN\", value: \"<run>\"}")))
 
-;; Argomenti opzionali promossi: i permessi di un file, i glob di filter, l'entrypoint di un service.
+;; Promoted optional arguments: a file's permissions, filter's globs, a service's entrypoint.
 (check-string (format "
 (claim d9 Dir)
 (define d9 (pipe empty (with-executable /run.sh \"#!/bin/sh\\necho ok\\n\") (with-file /note.txt \"x\\n\")))
-(claim filtri (Export Dir))
-(define filtri
+(claim filters (Export Dir))
+(define filters
   (branch (passes? (try-exec (with-dir (from (container) \"alpine\") /w d9) (list \"sh\" \"-c\" \"test -x /w/run.sh && test ! -x /w/note.txt\")))
           (overlay ~s (only d9 (list \"*.sh\")))
-          (overlay ~s (with-file empty /errore \"permessi\\n\"))))"
+          (overlay ~s (with-file empty /error \"permissions\\n\"))))"
   (string-append dir "/out9") (string-append dir "/out9")))
-(let ([p (plan->graphql (cadr (cadr (cdr (car (all-plans 'filtri))))))])
-  (assert (contiene? p "withNewFile(path: \"/run.sh\", contents: \"#!/bin/sh\\necho ok\\n\", permissions: 493)"))
-  (assert (contiene? p "filter(exclude: [], include: [\"*.sh\"])")))
-(assert (contiene? (plan->graphql (chain (ev '() '(glob localstack)) resolve-dry)) "asService(useEntrypoint: true)"))
-;; Nel resoconto uno script lungo di una libreria si legge dai suoi argomenti; uno corto resta.
+(let ([p (plan->graphql (cadr (cadr (cdr (car (all-plans 'filters))))))])
+  (assert (contains? p "withNewFile(path: \"/run.sh\", contents: \"#!/bin/sh\\necho ok\\n\", permissions: 493)"))
+  (assert (contains? p "filter(exclude: [], include: [\"*.sh\"])")))
+(assert (contains? (plan->graphql (chain (ev '() '(glob localstack)) resolve-dry)) "asService(useEntrypoint: true)"))
+;; In the report a long library script reads from its arguments; a short one stays.
 (assert (string=? (show-args (list "sh" "-c" (make-string 130 #\x) "sh" "MODE" "cicd/deploy")) "sh -c … sh MODE cicd/deploy"))
-(assert (string=? (show-args (list "sh" "-c" "echo effetto")) "sh -c \"echo effetto\""))
+(assert (string=? (show-args (list "sh" "-c" "echo effect")) "sh -c \"echo effect\""))
 
-;; Che cosa scrive un piano: solo le put-parameter, non gli altri effetti.
-(check-string "(claim scritti (Π ((a Aws)) (≡ (parameters (begin
+;; What a plan writes: only the put-parameters, not the other effects.
+(check-string "(claim written-params (Π ((a Aws)) (≡ (parameters (begin
                                              (put-parameter a /app/x \"1\")
                                              (apply (from (container) \"b\") (list \"echo\"))))
                                (list /app/x))))
-(define (scritti a) auto)")
-(assert (contiene? (plan->graphql (car (car (car (car (all-plans 'contenuto))))))
-                   "withExec(args: [\"grep\", \"-qF\", \"dati\", \"/f\"], expect: ANY) { exitCode }"))
+(define (written-params a) auto)")
+(assert (contains? (plan->graphql (car (car (car (car (all-plans 'content))))))
+                   "withExec(args: [\"grep\", \"-qF\", \"data\", \"/f\"], expect: ANY) { exitCode }"))
 
-;; Extern generati dallo schema, usati direttamente: Nat e oggetti per ID negli argomenti.
+;; Externs generated from the schema, used directly: Nat and objects by ID in the arguments.
 (check-string "
-(claim servizio (Π ((src (Host \"/x\"))) (Export Dir)))
-(define (servizio src)
+(claim serve (Π ((src (Host \"/x\"))) (Export Dir)))
+(define (serve src)
   (overlay \"out\" (pipe (Query.git \"https://example.com/r.git\") (GitRepository.branch \"main\") GitRef.tree
-                       (put /porta (dir-of (Container.with-exposed-port (container) 8080) root)))))")
-(define secco3 (plan->graphql (plan resolve-dry 'servizio)))
-(assert (contiene? secco3 "git(url: \"https://example.com/r.git\") { branch(name: \"main\") { tree {"))
-(assert (contiene? secco3 "withExposedPort(port: 8080)"))
+                       (put /port (dir-of (Container.with-exposed-port (container) 8080) root)))))")
+(define dry3 (plan->graphql (plan resolve-dry 'serve)))
+(assert (contains? dry3 "git(url: \"https://example.com/r.git\") { branch(name: \"main\") { tree {"))
+(assert (contains? dry3 "withExposedPort(port: 8080)"))
 
-;; Proprietà d'ordine: valgono per ogni input, perché effects non scende nelle directory.
+;; Order properties: they hold for every input, because effects does not go into directories.
 (check-string "
 (claim img (→ Dir Container))
 (define (img src) (pipe (container) (from \"alpine\") (with-dir /app src)))
-(claim protetto (→ Dir (Export Dir)))
-(define (protetto src)
+(claim guarded (→ Dir (Export Dir)))
+(define (guarded src)
   (branch (passes? (try-exec (from container \"alpine\") (list \"true\")))
           (branch (exists? src /VERSION) (publish (img src) \"r/app:1\") (overlay \"o\" src))
           (overlay \"o\" src)))
-(claim ordine-ok (Π ((src Dir)) (Before test? publish? (protetto src))))
-(define (ordine-ok src) auto)")
-(rifiuta "(claim scoperto (Π ((src Dir)) (Before test? publish? (publish (img src) \"r/app:1\"))))
-(define (scoperto src) auto)"
-         "si riduce a ⊥")
-(rifiuta "(claim finto-test (Π ((src Dir)) (Before test? publish? (branch (exists? src /x) (publish (img src) \"r\") (overlay \"o\" src)))))
-(define (finto-test src) auto)"
-         "si riduce a ⊥")
-(rifiuta "(claim nel-ramo-sbagliato (Π ((src Dir)) (Before test? publish? (branch (passes? (img src)) (overlay \"o\" src) (publish (img src) \"r\")))))
-(define (nel-ramo-sbagliato src) auto)"
-         "si riduce a ⊥")
+(claim order-ok (Π ((src Dir)) (Before test? publish? (guarded src))))
+(define (order-ok src) auto)")
+(rejects "(claim unguarded (Π ((src Dir)) (Before test? publish? (publish (img src) \"r/app:1\"))))
+(define (unguarded src) auto)"
+         "reduces to ⊥")
+(rejects "(claim fake-test (Π ((src Dir)) (Before test? publish? (branch (exists? src /x) (publish (img src) \"r\") (overlay \"o\" src)))))
+(define (fake-test src) auto)"
+         "reduces to ⊥")
+(rejects "(claim in-wrong-branch (Π ((src Dir)) (Before test? publish? (branch (passes? (img src)) (overlay \"o\" src) (publish (img src) \"r\")))))
+(define (in-wrong-branch src) auto)"
+         "reduces to ⊥")
 
-;; Nomi corti: il tipo del primo argomento sceglie il metodo; senza metodo è un campo radice.
+;; Short names: the type of the first argument picks the method; without a method it is a root field.
 (check-string "
-(claim corto (Π ((src (Host \"/x\"))) (Export Dir)))
-(define (corto src)
+(claim short (Π ((src (Host \"/x\"))) (Export Dir)))
+(define (short src)
   (overlay \"out\" (pipe (container) (from \"alpine\") (with-mounted-cache /c (cache-volume \"k\"))
                        (directory root) (with-new-file /a \"b\" 420) (directory /sub))))")
-(define secco4 (plan->graphql (plan resolve-dry 'corto)))
-(assert (contiene? secco4 "withMountedCache(path: \"/c\", cache: \"<cacheVolume(key: \\\"k\\\")>\") { directory(path: \"/\") { withNewFile(path: \"/a\", contents: \"b\", permissions: 420) { directory(path: \"/sub\")"))
-(rifiuta "(claim sbagliato Dir)
-(define sbagliato (with-exec empty (list \"x\")))" "with-exec non esiste per")
-(rifiuta "(claim pinna Dir)
-(define pinna (Query.cache-volume \"k\"))" "nome sconosciuto")
+(define dry4 (plan->graphql (plan resolve-dry 'short)))
+(assert (contains? dry4 "withMountedCache(path: \"/c\", cache: \"<cacheVolume(key: \\\"k\\\")>\") { directory(path: \"/\") { withNewFile(path: \"/a\", contents: \"b\", permissions: 420) { directory(path: \"/sub\")"))
+(rejects "(claim wrong-exec Dir)
+(define wrong-exec (with-exec empty (list \"x\")))" "with-exec does not exist for")
+(rejects "(claim pin Dir)
+(define pin (Query.cache-volume \"k\"))" "unknown name")
 
-;; Valori raffinati e percorsi: il letterale resta, il tipo cambia; i punti non si sommano.
-(rifiuta "(claim c1 Container)
-(define c1 (from container \"Golang:1.25\"))" "«Golang:1.25» non è un Image valido")
-(rifiuta "(claim c2 Container)
-(define c2 (from container \"golang:1.25@sha256:abc\"))" "non è un Image valido")
-(rifiuta "(claim c3 Dir)
-(define c3 (with-file empty /a/../b \"x\"))" "«..» non è un Segment valido")
-(rifiuta "(claim c4 Abs)
-(define c4 (/ /out /bin))" "atteso Segment, trovato Abs")
-(rifiuta "(claim c5 (⊑ /out /out/bin))
-(define c5 auto)" "auto: nessuna prova di (⊑ /out /out/bin)")
+;; Refined values and paths: the literal stays, the type changes; points do not add up.
+(rejects "(claim c1 Container)
+(define c1 (from container \"Golang:1.25\"))" "«Golang:1.25» is not a valid Image")
+(rejects "(claim c2 Container)
+(define c2 (from container \"golang:1.25@sha256:abc\"))" "is not a valid Image")
+(rejects "(claim c3 Dir)
+(define c3 (with-file empty /a/../b \"x\"))" "«..» is not a valid Segment")
+(rejects "(claim c4 Abs)
+(define c4 (/ /out /bin))" "expected Segment, found Abs")
+(rejects "(claim c5 (⊑ /out /out/bin))
+(define c5 auto)" "auto: no proof of (⊑ /out /out/bin)")
 (check-string "(claim c6 Container)
 (define c6 (from container \"ghcr.io/dagger/engine:v0.21.10\"))
 (claim c7 (⊑ (/ /out \"hello\") /out))
@@ -613,74 +613,74 @@
                    (b (/ o \"x\"))) b) /out/x))
 (define c8 auto)")
 
-;; Lo spazio affine dei percorsi: la differenza esiste solo con la prova di contenimento.
+;; The affine space of paths: the difference exists only with the containment proof.
 (check-string "
-(claim vettore (≡ (⊖ /out/bin/hello /out auto) \"bin/hello\"))
-(define vettore auto)
-(claim somma (≡ (⊕ /out \"bin/hello\") /out/bin/hello))
-(define somma auto)
-(claim legge-ereditata (≡ (⊕ /out (⊖ /out/bin /out auto)) /out/bin))
-(define legge-ereditata (Affine.law percorsi /out/bin /out auto))")
-(rifiuta "(claim storto Rel)
-(define storto (⊖ /out /src auto))" "auto: nessuna prova di (⊑ /out /src)")
-(rifiuta "(claim punti Abs)
-(define punti (⊕ /out /bin))" "atteso Rel, trovato Abs")
+(claim vector (≡ (⊖ /out/bin/hello /out auto) \"bin/hello\"))
+(define vector auto)
+(claim sum (≡ (⊕ /out \"bin/hello\") /out/bin/hello))
+(define sum auto)
+(claim inherited-law (≡ (⊕ /out (⊖ /out/bin /out auto)) /out/bin))
+(define inherited-law (Affine.law path-affine /out/bin /out auto))")
+(rejects "(claim crooked Rel)
+(define crooked (⊖ /out /src auto))" "auto: no proof of (⊑ /out /src)")
+(rejects "(claim points Abs)
+(define points (⊕ /out /bin))" "expected Rel, found Abs")
 
-;; Regioni: montaggi sovrapposti nella stessa catena sono rifiutati; in catene diverse no.
+;; Regions: overlapping mounts in the same chain are rejected; in different chains they are not.
 (check-string "
-(claim disgiunti (⋔ /src /go/pkg/mod))
-(define disgiunti auto)
-(claim due-catene (Disjoint-mounts (pipe (container) (with-dir /w (dir-of (pipe (container) (with-dir /w empty)) /w)))))
-(define due-catene auto)")
-(rifiuta "(claim annidati (⋔ /src /src/cache))
-(define annidati auto)" "auto: nessuna prova di (⋔ /src /src/cache)")
-(rifiuta "(claim sovrapposti (Π ((src Dir)) (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /src/cache (cache-volume \"c\"))))))
-(define (sovrapposti src) auto)"
-         "auto: nessuna prova")
+(claim disjoint (⋔ /src /go/pkg/mod))
+(define disjoint auto)
+(claim two-chains (Disjoint-mounts (pipe (container) (with-dir /w (dir-of (pipe (container) (with-dir /w empty)) /w)))))
+(define two-chains auto)")
+(rejects "(claim nested (⋔ /src /src/cache))
+(define nested auto)" "auto: no proof of (⋔ /src /src/cache)")
+(rejects "(claim overlapping (Π ((src Dir)) (Disjoint-mounts (pipe (container) (with-dir /src src) (with-mounted-cache /src/cache (cache-volume \"c\"))))))
+(define (overlapping src) auto)"
+         "auto: no proof")
 
-;; Pattern assurdi: solo dove nessun costruttore è possibile; non sono una scappatoia.
-(rifiuta "(claim finto-assurdo (¬ (≡ 0 0)))
-(define (finto-assurdo n)
+;; Absurd patterns: only where no constructor is possible; they are not a loophole.
+(rejects "(claim fake-absurd (¬ (≡ 0 0)))
+(define (fake-absurd n)
   (match n
-    (())))" "() non è assurdo: refl è possibile")
-(rifiuta "(claim finto-assurdo2 (¬ (⊑ /out/x /out)))
-(define (finto-assurdo2 n)
+    (())))" "() is not absurd: refl is possible")
+(rejects "(claim fake-absurd2 (¬ (⊑ /out/x /out)))
+(define (fake-absurd2 n)
   (match n
-    ((⊑-step ()))))" "() non è assurdo")
-(rifiuta "(claim falso-diretto ⊥)
-(define (falso-diretto n)
+    ((⊑-step ()))))" "() is not absurd")
+(rejects "(claim direct-false ⊥)
+(define (direct-false n)
   (match n
-    (())))" "troppi pattern")
-(rifiuta "(claim vero-negato (¬ (⊑ /out/x /out)))
-(define vero-negato auto)" "auto: nessuna refutazione di (⊑ /out/x /out)")
+    (())))" "too many patterns")
+(rejects "(claim true-negated (¬ (⊑ /out/x /out)))
+(define true-negated auto)" "auto: no refutation of (⊑ /out/x /out)")
 
-;; Letterali di tempo, indirizzi e porte: malformati o fuori spazio sono errori di tipo.
-(rifiuta "(claim t1 Instant)
-(define t1 \"2026-13-01\")" "«2026-13-01» non è un Instant valido")
-(rifiuta "(claim t2 Duration)
-(define t2 \"5x\")" "«5x» non è un Duration valido")
-(rifiuta "(claim t3 Ip)
-(define t3 \"10.0.0.256\")" "«10.0.0.256» non è un Ip valido")
-(rifiuta "(claim t4 Cidr)
-(define t4 \"10.0.0.1/24\")" "«10.0.0.1/24» non è un Cidr valido")
-(rifiuta "(claim t5 Container)
-(define t5 (with-exposed-port (container) 70000))" "«70000» non è un Port valido")
-(rifiuta "(claim t6 Instant)
-(define t6 (⊕ inizio fine))" "atteso Duration, trovato Instant")
-(check-string "(claim ultimo Ip)
-(define ultimo \"255.255.255.255\")")
-(rifiuta "(claim oltre Ip)
-(define oltre (⊕ ultimo 1 auto))" "si riduce a ⊥")      ; l'overflow è escluso
+;; Literals of time, addresses and ports: malformed or out of space they are type errors.
+(rejects "(claim t1 Instant)
+(define t1 \"2026-13-01\")" "«2026-13-01» is not a valid Instant")
+(rejects "(claim t2 Duration)
+(define t2 \"5x\")" "«5x» is not a valid Duration")
+(rejects "(claim t3 Ip)
+(define t3 \"10.0.0.256\")" "«10.0.0.256» is not a valid Ip")
+(rejects "(claim t4 Cidr)
+(define t4 \"10.0.0.1/24\")" "«10.0.0.1/24» is not a valid Cidr")
+(rejects "(claim t5 Container)
+(define t5 (with-exposed-port (container) 70000))" "«70000» is not a valid Port")
+(rejects "(claim t6 Instant)
+(define t6 (⊕ day-start day-end))" "expected Duration, found Instant")
+(check-string "(claim last-ip Ip)
+(define last-ip \"255.255.255.255\")")
+(rejects "(claim beyond Ip)
+(define beyond (⊕ last-ip 1 auto))" "reduces to ⊥")      ; overflow is ruled out
 
-;; Il cookbook: ogni ricetta è un programma a sé, verificato in un processo separato con
-;; check (tipi e teoremi) e, se ha un main, plan (il piano a secco). Mai run: la 03 pubblica.
-;; Anche i capitoli del libro (book/) e le soluzioni degli esercizi (book/solutions/) sono programmi verificati.
+;; The cookbook: every recipe is a program of its own, verified in a separate process with
+;; check (types and theorems) and, if it has a main, plan (the dry plan). Never run: 03 publishes.
+;; The book's chapters (book/) and the exercises' solutions (book/solutions/) are verified programs too.
 (for-each
   (lambda (r)
     (let* ([path (at-root r)]
-           [mode (if (contiene? (call-with-input-file path get-string-all) "(claim main ") "plan" "check")])
+           [mode (if (contains? (call-with-input-file path get-string-all) "(claim main ") "plan" "check")])
       (unless (zero? (system (format "scheme --script ~a ~a ~a >/dev/null" (at-root "src/main.ss") mode path)))
-        (error 'prova (format "~a non passa (~a)" r mode)))))
+        (error 'test (format "~a does not pass (~a)" r mode)))))
   (apply append
          (map (lambda (dir)
                 (map (lambda (f) (string-append dir "/" f))
@@ -688,48 +688,48 @@
                                             (directory-list (at-root dir))))))
               '("cookbook" "book" "book/solutions"))))
 
-;; Quando auto fallisce su una congiunzione, il messaggio indica la parte che non vale.
-(rifiuta "(claim subnet-sovrapposte (Disjoint-subnets (list \"10.0.1.0/24\" \"10.0.2.0/24\" \"10.0.1.128/25\")))
-(define subnet-sovrapposte auto)"
-         "auto: nessuna prova di (Cidr-apart \"10.0.1.0/24\" \"10.0.1.128/25\")")
-(rifiuta "(claim porte-ripetute (Distinct-ports (pipe (container) (with-exposed-port 80) (with-exposed-port 443) (with-exposed-port 80))))
-(define porte-ripetute auto)"
-         "auto: nessuna prova di (port≠ 80 80)")
-(rifiuta "(claim montaggi-annidati (Disjoint-mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /src/cache (cache-volume \"c\")))))
-(define montaggi-annidati auto)"
-         "auto: nessuna prova di (⋔ /src/cache /src)")
-;; Le posizioni: file:riga:colonna dell'espressione più vicina.
-(rifiuta "(claim ok Nat)
+;; When auto fails on a conjunction, the message points at the part that does not hold.
+(rejects "(claim overlapping-subnets (Disjoint-subnets (list \"10.0.1.0/24\" \"10.0.2.0/24\" \"10.0.1.128/25\")))
+(define overlapping-subnets auto)"
+         "auto: no proof of (Cidr-apart \"10.0.1.0/24\" \"10.0.1.128/25\")")
+(rejects "(claim repeated-ports (Distinct-ports (pipe (container) (with-exposed-port 80) (with-exposed-port 443) (with-exposed-port 80))))
+(define repeated-ports auto)"
+         "auto: no proof of (port≠ 80 80)")
+(rejects "(claim nested-mounts (Disjoint-mounts (pipe (container) (with-dir /src empty) (with-mounted-cache /src/cache (cache-volume \"c\")))))
+(define nested-mounts auto)"
+         "auto: no proof of (⋔ /src/cache /src)")
+;; Positions: file:line:col of the nearest expression.
+(rejects "(claim ok Nat)
 (define ok 1)
-(claim male Abs)
-(define male (⊕ /out /bin))" "<stringa>:4:22: /bin: atteso Rel, trovato Abs")
-;; Un errore non ferma il file; chi usa un nome la cui firma è sbagliata non aggiunge errori.
-(rifiuta "(claim a Nat)
+(claim evil Abs)
+(define evil (⊕ /out /bin))" "<string>:4:22: /bin: expected Rel, found Abs")
+;; An error does not stop the file; using a name whose signature is wrong adds no errors.
+(rejects "(claim a Nat)
 (define a zz)
 (claim b Bool)
-(define b 3)" "<stringa>:4:1: 3: atteso Bool")
-;; import: solo i moduli di lib/, per nome; un percorso non passa.
-(rifiuta "(import ../tests/checks)" "non è il nome di un modulo")
-(rifiuta "(import nessuno)" "il modulo nessuno non esiste")
-;; builtin: solo nella libreria, chiavi chiuse, una volta, del genere giusto.
-(rifiuta "(builtin nat Nat)" "builtin è riservato alla libreria standard")
+(define b 3)" "<string>:4:1: 3: expected Bool")
+;; import: only the modules of lib/, by name; a path does not pass.
+(rejects "(import ../tests/checks)" "is not a module name")
+(rejects "(import nowhere)" "module nowhere does not exist")
+;; builtin: only in the library, closed keys, once, of the right kind.
+(rejects "(builtin nat Nat)" "builtin is reserved to the standard library")
 (parameterize ([privileged #t])
-  (rifiuta "(builtin intero Nat)" "chiave sconosciuta intero")
-  (rifiuta "(builtin nat Bool)" "nat è già legato a Nat"))
-;; Nelle firme si generalizzano solo i nomi da variabile: Porta non è un tipo implicito.
-(rifiuta "(claim f (→ Porta Nat))
-(define (f _) 0)" "nome sconosciuto: Porta")
+  (rejects "(builtin integer Nat)" "unknown key integer")
+  (rejects "(builtin nat Bool)" "nat is already bound to Nat"))
+;; In signatures only variable-shaped names are generalized: Socket is not an implicit type.
+(rejects "(claim f (→ Socket Nat))
+(define (f _) 0)" "unknown name: Socket")
 (assert (equal? (guard (e [#t (condition-message e)]) (check-string "(claim f (→ Nat \"x\"))
 (define (f _) 0)
 (claim g Nat)
 (define g (f 1))") #f)
-                "<stringa>:1:10: \"x\" non è un tipo"))
+                "<string>:1:10: \"x\" is not a type"))
 
-;; L'LSP: una sessione registrata (initialize, apertura con un errore, correzione, salvataggio,
-;; shutdown) letta dal server da stdin; la diagnostica compare e poi si svuota.
+;; The LSP: a recorded session (initialize, opening with an error, fix, save, shutdown) read
+;; by the server from stdin; the diagnostics appear and then empty out.
 (let* ([frame (lambda (v) (let ([b (string->utf8 (json->string v))])
                             (string-append (format "Content-Length: ~a\r\n\r\n" (bytevector-length b)) (utf8->string b))))]
-       [uri "file:///tmp/prova-lsp.disegno"]
+       [uri "file:///tmp/lsp-test.disegno"]
        [in "/tmp/disegno-lsp-in"] [out "/tmp/disegno-lsp-out"]
        [msg (lambda (method params . id) `(("jsonrpc" . "2.0") ,@(if (null? id) '() `(("id" . ,(car id)))) ("method" . ,method) ("params" . ,params)))])
   (call-with-output-file in
@@ -737,22 +737,22 @@
       (for-each (lambda (m) (put-string p (frame m)))
         (list (msg "initialize" '(("capabilities" . (("x" . 1)))) 1)
               (msg "textDocument/didOpen" `(("textDocument" . (("uri" . ,uri) ("text" . "(import paths)
-(claim male Abs)
-(define male (⊕ /out /bin))
-(claim peggio Nat)
-(define peggio \"x\")
-(claim buco (→ Nat Nat))
-(define (buco n) (add1 TODO))
-(claim porta Port)
-(define porta 80)
+(claim evil Abs)
+(define evil (⊕ /out /bin))
+(claim worse Nat)
+(define worse \"x\")
+(claim hole (→ Nat Nat))
+(define (hole n) (add1 TODO))
+(claim web80 Port)
+(define web80 80)
 ")))))
               (msg "textDocument/didChange" `(("textDocument" . (("uri" . ,uri))) ("contentChanges" . ,(vector '(("text" . "(import paths)
-(claim bene Abs)
-(define bene (⊕ /out \"bin\"))
+(claim beta Abs)
+(define beta (⊕ /out \"bin\"))
 (claim r (≡ 1 1))
 (define r refl)
-(claim doppio (→ Nat Nat))
-(define (doppio n) (add1 (add1 n)))
+(claim double (→ Nat Nat))
+(define (double n) (add1 (add1 n)))
 "))))))
               (msg "textDocument/didSave" `(("textDocument" . (("uri" . ,uri)))))
               (msg "textDocument/hover" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 2) ("character" . 14)))) 3)
@@ -760,7 +760,7 @@
               (msg "textDocument/definition" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 2) ("character" . 9)))) 5)
               (msg "textDocument/documentSymbol" `(("textDocument" . (("uri" . ,uri)))) 6)
               (msg "textDocument/completion" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 1) ("character" . 9)))) 7)
-              (msg "completionItem/resolve" `(("label" . "bene") ("kind" . 3) ("data" . (("uri" . ,uri) ("position" . (("line" . 1) ("character" . 9)))))) 8)
+              (msg "completionItem/resolve" `(("label" . "beta") ("kind" . 3) ("data" . (("uri" . ,uri) ("position" . (("line" . 1) ("character" . 9)))))) 8)
               (msg "textDocument/hover" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 6) ("character" . 31)))) 9)
               (msg "textDocument/definition" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 6) ("character" . 31)))) 10)
               (msg "textDocument/completion" `(("textDocument" . (("uri" . ,uri))) ("position" . (("line" . 6) ("character" . 32)))) 11)
@@ -768,58 +768,58 @@
               (msg "exit" '(("x" . 1)))))) 'replace)
   (system (format "scheme --script ~a lsp < ~a > ~a" (at-root "src/main.ss") in out))
   (let ([r (call-with-input-file out get-string-all)])
-    (assert (contiene? r "\"capabilities\""))
-    (assert (contiene? r "\"range\":{\"start\":{\"line\":2,\"character\":21}"))
-    (assert (contiene? r "\"message\":\"/bin: atteso Rel, trovato Abs\""))
-    (assert (contiene? r "\"range\":{\"start\":{\"line\":4,\"character\":0}"))   ; anche il secondo errore
-    (assert (contiene? r "\"id\":4,\"result\":[{\"uri\":\"file:///"))         ; refl: nella libreria standard
-    (assert (contiene? r "lib/prelude.disegno\",\"range\":{\"start\":{\"line\":6,"))
-    (assert (contiene? r (format "\"id\":5,\"result\":[{\"uri\":\"~a\",\"range\":{\"start\":{\"line\":2,\"character\":0}" uri)))   ; bene: la sua define
-    (assert (contiene? r "\"name\":\"bene\",\"kind\":12"))
-    (assert (contiene? r "\"name\":\"r\",\"kind\":12"))
-    ;; completion: the prefix «be» gives the global bene and the form begin; resolve gives the type
-    (assert (contiene? r (format "{\"label\":\"bene\",\"kind\":3,\"data\":{\"uri\":\"~a\",\"position\":{\"line\":1,\"character\":9}}}" uri)))
-    (assert (contiene? r "{\"label\":\"begin\",\"kind\":14"))
-    (assert (contiene? r "\"id\":8,\"result\":{\"label\":\"bene\",\"kind\":3,\"data\":{\"uri\":\"file:///tmp/prova-lsp.disegno\",\"position\":{\"line\":1,\"character\":9}},\"detail\":\"bene : Abs\"}"))
+    (assert (contains? r "\"capabilities\""))
+    (assert (contains? r "\"range\":{\"start\":{\"line\":2,\"character\":21}"))
+    (assert (contains? r "\"message\":\"/bin: expected Rel, found Abs\""))
+    (assert (contains? r "\"range\":{\"start\":{\"line\":4,\"character\":0}"))   ; the second error too
+    (assert (contains? r "\"id\":4,\"result\":[{\"uri\":\"file:///"))         ; refl: in the standard library
+    (assert (contains? r "lib/prelude.disegno\",\"range\":{\"start\":{\"line\":6,"))
+    (assert (contains? r (format "\"id\":5,\"result\":[{\"uri\":\"~a\",\"range\":{\"start\":{\"line\":2,\"character\":0}" uri)))   ; beta: its define
+    (assert (contains? r "\"name\":\"beta\",\"kind\":12"))
+    (assert (contains? r "\"name\":\"r\",\"kind\":12"))
+    ;; completion: the prefix «be» gives the global beta and the form begin; resolve gives the type
+    (assert (contains? r (format "{\"label\":\"beta\",\"kind\":3,\"data\":{\"uri\":\"~a\",\"position\":{\"line\":1,\"character\":9}}}" uri)))
+    (assert (contains? r "{\"label\":\"begin\",\"kind\":14"))
+    (assert (contains? r "\"id\":8,\"result\":{\"label\":\"beta\",\"kind\":3,\"data\":{\"uri\":\"file:///tmp/lsp-test.disegno\",\"position\":{\"line\":1,\"character\":9}},\"detail\":\"beta : Abs\"}"))
     ;; a local: its type, its binder, and offered first by completion
-    (assert (contiene? r "\"id\":9,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```disegno\\nn : Nat\\n```\"}}"))
-    (assert (contiene? r (format "\"id\":10,\"result\":[{\"uri\":\"~a\",\"range\":{\"start\":{\"line\":6,\"character\":16}" uri)))
-    (assert (contiene? r "\"id\":11,\"result\":{\"isIncomplete\":false,\"items\":[{\"label\":\"n\",\"kind\":3"))
-    (assert (contiene? r "\"diagnostics\":[]"))
+    (assert (contains? r "\"id\":9,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```disegno\\nn : Nat\\n```\"}}"))
+    (assert (contains? r (format "\"id\":10,\"result\":[{\"uri\":\"~a\",\"range\":{\"start\":{\"line\":6,\"character\":16}" uri)))
+    (assert (contains? r "\"id\":11,\"result\":{\"isIncomplete\":false,\"items\":[{\"label\":\"n\",\"kind\":3"))
+    (assert (contains? r "\"diagnostics\":[]"))
     ;; a TODO: on the hole, as information, with its context and goal
-    (assert (contiene? r "{\"range\":{\"start\":{\"line\":6,\"character\":23},\"end\":{\"line\":6,\"character\":27}},\"severity\":3,\"source\":\"disegno\",\"message\":\"TODO\\n  n : Nat\\n  ──────────\\n  Nat\"}"))
+    (assert (contains? r "{\"range\":{\"start\":{\"line\":6,\"character\":23},\"end\":{\"line\":6,\"character\":27}},\"severity\":3,\"source\":\"disegno\",\"message\":\"TODO\\n  n : Nat\\n  ──────────\\n  Nat\"}"))
     ;; an unknown name: on the name, with the module that declares it
-    (assert (contiene? r "{\"range\":{\"start\":{\"line\":7,\"character\":13},\"end\":{\"line\":7,\"character\":17}},\"severity\":1,\"source\":\"disegno\",\"message\":\"nome sconosciuto: Port, sta in net: (import net)\"}"))
-    (assert (contiene? r "\"id\":3,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```disegno\\nAbs.⊕ : (→ Abs Rel Abs)\\n"))   ; e le altre varianti di ⊕
-    (assert (contiene? r "\"id\":2,\"result\":null"))))
+    (assert (contains? r "{\"range\":{\"start\":{\"line\":7,\"character\":13},\"end\":{\"line\":7,\"character\":17}},\"severity\":1,\"source\":\"disegno\",\"message\":\"unknown name: Port, it is in net: (import net)\"}"))
+    (assert (contains? r "\"id\":3,\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"```disegno\\nAbs.⊕ : (→ Abs Rel Abs)\\n"))   ; and the other variants of ⊕
+    (assert (contains? r "\"id\":2,\"result\":null"))))
 
-;; Nei pattern un simbolo è un costruttore solo se lo è del tipo atteso: step, port, root…
-;; restano variabili dove il tipo è un altro. La copertura usa la stessa risoluzione.
+;; In patterns a symbol is a constructor only if it is one of the expected type: step, port, root…
+;; stay variables where the type is another. Coverage uses the same resolution.
 (check-string "
-(claim somma-step (→ Nat (→ Nat Nat) Nat))
-(define (somma-step port n)
+(claim add-step (→ Nat (→ Nat Nat) Nat))
+(define (add-step port n)
   (match n
     (step (step port))))
-(claim usa-step (≡ (somma-step 2 add1) 3))
-(define usa-step auto)")
-(rifiuta "(claim manca-step (→ Rel Nat))
-(define (manca-step n)
+(claim use-step (≡ (add-step 2 add1) 3))
+(define use-step auto)")
+(rejects "(claim missing-step (→ Rel Nat))
+(define (missing-step n)
   (match n
-    (here 0)))" "manca il caso")
+    (here 0)))" "missing case")
 
-;; Il flusso dei log riordina per istante: un pacchetto di stderr consegnato tardi va al suo posto.
+;; The log stream reorders by instant: a stderr packet delivered late goes to its place.
 (let ([p (open-output-string)])
   (define (record t s)
     `(("timeUnixNano" . ,(number->string t)) ("body" ("stringValue" . ,s)) ("attributes" (("key" . "stdio.stream")))))
   (set! log-port p)
   (for-each (lambda (t s) (on-log (record t s))) '(100 300 200) '("A\n" "C\n" "B\n"))
-  (flush! (- (now-ns) window))                          ; appena arrivate: aspettano
+  (flush! (- (now-ns) window))                          ; just arrived: they wait
   (assert (string=? (get-output-string p) ""))
   (flush! +inf.0)
   (assert (string=? (get-output-string p) "A\nB\nC\n"))
   (set! log-port #f))
 
-;; --- dal vivo ---
+;; --- live ---
 
 
 
@@ -835,112 +835,112 @@
 
 
 
-(define (esegui entry)                                    ; → (messaggio . output) di run entry
+(define (run-capturing entry)                                    ; → (message . output) of run entry
   (let* ([msg #f]
          [out (with-output-to-string
                 (lambda () (set! msg (guard (e [(message-condition? e) (condition-message e)]) (run entry) #f))))])
     (cons msg out)))
 
 (when (getenv "DAGGER_SESSION_PORT")
-  (system (format "rm -rf ~a && mkdir -p ~a/in && echo dati > ~a/in/dati.txt" dir dir dir))
+  (system (format "rm -rf ~a && mkdir -p ~a/in && echo data > ~a/in/data.txt" dir dir dir))
   (submit-leaf (plan (lambda (ch) (submit-leaf (append ch '((id)))))))
   (for-each (lambda (f) (assert (file-exists? (string-append dir "/out/" f))))
-            '("LEGGIMI" "cfg/dati.txt" "cfg/config/app.toml"))
-  (submit-leaf (plan (lambda (ch) (submit-leaf (append ch '((id))))) 'costruisci))
-  (assert (string=? (call-with-input-file (string-append dir "/out2/doppio.txt") get-string-all) "dati\ndati\n"))
-  (run 'verifica)
-  (assert (string=? (call-with-input-file (string-append dir "/out3/esito") get-string-all) "passa\n"))
-  (assert (string=? (call-with-input-file (string-append dir "/out3/manca/esito") get-string-all) "fallisce\n"))
-  (run (quote contenuto))
-  (for-each (lambda (p e) (assert (string=? (call-with-input-file (string-append dir "/out4/" p "/esito") get-string-all) e)))
-            (quote ("include" "assente" "regex" "vuoto" "uguale")) (quote ("passa\n" "fallisce\n" "passa\n" "fallisce\n" "passa\n")))
-  ;; Un passo fallito dice dove sta nel sorgente, con e senza il resoconto (DISEGNO_LOGS, come in
-  ;; CI: una riga per voce). Prima senza: Chez non sa togliere una variabile d'ambiente.
-  ;; in-diretta ha comandi nuovi a ogni prova, così non è in cache e le righe passano dal flusso.
-  (putenv "GITHUB_ACTIONS" "") (putenv "GITLAB_CI" "")       ; il formato neutro, anche in CI
+            '("README" "cfg/data.txt" "cfg/config/app.toml"))
+  (submit-leaf (plan (lambda (ch) (submit-leaf (append ch '((id))))) 'build))
+  (assert (string=? (call-with-input-file (string-append dir "/out2/double.txt") get-string-all) "data\ndata\n"))
+  (run 'verify)
+  (assert (string=? (call-with-input-file (string-append dir "/out3/outcome") get-string-all) "passes\n"))
+  (assert (string=? (call-with-input-file (string-append dir "/out3/missing/outcome") get-string-all) "fails\n"))
+  (run (quote content))
+  (for-each (lambda (p e) (assert (string=? (call-with-input-file (string-append dir "/out4/" p "/outcome") get-string-all) e)))
+            (quote ("include" "absent" "regex" "empty-file" "same")) (quote ("passes\n" "fails\n" "passes\n" "fails\n" "passes\n")))
+  ;; A failed step says where it is in the source, with and without the report (DISEGNO_LOGS, as in
+  ;; CI: one line per item). First without: Chez cannot unset an environment variable.
+  ;; live-direct has new commands on each run, so it is not cached and its lines come through the stream.
+  (putenv "GITHUB_ACTIONS" "") (putenv "GITLAB_CI" "")       ; the neutral format, in CI too
   (let ([n (time-nanosecond (current-time))])
-    (check-string (format "(claim rotto (→ (Export Dir)))
-(define rotto
-  (overlay \"rotto\" (pipe (container) (from \"alpine\")
+    (check-string (format "(claim broken (→ (Export Dir)))
+(define broken
+  (overlay \"broken\" (pipe (container) (from \"alpine\")
                          (with-exec (list \"sh\" \"-c\" \"echo A; sleep 0.3; echo B >&2; sleep 0.3; echo C\"))
-                         (with-exec (list \"sh\" \"-c\" \"echo male >&2; exit 3\")) (dir-of /tmp))))
-(claim prepara Container)
-(define prepara \"prepara l'ambiente\" (pipe (container) (from \"alpine\") (with-exec (list \"sh\" \"-c\" \"echo prep~a\"))))
-(claim in-diretta (Π ((src (Host ~s))) (Export Dir)))
-(define (in-diretta src)
-  (overlay \"rotto\" (pipe prepara (with-dir /w src)
+                         (with-exec (list \"sh\" \"-c\" \"echo evil >&2; exit 3\")) (dir-of /tmp))))
+(claim prepare Container)
+(define prepare \"sets up the environment\" (pipe (container) (from \"alpine\") (with-exec (list \"sh\" \"-c\" \"echo prep~a\"))))
+(claim live-direct (Π ((src (Host ~s))) (Export Dir)))
+(define (live-direct src)
+  (overlay \"broken\" (pipe prepare (with-dir /w src)
                          (with-exec (list \"sh\" \"-c\" \"echo A~a; sleep 0.05; echo B >&2; sleep 0.05; echo C\"))
-                         (with-exec (list \"sh\" \"-c\" \"echo male~a >&2; exit 3\")) (dir-of /tmp))))"
+                         (with-exec (list \"sh\" \"-c\" \"echo evil~a >&2; exit 3\")) (dir-of /tmp))))"
                           n (string-append dir "/in") n n))
-    (let ([r (esegui 'rotto)])
-      (assert (and (car r) (contiene? (car r) "<stringa>:5:26: passo fallito (exit 3)")))
+    (let ([r (run-capturing 'broken)])
+      (assert (and (car r) (contains? (car r) "<string>:5:26: step failed (exit 3)")))
       (assert (string=? (cdr r) "")))
     (putenv "DISEGNO_LOGS" "1")
-    ;; Il resoconto: una riga per voce, con i nomi del programma; prepara non vede l'input ed è
-    ;; ambiente; in-diretta fallisce, e le ultime righe del passo dicono perché.
-    (let* ([r (esegui 'in-diretta)] [msg (car r)] [out (cdr r)])
-      (assert (> streamed 0))                                 ; le righe sono arrivate dal flusso
-      (assert (contiene? out "✓ prepara l'ambiente  "))
-      (assert (contiene? out "✗ in-diretta  <stringa>:12:26  exit 3  "))
-      (assert (contiene? out (format "\n      male~a\n" n)))
-      (assert (not (contiene? out (format "A~a" n))))         ; la prova di ciò che è andato non si stampa
-      (assert (and msg (contiene? msg "<stringa>:12:26: passo fallito (exit 3)"))))
-    ;; Un RUN di Dockerfile fallito non è una voce: le sue ultime righe vengono dall'errore.
-    (check-string (format "(claim contesto-rotto Dir)
-(define contesto-rotto (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nRUN echo docker~a >&2 && exit 4\\n\"))
-(claim build-rotta (Export Dir))
-(define build-rotta (overlay \"rotto\" (dir-of (build-dockerfile contesto-rotto \"Dockerfile\" (list) (list)) /tmp)))" n))
-    (let ([r (esegui 'build-rotta)])
-      (assert (contiene? (cdr r) (format "│ docker~a\n" n)))
-      (assert (and (car r) (contiene? (car r) "passo fallito (exit 4)"))))
-    ;; In CI la prova sta nel gruppo della voce: stdout e stderr intrecciati. Il primo passo ora è
-    ;; in cache: il flusso tace, e la prova è combinedOutput.
-    (set! logged '())                                         ; un run nuovo, come un processo nuovo
+    ;; The report: one line per item, with the program's names; prepare does not see the input and is
+    ;; environment; live-direct fails, and the step's last lines say why.
+    (let* ([r (run-capturing 'live-direct)] [msg (car r)] [out (cdr r)])
+      (assert (> streamed 0))                                 ; the lines came from the stream
+      (assert (contains? out "✓ sets up the environment  "))
+      (assert (contains? out "✗ live-direct  <string>:12:26  exit 3  "))
+      (assert (contains? out (format "\n      evil~a\n" n)))
+      (assert (not (contains? out (format "A~a" n))))         ; the proof of what went well is not printed
+      (assert (and msg (contains? msg "<string>:12:26: step failed (exit 3)"))))
+    ;; A failed Dockerfile RUN is not an item: its last lines come from the error.
+    (check-string (format "(claim broken-context Dir)
+(define broken-context (with-file empty /Dockerfile \"FROM busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e\\nRUN echo docker~a >&2 && exit 4\\n\"))
+(claim broken-build (Export Dir))
+(define broken-build (overlay \"broken\" (dir-of (build-dockerfile broken-context \"Dockerfile\" (list) (list)) /tmp)))" n))
+    (let ([r (run-capturing 'broken-build)])
+      (assert (contains? (cdr r) (format "│ docker~a\n" n)))
+      (assert (and (car r) (contains? (car r) "step failed (exit 4)"))))
+    ;; In CI the proof sits in the item's group: stdout and stderr interleaved. The first step is now
+    ;; cached: the stream is silent, and the proof is combinedOutput.
+    (set! logged '())                                         ; a new run, like a new process
     (putenv "GITHUB_ACTIONS" "true")
-    (let ([out (cdr (esegui 'in-diretta))])
+    (let ([out (cdr (run-capturing 'live-direct))])
       (putenv "GITHUB_ACTIONS" "")
-      (assert (contiene? out "::group::✓ prepara l'ambiente  "))
-      (assert (contiene? out (format "\"\nA~a\nB\nC\n" n)))
-      (assert (contiene? out "::error file=<stringa>,line=12,col=26::passo fallito (exit 3)"))))
-  ;; Le uscite vengono nell'ordine di then, e il resoconto mostra l'effetto con il suo comando.
-  (let ([r2 (begin (set! logged '()) (esegui 'sequenza))])
-    (assert (contiene? (cdr r2) "✓ sequenza    sh -c \"echo effetto\"  "))
-    (assert (contiene? (cdr r2) "realizzato in "))
-    (assert (contiene? (cdr r2) ": effetto sh -c \"echo effetto\", esportato "))
-    (assert (string=? (call-with-input-file (string-append dir "/out5/dopo") get-string-all) "sì\n")))
-  ;; Una voce con docstring è una riga sola anche con due effetti (due catene), e la riga finale
-  ;; dice l'etichetta, non i comandi.
+      (assert (contains? out "::group::✓ sets up the environment  "))
+      (assert (contains? out (format "\"\nA~a\nB\nC\n" n)))
+      (assert (contains? out "::error file=<string>,line=12,col=26::step failed (exit 3)"))))
+  ;; Outputs come in then's order, and the report shows the effect with its command.
+  (let ([r2 (begin (set! logged '()) (run-capturing 'sequence))])
+    (assert (contains? (cdr r2) "✓ sequence    sh -c \"echo effect\"  "))
+    (assert (contains? (cdr r2) "realized in "))
+    (assert (contains? (cdr r2) ": effect sh -c \"echo effect\", exported "))
+    (assert (string=? (call-with-input-file (string-append dir "/out5/after") get-string-all) "yes\n")))
+  ;; An item with a docstring is a single line even with two effects (two chains), and the last
+  ;; line says the label, not the commands.
   (let ([n (time-nanosecond (current-time))])
-    (check-string (format "(claim due-passi (Export Dir))
-(define due-passi \"fa due cose\"
-  (begin (apply (pipe (container) (from \"alpine\")) (list \"sh\" \"-c\" \"echo uno~a\"))
-         (apply (pipe (container) (from \"alpine\")) (list \"sh\" \"-c\" \"echo due~a\"))))" n n))
+    (check-string (format "(claim two-steps (Export Dir))
+(define two-steps \"does two things\"
+  (begin (apply (pipe (container) (from \"alpine\")) (list \"sh\" \"-c\" \"echo one~a\"))
+         (apply (pipe (container) (from \"alpine\")) (list \"sh\" \"-c\" \"echo two~a\"))))" n n))
     (set! logged '())
-    (let ([out (cdr (esegui 'due-passi))])
-      (assert (= 1 (length (filter (lambda (l) (contiene? l "fa due cose  ")) (last-lines out 50)))))
-      (assert (contiene? out ": fa due cose\n"))))
-  (run 'segreto)
-  (assert (string=? (call-with-input-file (string-append dir "/out6/esito") get-string-all) "ricevuto\n"))
+    (let ([out (cdr (run-capturing 'two-steps))])
+      (assert (= 1 (length (filter (lambda (l) (contains? l "does two things  ")) (last-lines out 50)))))
+      (assert (contains? out ": does two things\n"))))
+  (run 'secret-test)
+  (assert (string=? (call-with-input-file (string-append dir "/out6/outcome") get-string-all) "received\n"))
   (run 'cli-aws)
-  (assert (string=? (call-with-input-file (string-append dir "/out7/esito") get-string-all) "risponde\n"))
-  (let ([r (esegui 'con-riserva)])                       ; fallisce, ma prima la riserva
-    (assert (and (car r) (contiene? (car r) "passo fallito (exit 3)")))
-    (assert (file-exists? (string-append dir "/out13/prima")))
-    (assert (file-exists? (string-append dir "/out13/riserva"))))
+  (assert (string=? (call-with-input-file (string-append dir "/out7/outcome") get-string-all) "answers\n"))
+  (let ([r (run-capturing 'with-fallback)])                       ; it fails, but the fallback first
+    (assert (and (car r) (contains? (car r) "step failed (exit 3)")))
+    (assert (file-exists? (string-append dir "/out13/before")))
+    (assert (file-exists? (string-append dir "/out13/fallback"))))
   (for-each (lambda (e f t) (run e) (assert (string=? (call-with-input-file (string-append dir "/out14/" f) get-string-all) t)))
-            '(con-registro con-gitops con-argocd) '("registro" "gitops" "argocd") '("pubblicata\n" "aggiornato\n" "risponde\n"))
-  (run 'con-dockerfile)
-  (assert (string=? (call-with-input-file (string-append dir "/out15/esito") get-string-all) "letto 1.2\n"))
-  (run 'filtri)
+            '(with-registry with-gitops with-argocd) '("registry" "gitops" "argocd") '("pushed\n" "updated\n" "answers\n"))
+  (run 'with-dockerfile)
+  (assert (string=? (call-with-input-file (string-append dir "/out15/outcome") get-string-all) "read 1.2\n"))
+  (run 'filters)
   (assert (zero? (system (format "test -x ~a/out9/run.sh" dir))))
   (assert (not (file-exists? (string-append dir "/out9/note.txt"))))
   (when (getenv "DISEGNO_TEST_KEY")
-    (run 'con-segreti)
-    (assert (string=? (call-with-input-file (string-append dir "/out11/esito") get-string-all) "ricevuto\n"))
-    (run 'con-s3)
-    (assert (string=? (call-with-input-file (string-append dir "/out10/esito") get-string-all) "pubblicato\n"))
-    (run 'con-localstack)
-    (assert (string=? (call-with-input-file (string-append dir "/out8/esito") get-string-all) "scritto\n")))
+    (run 'with-secrets)
+    (assert (string=? (call-with-input-file (string-append dir "/out11/outcome") get-string-all) "received\n"))
+    (run 'with-s3)
+    (assert (string=? (call-with-input-file (string-append dir "/out10/outcome") get-string-all) "published\n"))
+    (run 'with-localstack)
+    (assert (string=? (call-with-input-file (string-append dir "/out8/outcome") get-string-all) "scritto\n")))
   (system (format "rm -rf ~a" dir))
-  (display "dal vivo: ok\n"))
+  (display "live: ok\n"))
 (display "ok\n")

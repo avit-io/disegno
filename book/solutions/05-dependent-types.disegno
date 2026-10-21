@@ -30,12 +30,12 @@
     (vnil            vnil)
     ((vcons x resto) (vcons (f x) (mappa f resto)))))
 
-; 2. vnil diventa vuota, vcons diventa ::. L'indice si perde.
+; 2. vnil diventa nil, vcons diventa ::. L'indice si perde.
 
 (claim in-lista (→ (Vec A n) (List A)))
 (define (in-lista m)
   (match m
-    (vnil            vuota)
+    (vnil            nil)
     ((vcons x resto) (:: x (in-lista resto)))))
 
 ; 3. Servono almeno due elementi: (add1 (add1 n)). coda toglie il primo, testa prende il

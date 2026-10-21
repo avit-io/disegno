@@ -13,18 +13,18 @@
 
 (import dagger)
 
-(claim strumenti Container)
-(define strumenti (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")))
+(claim toolbox Container)
+(define toolbox (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")))
 
 (claim deploy (→ String (Export Dir)))
-(define (deploy env) (apply strumenti (list "echo" "deploy" env)))
+(define (deploy env) (apply toolbox (list "echo" "deploy" env)))
 
 ; Il test guarda il sorgente; il controllo sullo staging guarda il mondo, dopo il deploy.
 (claim test (→ Dir (Remote Bool)))
-(define (test src) (passes? (try-exec (pipe strumenti (with-dir /src src)) (list "test" "-f" "/src/go.mod"))))
+(define (test src) (passes? (try-exec (pipe toolbox (with-dir /src src)) (list "test" "-f" "/src/go.mod"))))
 
 (claim staging-risponde (Remote Bool))
-(define staging-risponde (probe strumenti (list "true")))
+(define staging-risponde (probe toolbox (list "true")))
 
 (claim rilascio (→ Dir (Export Dir)))
 (define (rilascio src)

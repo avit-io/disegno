@@ -1,10 +1,10 @@
 (import text affine)
 
-; --- I punti non si sommano: il file system come spazio affine ---
-; Un punto è la radice più dei passi: /out è (/ root "out"). Un vettore è una sequenza di passi:
-; "bin/hello". Punto ⊕ vettore = punto; punto ⊖ punto = vettore, solo se uno contiene l'altro;
-; punto + punto non si può nemmeno scrivere: / vuole un Segment.
-; Senza .. i vettori sono un monoide, non un gruppo: per questo la differenza è parziale.
+; --- Points do not add up: the file system as an affine space ---
+; A point is the root plus steps: /out is (/ root "out"). A vector is a sequence of steps:
+; "bin/hello". Point ⊕ vector = point; point ⊖ point = vector, only if one contains the other;
+; point + point cannot even be written: / wants a Segment.
+; Without .. vectors are a monoid, not a group: that is why the difference is partial.
 
 (extern segment? : (→ String Bool) %segment?)
 
@@ -27,8 +27,8 @@
 (builtin here here)
 (builtin step step)
 
-; (⊑ p q): p sta dentro q. È induttivo, quindi la differenza si calcola sulla prova e le leggi
-; si dimostrano per induzione, senza confrontare stringhe.
+; (⊑ p q): p lies inside q. It is inductive, so the difference is computed on the proof and the
+; laws are proved by induction, without comparing strings.
 (data ⊑ : (→ Abs Abs Type)
   (⊑-refl : (⊑ p p))
   (⊑-step : (→ (⊑ p q) (⊑ (/ p s) q))))
@@ -48,25 +48,25 @@
 (claim /s (→ Segment Abs Abs))
 (define (/s s p) (/ p s))
 
-; Un punto come testo, per comporre indirizzi: /site/css → "/site/css"; la radice è "".
+; A point as text, to compose addresses: /site/css → "/site/css"; the root is "".
 (claim render-abs (→ Abs String))
 (define (render-abs n)
   (match n
     (root    "")
     ((/ p s) (string-append (render-abs p) "/" (Segment.name s)))))
 
-; La legge: q ⊕ (p ⊖ q) = p. Dimostrata qui una volta; chi scrive un disegno la eredita.
+; The law: q ⊕ (p ⊖ q) = p. Proved here once; whoever writes a design inherits it.
 (claim ⊕-⊖ (Π ((p Abs) (q Abs) (h (⊑ p q))) (≡ (⊕ q (⊖ p q h)) p)))
 (define (⊕-⊖ p q h)
   (match* (p h)
     ((p ⊑-refl)     refl)
     (((/ p s) (⊑-step h)) (cong (/s s) (⊕-⊖ p q h)))))
 
-(claim percorsi (Affine Abs Rel ⊑))
-(define percorsi (affine Abs.⊕ Abs.⊖ ⊕-⊖))
+(claim path-affine (Affine Abs Rel ⊑))
+(define path-affine (affine Abs.⊕ Abs.⊖ ⊕-⊖))
 
-; Regioni: il sottoalbero di un punto. (⋔ p q): i sottoalberi di p e q sono disgiunti, perché i
-; due percorsi si separano a un passo. Induttivo come ⊑; auto trova il punto di separazione.
+; Regions: a point's subtree. (⋔ p q): the subtrees of p and q are disjoint, because the two
+; paths part at a step. Inductive like ⊑; auto finds the point where they part.
 
 (claim ≠ (→ Segment Segment Type))
 (define (≠ s t) (So (distinct? (Segment.name s) (Segment.name t))))

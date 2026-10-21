@@ -234,7 +234,7 @@ Tutte queste forme sono zucchero: un passo prima dell'elaborazione le traduce ne
 ## 13. Errori e strumenti
 
 **Scelta.**
-- Gli errori hanno il formato dei compilatori, `file:riga:colonna: messaggio`, e un file riporta tutti i suoi errori. Una dichiarazione sbagliata non ferma le successive, e i «nome sconosciuto» che derivano da una firma fallita si tacciono.
+- Gli errori hanno il formato dei compilatori, `file:riga:colonna: messaggio`, e un file riporta tutti i suoi errori. Una dichiarazione sbagliata non ferma le successive, e gli «unknown name» che derivano da una firma fallita si tacciono.
 - L'LSP (`disegno lsp`) controlla ogni documento in un processo a sé.
 
 **Perché.** Il formato dei compilatori lo leggono senza adattatori `:make`, la quickfix di Neovim e le annotazioni di GitHub. Il processo separato è la cosa più semplice e corretta, perché il checker tiene stato globale (globali, metavariabili, moduli importati) e ogni controllo deve partire pulito. Un controllo costa circa 0,3 s.

@@ -23,8 +23,8 @@
 (claim per-calcolo (≡ (+ 2 3) 5))
 (define per-calcolo refl)
 
-; Per (≡ 1 2) rifiuta: «refl: atteso (≡ 1 2), trovato (≡ 1 1)». E rifiuta anche (≡ (+ n 0) n)
-; con n ignoto: «refl: atteso (≡ (+ n 0) n), trovato (≡ (+ n 0) (+ n 0))». + elimina il primo
+; Per (≡ 1 2) rifiuta: «refl: expected (≡ 1 2), found (≡ 1 1)». E rifiuta anche (≡ (+ n 0) n)
+; con n ignoto: «refl: expected (≡ (+ n 0) n), found (≡ (+ n 0) (+ n 0))». + elimina il primo
 ; argomento, n non ha forma canonica, il calcolo si ferma. È vero, ma serve una prova.
 ;
 ; Ci sono quindi due uguaglianze. Una il checker la vede da sé calcolando: si chiama uguaglianza

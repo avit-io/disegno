@@ -21,7 +21,7 @@
 (claim da-lista (→ (List A) (Σ Nat (λ (k) (Vec A k)))))
 (define (da-lista n)
   (match n
-    (vuota     (pair 0 vnil))
+    (nil       (pair 0 vnil))
     ((:: x xs) (let ((r (da-lista xs)))
                  (pair (add1 (fst r)) (vcons x (snd r)))))))
 

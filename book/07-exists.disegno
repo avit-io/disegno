@@ -23,8 +23,8 @@
 (define il-doppio-di-qualcosa (pair 2 refl))
 
 ; Il checker sa che la seconda componente deve stare in (≡ (+ 2 2) 4), perché il testimone è 2;
-; il calcolo riduce (+ 2 2) a 4, e refl va bene. Con (pair 3 refl) direbbe di no: «refl: atteso
-; (≡ 6 4), trovato (≡ 6 6)».
+; il calcolo riduce (+ 2 2) a 4, e refl va bene. Con (pair 3 refl) direbbe di no: «refl: expected
+; (≡ 6 4), found (≡ 6 6)».
 
 ; --- le eliminazioni: fst e snd ---
 ; Da una prova di esistenza si estrae il testimone. È la differenza con la logica classica: chi

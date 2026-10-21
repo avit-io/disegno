@@ -1,12 +1,12 @@
-; I file: directory costruite come valori, che cosa scrivono, e osservazioni sul contenuto.
-; Il contenuto di un file non torna mai al linguaggio: lo guarda Dagger, in un container, e il
-; programma riceve un'osservazione (Remote Bool) da usare con branch, come per passes?.
+; Files: directories built as values, what they write, and observations on the contents.
+; A file's contents never come back to the language: Dagger looks at them, in a container, and
+; the program gets an observation (Remote Bool) to use with branch, as for passes?.
 
 (import dagger)
 
-; --- costruire ---
+; --- building ---
 
-; Un file con il suo nome: il nome è un Segment, quindi "a/b" o "" non passano.
+; A file with its name: the name is a Segment, so "a/b" or "" do not pass.
 (claim file (→ Segment String File))
 (define (file n contents) (Query.file (Segment.name n) contents))
 
@@ -16,21 +16,21 @@
 (claim put-file (→ Dir Abs File Dir))
 (define (put-file d path f) (Directory.with-file d path f))
 
-(claim merge (→ Dir Dir Dir))                   ; b sopra a, dalla radice
+(claim merge (→ Dir Dir Dir))                   ; b over a, from the root
 (define (merge a b) (Directory.with-directory a root b))
 
-; Selezionare per glob, come Dagger: (only src (list "**/*.go" "go.mod")),
+; Selecting by glob, as Dagger does: (only src (list "**/*.go" "go.mod")),
 ; (except src (list "**/*_test.go")).
-; ponytail: i glob non si controllano mentre si tipa; un Glob raffinato con re? se servirà.
+; ponytail: globs are not checked while typing; a Glob refined with re? if it is ever needed.
 (claim only (→ Dir (List String) Dir))
 (define (only d globs) (Directory.filter d (list) globs))
 
 (claim except (→ Dir (List String) Dir))
 (define (except d globs) (Directory.filter d globs (list)))
 
-; --- che cosa scrive una directory: i percorsi lungo la sua catena di costruzione ---
-; Come i montaggi di un container, si guarda solo la catena (chain), che non scende negli
-; argomenti: le proprietà valgono per ogni sorgente.
+; --- what a directory writes: the paths along its construction chain ---
+; As with a container's mounts, only the chain is looked at (chain), which does not go down into
+; the arguments: the properties hold for every source.
 
 (claim write-of (→ Any (List Abs)))
 (define (write-of n)
@@ -44,36 +44,36 @@
 (claim writes (→ (Obj k) (List Abs)))
 (define (writes p) (concat-map write-of (chain p)))
 
-; Nessuna scrittura ne copre un'altra: né lo stesso percorso due volte, né uno dentro l'altro.
+; No write covers another: neither the same path twice, nor one inside the other.
 (claim Disjoint-writes (→ (Obj k) Type))
 (define (Disjoint-writes p) (Pairwise ⋔ (writes p)))
 
-; Tutto ciò che si scrive sta sotto r.
+; Everything written lies under r.
 (claim Writes-within (→ Abs (Obj k) Type))
 (define (Writes-within r p) (Every (λ (q) (⊑ q r)) (writes p)))
 
-; --- osservazioni sul contenuto, calcolate da Dagger ---
-; Il testo arriva al comando come argomento, non passa da una shell. Sono osservazioni di
-; passes?, quindi per Before contano come test.
-; ponytail: un'espressione regolare malformata fa uscire grep con 2, cioè «falso»; un tipo
-; Regex raffinato la rifiuterebbe prima, se servirà.
+; --- observations on the contents, computed by Dagger ---
+; The text reaches the command as an argument, it does not go through a shell. They are
+; observations of passes?, so for Before they count as tests.
+; ponytail: a malformed regular expression makes grep exit with 2, that is «false»; a refined
+; Regex type would reject it earlier, if it is ever needed.
 
-(claim strumenti Container)
-(define strumenti (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")))
+(claim toolbox Container)
+(define toolbox (pipe (container) (from "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e")))
 
-(claim guarda (→ File (List Arg) (Remote Bool)))
-(define (guarda f cmd) (passes? (pipe strumenti (Container.with-file /f f) (try-exec cmd))))
+(claim file-passes? (→ File (List Arg) (Remote Bool)))
+(define (file-passes? f cmd) (passes? (pipe toolbox (Container.with-file /f f) (try-exec cmd))))
 
-(claim includes? (→ File String (Remote Bool)))  ; il testo compare nel file
-(define (includes? f s) (guarda f (list "grep" "-qF" s "/f")))
+(claim includes? (→ File String (Remote Bool)))  ; the text occurs in the file
+(define (includes? f s) (file-passes? f (list "grep" "-qF" s "/f")))
 
-(claim matches? (→ File String (Remote Bool)))   ; una riga soddisfa l'espressione regolare estesa
-(define (matches? f re) (guarda f (list "grep" "-qE" re "/f")))
+(claim matches? (→ File String (Remote Bool)))   ; a line matches the extended regular expression
+(define (matches? f re) (file-passes? f (list "grep" "-qE" re "/f")))
 
-(claim empty? (→ File (Remote Bool)))            ; il file è vuoto
-(define (empty? f) (guarda f (list "sh" "-c" "! test -s /f")))
+(claim empty? (→ File (Remote Bool)))            ; the file is empty
+(define (empty? f) (file-passes? f (list "sh" "-c" "! test -s /f")))
 
 (claim same-content? (→ File File (Remote Bool)))
 (define (same-content? a b)
-  (passes? (pipe strumenti (Container.with-file /a a) (Container.with-file /b b)
+  (passes? (pipe toolbox (Container.with-file /a a) (Container.with-file /b b)
                  (try-exec (list "cmp" "-s" "/a" "/b")))))

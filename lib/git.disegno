@@ -1,15 +1,15 @@
-; Git e kustomize: il repo GitOps come una directory del piano. Il clone legge il mondo (un branch
-; si muove) e quindi non va in cache; la modifica è un calcolo sulla directory; commit e push sono
-; un effetto. Chi scrive il programma dice l'autore dei commit: è una convenzione sua.
-; Per una pipeline di rilascio: (kustomize-gitops url branch auth reach autore), un Gitops (delivery).
+; Git and kustomize: the GitOps repo as a directory of the plan. The clone reads the world (a
+; branch moves) and so is not cached; the change is a computation on the directory; commit and
+; push are an effect. Whoever writes the program says the commits' author: it is their convention.
+; For a release pipeline: (kustomize-gitops url branch auth reach author), a Gitops (delivery).
 
 (import dagger delivery)
 
 (claim git-tool Container)
 (define git-tool (pipe (container) (from "alpine/git@sha256:c0280cf9572316299b08544065d3bf35db65043d5e3963982ec50647d2746e26")))   ; 2.49.1
 
-; Come ci si autentica: niente (un repo pubblico, un server di prova) o una chiave SSH, che è un
-; segreto montato come file.
+; How to authenticate: nothing (a public repo, a test server) or an SSH key, which is a secret
+; mounted as a file.
 (data Git-auth
   (anonymous)
   (ssh-key Secret))
@@ -29,16 +29,16 @@
   (name String)
   (email String))
 
-; Il branch com'è adesso: un clone poco profondo, fuori dalla cache.
+; The branch as it is now: a shallow clone, outside the cache.
 (claim clone (→ String String Git-auth Reach Dir))                 ; url, branch
 (define (clone url n auth r)
   (match n
     (branch (dir-of (with-fresh-exec (git-in auth r) (list "git" "clone" "--depth" "1" "--branch" branch url "/repo"))
                     /repo))))
 
-; Commit di tutto ciò che è cambiato e push sul branch. Se non è cambiato niente (lo stesso tag
-; rilasciato di nuovo) non c'è commit, e il push non fa niente.
-(claim commit-and-push (→ Dir Author String String Git-auth Reach (Export Dir)))   ; repo, autore, messaggio, branch
+; Commit everything that changed and push to the branch. If nothing changed (the same tag
+; released again) there is no commit, and the push does nothing.
+(claim commit-and-push (→ Dir Author String String Git-auth Reach (Export Dir)))   ; repo, author, message, branch
 (define (commit-and-push repo who msg n auth r)
   (match n
     (branch
@@ -46,18 +46,18 @@
             (list "sh" "-c" "git add -A && (git diff --cached --quiet || git -c user.name=\"$3\" -c user.email=\"$4\" commit -m \"$1\") && git push origin HEAD:\"$2\""
                   "sh" msg branch (Author.name who) (Author.email who))))))
 
-(claim git-command? (→ String (Export Dir) Bool))  ; (git-command? "push"): per Before e Precedes
+(claim git-command? (→ String (Export Dir) Bool))  ; (git-command? "push"): for Before and Precedes
 (define (git-command? op n)
   (match n
     ((apply _ (:: (arg-text a) (:: (arg-text b) (:: (arg-text c) _)))) (and (same? a "sh") (contains? c (string-append "git " op))))
     (_ false)))
 
-; --- kustomize: l'immagine di un'applicazione, nel suo kustomization.yaml ---
+; --- kustomize: an application's image, in its kustomization.yaml ---
 
 (claim kustomize-tool Container)
 (define kustomize-tool (pipe (container) (from "registry.k8s.io/kustomize/kustomize@sha256:937e7832dc0b09288b1398399dadb97382a27bbc35bee8fdcac47c7de4fff14d")))   ; v5.7.1
 
-; In repo, nella cartella p (relativa: "console/dev/app"), l'immagine diventa image.
+; In repo, in the folder p (relative: "console/dev/app"), the image becomes image.
 (claim kustomize-set-image (→ Dir Rel String Dir))
 (define (kustomize-set-image repo p image)
   (dir-of (pipe kustomize-tool
@@ -66,16 +66,16 @@
                 (with-exec (list "kustomize" "edit" "set" "image" image)))
           /w))
 
-(claim kustomize-set-images (→ Dir (List Rel) String Dir))   ; la stessa immagine in più cartelle
+(claim kustomize-set-images (→ Dir (List Rel) String Dir))   ; the same image in several folders
 (define (kustomize-set-images repo n image)
   (match n
-    (vuota repo)
+    (nil repo)
     ((:: p ps) (kustomize-set-images (kustomize-set-image repo p image) ps image))))
 
-; --- Gitops: clone, kustomize, commit e push, dietro l'interfaccia di delivery ---
-; Un clone, tutte le cartelle, un commit: come chi aggiorna a mano blu e verde insieme.
+; --- Gitops: clone, kustomize, commit and push, behind delivery's interface ---
+; One clone, all the folders, one commit: like someone updating blue and green by hand together.
 
-(claim kustomize-gitops (→ String String Git-auth Reach Author Gitops))   ; url, branch, autenticazione, raggiungimento, autore
+(claim kustomize-gitops (→ String String Git-auth Reach Author Gitops))   ; url, branch, authentication, reach, author
 (define (kustomize-gitops url n auth r who)
   (match n
     (branch

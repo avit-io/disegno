@@ -8,8 +8,8 @@
 ;     (match n
 ;       ((:: a _) a)))
 ;
-; viene rifiutata: «primo: manca il caso (primo vuota)». È di nuovo l'armonia del capitolo 2:
-; un'eliminazione deve rispondere a ogni introduzione, e vuota è un'introduzione di List. Il
+; viene rifiutata: «primo: missing case (primo nil)». È di nuovo l'armonia del capitolo 2:
+; un'eliminazione deve rispondere a ogni introduzione, e nil è un'introduzione di List. Il
 ; rimedio non è un valore d'errore. È un tipo che sa quanti elementi ci sono.
 ;
 ;   disegno check book/05-dependent-types.disegno
@@ -33,14 +33,14 @@
 ;   (claim due (Vec Nat 2))
 ;   (define due (vcons 1 vnil))
 ;
-; si ottiene «vnil: atteso (Vec Nat 1), trovato (Vec Nat 0)»: vcons vuole un vettore di un
+; si ottiene «vnil: expected (Vec Nat 1), found (Vec Nat 0)»: vcons vuole un vettore di un
 ; elemento in meno, e vnil non lo è.
 
 ; --- un'eliminazione che sa di più ---
 ; Ora il primo elemento si può chiedere solo a un vettore di (add1 n) elementi. Basta un caso:
 ; vnil sta in (Vec A zero), e zero non è mai (add1 n). Il checker lo vede confrontando gli indici,
-; e non chiede la clausola. Se nel tipo si scrive (Vec A n), la chiede di nuovo: «testa: manca il
-; caso (testa vnil)».
+; e non chiede la clausola. Se nel tipo si scrive (Vec A n), la chiede di nuovo: «testa: missing
+; case (testa vnil)».
 
 (claim testa (→ (Vec A (add1 n)) A))
 (define (testa m)
@@ -88,7 +88,7 @@
 ; capitolo 2 si riducono anche dentro i tipi.
 ;
 ; Il calcolo però ha i suoi limiti. Scrivendo (Vec A (+ m n)), la prima clausola darebbe
-; «ys: atteso (Vec A (+ m 0)), trovato (Vec A m)». + elimina il primo argomento, m è ignoto, e
+; «ys: expected (Vec A (+ m 0)), found (Vec A m)». + elimina il primo argomento, m è ignoto, e
 ; (+ m 0) resta com'è. Che (+ m 0) sia m è vero, ma va dimostrato: è +-zero del capitolo 4. Come
 ; usare una prova per spostare un tipo nell'altro è il tema del capitolo 6.
 
@@ -133,8 +133,8 @@
 ; (define la-b auto)
 ;
 ; 4. L'ultimo elemento. Viene voglia di scrivere la chiamata ricorsiva su (vcons b bs), ma è un
-;    vettore ricostruito, non un pezzo dell'argomento: il checker risponde «ricorsione non
-;    strutturale». Suggerimento: una funzione ausiliaria che si porta dietro l'ultimo elemento
+;    vettore ricostruito, non un pezzo dell'argomento: il checker risponde «recursion is not
+;    structural». Suggerimento: una funzione ausiliaria che si porta dietro l'ultimo elemento
 ;    visto, e scende sul resto.
 ; (claim ultimo-da (→ A (Vec A n) A))
 ; (define ultimo-da ___)

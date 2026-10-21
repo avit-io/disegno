@@ -1,12 +1,12 @@
--- Disegno in Neovim: evidenziazione con tree-sitter, :make con la quickfix.
--- @disegno@ è il comando disegno del flake, sostituito quando si costruisce il plugin.
+-- Disegno in Neovim: tree-sitter highlighting, :make with the quickfix.
+-- @disegno@ is the flake's disegno command, substituted when the plugin is built.
 vim.bo.commentstring = "; %s"
 vim.bo.makeprg = "@disegno@ check %"
 vim.bo.errorformat = "%f:%l:%c: %m"
 vim.bo.lisp = true
 pcall(vim.treesitter.start)
 
--- Il server LSP è lo stesso binario: disegno lsp (diagnostica mentre si scrive, hover, gd, simboli, completamento).
+-- The LSP server is the same binary: disegno lsp (diagnostics while typing, hover, gd, symbols, completion).
 vim.lsp.start({
   name = "disegno",
   cmd = { "@disegno@", "lsp" },

@@ -48,5 +48,5 @@
                 (≡ (map f (++ xs ys)) (++ (map f xs) (map f ys)))))
 (define (map-++ f xs ys)
   (match xs
-    (vuota refl)
+    (nil refl)
     ((:: x xs) (cong (:: (f x)) (map-++ f xs ys)))))

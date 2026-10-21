@@ -31,7 +31,7 @@
 ; Il tipo dice ⊥ e il corpo è assurdo stesso: il checker non avrebbe niente da obiettare. Ma
 ; allora ⊥ avrebbe un elemento, e dal capitolo 2 sappiamo che da ⊥ segue qualunque cosa: ogni
 ; teorema diventerebbe dimostrabile, cioè nessuno varrebbe più niente. Il checker la rifiuta:
-; «assurdo: ricorsione non strutturale». Lo stesso vale per (gira (add1 n)), che sale invece di
+; «assurdo: recursion is not structural». Lo stesso vale per (gira (add1 n)), che sale invece di
 ; scendere.
 ;
 ; La totalità non è una limitazione di comodo. È ciò che permette di leggere un tipo come una
@@ -106,7 +106,7 @@
 ; Un elemento di Strano conterrebbe una funzione che consuma Strano; con essa si riesce a
 ; scrivere un elemento di ⊥ senza nessuna definizione ricorsiva. Il checker richiede che il
 ; tipo che si sta definendo compaia nelle introduzioni solo a destra delle frecce: «avvolgi:
-; Strano non compare in posizione strettamente positiva». Albero, che prende due Albero, va bene.
+; Strano does not occur strictly positively». Albero, che prende due Albero, va bene.
 
 ; --- esercizi ---
 ;

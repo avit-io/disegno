@@ -1,6 +1,6 @@
 (import affine)
 
-; --- tempo: istanti e durate, in secondi. "2026-10-15T10:00:00Z" è un istante, "1h30m" una durata ---
+; --- time: instants and durations, in seconds. "2026-10-15T10:00:00Z" is an instant, "1h30m" a duration ---
 
 (data Instant
   (at Nat))
@@ -15,9 +15,9 @@
   (match* (n m)
     (((at a) (secs d)) (at (+ a d)))))
 
-; Sugli istanti (miliardi di secondi) l'ordine è il test decidibile, che auto calcola; la legge
-; passa per la relazione induttiva con il lemma di riflessione ≤-from.
-(claim ≥t (→ Instant Instant Type))        ; (≥t p q): p non viene prima di q
+; On instants (billions of seconds) order is the decidable test, which auto computes; the law
+; goes through the inductive relation with the reflection lemma ≤-from.
+(claim ≥t (→ Instant Instant Type))        ; (≥t p q): p does not come before q
 (define (≥t n m)
   (match* (n m)
     (((at p) (at q)) (So (≤? q p)))))
@@ -32,10 +32,10 @@
   (match* (p q)
     (((at a) (at b)) (cong at (+-∸ a b (≤-from b a h))))))
 
-(claim tempo (Affine Instant Duration ≥t))
-(define tempo (affine Instant.⊕ Instant.⊖ Instant.⊕-⊖))
+(claim time-affine (Affine Instant Duration ≥t))
+(define time-affine (affine Instant.⊕ Instant.⊖ Instant.⊕-⊖))
 
-(claim window (→ Instant Duration Interval)) ; una finestra: dall'istante, per la durata
+(claim window (→ Instant Duration Interval)) ; a window: from the instant, for the duration
 (define (window n m)
   (match* (n m)
     (((at a) (secs d)) (interval a (+ a d)))))

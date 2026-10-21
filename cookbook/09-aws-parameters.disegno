@@ -54,4 +54,4 @@
 (claim nessun-doppione (Π ((a Aws) (pw Secret)) (Pairwise ⋔ (parameters (configura a pw)))))
 (define (nessun-doppione a pw) auto)
 
-; Una regione che non esiste non si scrive: «eu-west-9» non è un Region valido.
+; Una regione che non esiste non si scrive: «eu-west-9» is not a valid Region.

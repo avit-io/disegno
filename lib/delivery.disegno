@@ -1,13 +1,13 @@
-; Il vocabolario di un rilascio: dove vivono le immagini (Registry), dove si scrive lo stato
-; desiderato (Gitops), chi lo porta nel cluster (Deployer). Sono interfacce, record di funzioni
-; come Affine; gli strumenti sono implementazioni: ECR in aws, git e kustomize in git, ArgoCD in
-; argocd. Una pipeline scritta con queste parole non dipende da quale strumento c'è sotto, e i
-; teoremi si provano sulle istanze concrete, dove i record si riducono ai loro effetti.
+; The vocabulary of a release: where images live (Registry), where the desired state is written
+; (Gitops), who brings it into the cluster (Deployer). They are interfaces, records of functions
+; like Affine; the tools are implementations: ECR in aws, git and kustomize in git, ArgoCD in
+; argocd. A pipeline written with these words does not depend on which tool is underneath, and
+; theorems are proved on the concrete instances, where the records reduce to their effects.
 
 (import dagger)
 
-; Come uno strumento raggiunge il suo server: direttamente, o attraverso un service di Dagger
-; legato sotto un nome di host (un registro, un server git, un emulatore, per le prove).
+; How a tool reaches its server: directly, or through a Dagger service bound under a host name
+; (a registry, a git server, an emulator, for tests).
 (data Reach
   (direct)
   (through String Service))
@@ -18,31 +18,31 @@
     (direct              c)
     ((through host svc)  (with-service-binding c host svc))))
 
-; --- le interfacce ---
+; --- the interfaces ---
 
 (record Registry
-  (image (→ String String String))                   ; repo, tag → il riferimento
+  (image (→ String String String))                   ; repo, tag → the reference
   (push (→ Container String String (Export Dir)))   ; container, repo, tag
-  (has? (→ String String (Remote Bool))))           ; c'è già repo:tag?
+  (has? (→ String String (Remote Bool))))           ; is repo:tag already there?
 
-(record Gitops                                         ; un solo commit per tutte le cartelle
-  (set-image (→ (List Rel) String String (Export Dir))))   ; dove, immagine, messaggio del commit
+(record Gitops                                         ; a single commit for all the folders
+  (set-image (→ (List Rel) String String (Export Dir))))   ; where, image, commit message
 
 (record Deployer
-  (deploy (→ String (Export Dir)))                 ; un'applicazione
+  (deploy (→ String (Export Dir)))                 ; an application
   (healthy? (→ String (Remote Bool)))
-  (restart (→ String (Export Dir))))                ; riavvia, senza cambiare lo stato desiderato
+  (restart (→ String (Export Dir))))                ; restarts, without changing the desired state
 
-; --- un registro qualsiasi, con crane, dal tarball del container ---
+; --- any registry, with crane, from the container's tarball ---
 
 (claim crane Container)
-(define crane (pipe (container) (from "gcr.io/go-containerregistry/crane@sha256:e78770b31258a3846f878036d9c1f63fbe4c871f9f56990bf77fd95c013e3c1b")))   ; debug, con una shell
+(define crane (pipe (container) (from "gcr.io/go-containerregistry/crane@sha256:e78770b31258a3846f878036d9c1f63fbe4c871f9f56990bf77fd95c013e3c1b")))   ; debug, with a shell
 
-(claim ref-in (→ String String String String))          ; registro, repo, tag
+(claim ref-in (→ String String String String))          ; registry, repo, tag
 (define (ref-in host repo tag) (string-append host "/" repo ":" tag))
 
-; Un registro con utente e password (letta a esecuzione, come un segreto).
-(claim login-registry (→ String String Secret Reach Registry))    ; host, utente, password
+; A registry with a user and password (read at run time, as a secret).
+(claim login-registry (→ String String Secret Reach Registry))    ; host, user, password
 (define (login-registry host user pw r)
   (registry (ref-in host)
             (λ (c repo tag) (apply (pipe (reach crane r) (Container.with-file /disegno/image.tar (Container.as-tarball c))
@@ -53,7 +53,7 @@
                                  (list "sh" "-c" "crane auth login \"$1\" -u \"$2\" -p \"$REGISTRY_PASSWORD\" && crane digest \"$3\""
                                        "sh" host user (ref-in host repo tag))))))
 
-; Un registro come service, senza TLS né credenziali: per le prove, host «registry:5000».
+; A registry as a service, without TLS or credentials: for tests, host «registry:5000».
 (claim local-registry (→ Service Registry))
 (define (local-registry svc)
   (registry (ref-in "registry:5000")
@@ -61,7 +61,7 @@
                                    (list "crane" "push" "--insecure" "/disegno/image.tar" (ref-in "registry:5000" repo tag))))
             (λ (repo tag) (probe (reach crane (through "registry" svc)) (list "crane" "digest" "--insecure" (ref-in "registry:5000" repo tag))))))
 
-(claim registry-service Service)                        ; il registro di riferimento, come service
+(claim registry-service Service)                        ; the reference registry, as a service
 (define registry-service
   (pipe (container) (from "registry@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8")   ; 3
         (with-exposed-port 5000)

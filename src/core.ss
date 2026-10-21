@@ -1,7 +1,7 @@
-;; Nucleo fidato: stampa del piano in GraphQL e trasporto HTTP verso la sessione Dagger.
-;; Un piano è una catena di campi: ((container) (from (address "alpine")) (stdout)).
+;; Trusted core: printing the plan as GraphQL and HTTP transport to the Dagger session.
+;; A plan is a chain of fields: ((container) (from (address "alpine")) (stdout)).
 
-(let loop ([names '("libc.so.6" "libc.musl-x86_64.so.1")])   ; glibc, poi musl (Alpine)
+(let loop ([names '("libc.so.6" "libc.musl-x86_64.so.1")])   ; glibc, then musl (Alpine)
   (guard (e [(pair? (cdr names)) (loop (cdr names))]) (load-shared-object (car names))))
 
 ;; --- GraphQL ---
@@ -41,7 +41,7 @@
         (gql-field (car c))
         (format "~a { ~a }" (gql-field (car c)) (loop (cdr c))))))
 
-;; --- HTTP su localhost, senza TLS ---
+;; --- HTTP on localhost, no TLS ---
 
 (define c-socket  (foreign-procedure "socket"  (int int int) int))
 (define c-connect (foreign-procedure "connect" (int u8* int) int))
@@ -75,7 +75,7 @@
       (let* ([rest (make-bytevector (- (bytevector-length bv) off))]
              [_ (bytevector-copy! bv off rest 0 (bytevector-length rest))]
              [k (c-write fd rest (bytevector-length rest))])
-        (when (< k 0) (error 'http "write fallita"))
+        (when (< k 0) (error 'http "write failed"))
         (loop (+ off k))))))
 
 (define (read-all fd)
@@ -83,16 +83,16 @@
     (let-values ([(out get) (open-bytevector-output-port)])
       (let loop ()
         (let ([k (c-read fd buf 65536)])
-          (cond [(< k 0) (error 'http "read fallita")]
+          (cond [(< k 0) (error 'http "read failed")]
                 [(> k 0) (put-bytevector out buf 0 k) (loop)]
                 [else (get)]))))))
 
-;; ponytail: HTTP/1.0 + chiusura connessione, così niente chunked né keep-alive.
+;; ponytail: HTTP/1.0 and connection close, so no chunked encoding and no keep-alive.
 (define (http-post port token path body)
   (let ([fd (c-socket 2 1 0)]                           ; AF_INET, SOCK_STREAM
         [body (string->utf8 body)])
     (unless (zero? (c-connect fd (sockaddr-localhost port) 16))
-      (c-close fd) (error 'http "connect fallita" port))
+      (c-close fd) (error 'http "connect failed" port))
     (write-all fd (string->utf8
                     (format "POST ~a HTTP/1.0\r\nHost: 127.0.0.1\r\nAuthorization: Basic ~a\r\nContent-Type: application/json\r\nContent-Length: ~a\r\n\r\n"
                             path (base64 (string->utf8 (string-append token ":"))) (bytevector-length body))))
@@ -100,24 +100,24 @@
     (let ([resp (utf8->string (read-all fd))])
       (c-close fd)
       (let ([i (let loop ([i 0])
-                 (cond [(> (+ i 4) (string-length resp)) (error 'http "risposta malformata" resp)]
+                 (cond [(> (+ i 4) (string-length resp)) (error 'http "malformed response" resp)]
                        [(string=? (substring resp i (+ i 4)) "\r\n\r\n") (+ i 4)]
                        [else (loop (+ i 1))]))])
         (substring resp i (string-length resp))))))
 
-;; --- il flusso dei log del motore: server-sent events su /v1/logs, record OTLP in JSON ---
-;; Gira in un thread: la read è __collect_safe (su un buffer immobile), così mentre aspetta una
-;; riga non ferma il garbage collector, e con lui il thread principale. Le righe si separano
-;; sui byte \n, che in UTF-8 non stanno mai dentro un carattere.
+;; --- the engine's log stream: server-sent events on /v1/logs, OTLP records as JSON ---
+;; Runs in a thread: the read is __collect_safe (on an immobile buffer), so while it waits for a
+;; line it does not stop the garbage collector, and with it the main thread. Lines are split
+;; on \n bytes, which in UTF-8 never occur inside a character.
 
 (define c-read-safe (foreign-procedure __collect_safe "read" (int u8* size_t) ssize_t))
 (define c-shutdown (foreign-procedure "shutdown" (int int) int))
-(define (log-stream-stop fd) (c-shutdown fd 2))          ; SHUT_RDWR: anche la read in attesa torna
+(define (log-stream-stop fd) (c-shutdown fd 2))          ; SHUT_RDWR: a pending read returns too
 
-(define (log-stream port token on-record)               ; on-record riceve ogni record (alist); → fd
+(define (log-stream port token on-record)               ; on-record gets each record (alist); → fd
   (let ([fd (c-socket 2 1 0)])
     (unless (zero? (c-connect fd (sockaddr-localhost port) 16))
-      (c-close fd) (error 'http "connect fallita" port))
+      (c-close fd) (error 'http "connect failed" port))
     (write-all fd (string->utf8
                     (format "GET /v1/logs HTTP/1.0\r\nHost: 127.0.0.1\r\nAuthorization: Basic ~a\r\nAccept: text/event-stream\r\n\r\n"
                             (base64 (string->utf8 (string-append token ":"))))))
@@ -143,13 +143,13 @@
 
 (define (json-field obj k default) (cond [(and (list? obj) (assoc k obj)) => cdr] [else default]))
 
-;; --- JSON (solo lettura delle risposte): oggetti → alist, array → liste, null → 'null ---
+;; --- JSON (reading responses only): objects → alists, arrays → lists, null → 'null ---
 
 (define (json-read s)
   (define i 0)
   (define (peek) (string-ref s i))
   (define (skip) (let loop () (when (and (< i (string-length s)) (char-whitespace? (peek))) (set! i (+ i 1)) (loop))))
-  (define (eat c) (skip) (unless (char=? (peek) c) (error 'json "atteso" c i)) (set! i (+ i 1)))
+  (define (eat c) (skip) (unless (char=? (peek) c) (error 'json "expected" c i)) (set! i (+ i 1)))
   (define (word w v) (set! i (+ i (string-length w))) v)
   (define (str)
     (eat #\")
@@ -188,8 +188,8 @@
               (string->number (substring s j i)))]))
   (value))
 
-;; Scrittura (per l'LSP): una alist con chiavi stringa è un oggetto, un vettore è un array,
-;; 'null è null; stringhe, numeri e booleani come sono.
+;; Writing (for the LSP): an alist with string keys is an object, a vector is an array,
+;; 'null is null; strings, numbers and booleans as they are.
 (define (json-write v p)
   (cond [(string? v) (display (json-string v) p)]
         [(boolean? v) (display (if v "true" "false") p)]
@@ -210,25 +210,25 @@
              (display (json-string (caar kv)) p) (display ":" p) (json-write (cdar kv) p)
              (loop (cdr kv) #f)))
          (display "}" p)]
-        [else (error 'json "valore non serializzabile" v)]))
+        [else (error 'json "value not serializable" v)]))
 
 (define (json->string v) (call-with-string-output-port (lambda (p) (json-write v p))))
 
-;; --- Sessione ---
+;; --- Session ---
 
-(define (query text)                                    ; documento GraphQL → risposta JSON (testo)
+(define (query text)                                    ; GraphQL document → JSON response (text)
   (let ([port (getenv "DAGGER_SESSION_PORT")] [token (getenv "DAGGER_SESSION_TOKEN")])
-    (unless (and port token) (error 'submit "manca la sessione: lanciare sotto `dagger api with-session`"))
+    (unless (and port token) (error 'submit "no session: run under `dagger api with-session`"))
     (http-post (string->number port) token "/query" (format "{\"query\": ~a}" (json-string text)))))
 
 (define (submit chain) (query (format "{ ~a }" (plan->graphql chain))))
 
-;; Invia la catena e restituisce il valore della foglia; gli errori del motore diventano errori.
+;; Sends the chain and returns the leaf's value; engine errors become errors.
 (define (submit-leaf chain)
   (let* ([r (json-read (submit chain))] [errs (assoc "errors" r)])
     (when (and errs (pair? (cdr errs)))
-      (error 'motore (cdr (or (assoc "message" (cadr errs)) (cons #f "errore")))   ; le extensions (EXEC_ERROR:
-             (cond [(assoc "extensions" (cadr errs)) => cdr] [else '()])))         ; cmd, exitCode, stderr) restano
+      (error 'engine (cdr (or (assoc "message" (cadr errs)) (cons #f "error")))   ; the extensions (EXEC_ERROR:
+             (cond [(assoc "extensions" (cadr errs)) => cdr] [else '()])))         ; cmd, exitCode, stderr) are kept
 
     (let loop ([v (cdr (assoc "data" r))])
       (if (and (pair? v) (pair? (car v)) (string? (caar v))) (loop (cdar v)) v))))

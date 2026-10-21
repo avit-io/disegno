@@ -1,9 +1,9 @@
-;; Il driver. Disegno ha i tre momenti di Zuccari, tre usi dello stesso programma:
-;;   disegno check prog.disegno   disegno interno: tipi e teoremi
-;;   disegno plan  prog.disegno   disegno esterno: il piano, un GraphQL per ogni esito dei branch
-;;   disegno run   prog.disegno   opera: l'esecuzione su Dagger (il comando apre la sessione)
-;;   disegno lsp                  il server LSP per gli editor (diagnostica)
-;; Senza sottocomando: check se il file non ha main, altrimenti plan (o run sotto dagger api with-session).
+;; The driver. Disegno has Zuccari's three moments, three uses of the same program:
+;;   disegno check prog.disegno   inner design: types and theorems
+;;   disegno plan  prog.disegno   outer design: the plan, one GraphQL per outcome of the branches
+;;   disegno run   prog.disegno   the work: execution on Dagger (the command opens the session)
+;;   disegno lsp                  the LSP server for editors
+;; With no subcommand: check if the file has no main, otherwise plan (or run under dagger api with-session).
 
 (define root (path-parent (path-parent (car (command-line)))))   ; <root>/src/main.ss
 (define (at-root p) (if (string=? root "") p (string-append root "/" p)))
@@ -12,7 +12,7 @@
 (load (at-root "src/types.ss"))
 (load (at-root "src/plan.ss"))
 
-(when (equal? (command-line-arguments) '("lsp"))         ; disegno lsp: il server per gli editor
+(when (equal? (command-line-arguments) '("lsp"))         ; disegno lsp: the server for editors
   (load (at-root "src/lsp.ss"))
   (serve)
   (exit 0))
@@ -63,16 +63,16 @@
   (let ([args (command-line-arguments)])
     (cond [(and (= (length args) 2) (member (car args) '("check" "plan" "run"))) (values (string->symbol (car args)) (cadr args))]
           [(= (length args) 1) (values #f (car args))]
-          [else (display "uso: disegno [check|plan|run] programma.disegno\n") (exit 2)])))
+          [else (display "usage: disegno [check|plan|run] program.disegno\n") (exit 2)])))
 
-;; Gli errori del linguaggio escono nel formato dei compilatori, file:riga:colonna: messaggio,
-;; su stderr e con codice 1: è quello che leggono :make e la quickfix di Neovim.
+;; Language errors come out in the compilers' format, file:line:col: message, on stderr
+;; with exit code 1: that is what :make and Neovim's quickfix read.
 (define (report e)
   (let ([err (current-error-port)])
     (cond [(and (who-condition? e) (eq? (condition-who e) 'disegno) (message-condition? e))
            (display (condition-message e) err)]
-          [(and (who-condition? e) (eq? (condition-who e) 'motore) (message-condition? e))   ; senza le extensions
-           (display (string-append "motore: " (condition-message e)) err)]
+          [(and (who-condition? e) (eq? (condition-who e) 'engine) (message-condition? e))   ; without the extensions
+           (display (string-append "engine: " (condition-message e)) err)]
           [else (display-condition e err)])
     (newline err)
     (exit 1)))
@@ -87,17 +87,17 @@
 (guard (e [#t (report e)])
   (parameterize ([program-dir (path-parent file)])
     (case mode*
-      [(check) (display "disegno interno verificato: tipi e teoremi\n")]
-      [(plan) (let ([ps (all-plans 'main)])     ; per ogni esito: osservazioni e uscite, in ordine
+      [(check) (display "checked: types and theorems\n")]
+      [(plan) (let ([ps (all-plans 'main)])     ; for each outcome: observations and outputs, in order
                (for-each (lambda (p i)
                           (when (> i 0) (newline))
                           (for-each (lambda (ev)
                                       (case (car ev)
-                                        [(se) (format #t "# se ~a → ~a~%" (plan->graphql (cadr ev)) (if (caddr ev) "vero" "falso"))]
-                                        [(altrimenti) (display "# se qualcosa prima fallisce:\n")]
-                                        [(fallisce) (format #t "# fallisce: ~a~%" (cadr ev))]
+                                        [(if) (format #t "# if ~a → ~a~%" (plan->graphql (cadr ev)) (if (caddr ev) "true" "false"))]
+                                        [(otherwise) (display "# if something before fails:\n")]
+                                        [(fails) (format #t "# fails: ~a~%" (cadr ev))]
                                         [else (display (plan->graphql (cadr ev))) (newline)]))
                                     (cdr p)))
                         ps (iota (length ps))))]
-      [(run) (unless (getenv "DAGGER_SESSION_PORT") (oops "run richiede una sessione Dagger: usare `disegno run`"))
-             (let ([r (run 'main)]) (unless (env? "DISEGNO_LOGS") (display r) (newline)))])))   ; con il resoconto, la riga finale dice già dove
+      [(run) (unless (getenv "DAGGER_SESSION_PORT") (oops "run needs a Dagger session: use `disegno run`"))
+             (let ([r (run 'main)]) (unless (env? "DISEGNO_LOGS") (display r) (newline)))])))   ; with the report, the last line already says where

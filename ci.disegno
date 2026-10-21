@@ -1,12 +1,12 @@
-; La CI di Disegno, scritta in Disegno: la suite dei test in un container, eseguita da Dagger.
-; In CI il resoconto ha una riga per voce (chez, test); l'output dei test è nel gruppo di test,
-; e resta anche in ci-out/test.log.
+; Disegno's CI, written in Disegno: the test suite in a container, run by Dagger.
+; In CI the report has one line per item (chez, test); the tests' output is in the test group,
+; and also stays in ci-out/test.log.
 ;
 ;   disegno run ci.disegno
 
 (import dagger)
 
-(claim chez Container)                                    ; Chez Scheme su Alpine, chiamato scheme
+(claim chez Container)                                    ; Chez Scheme on Alpine, called scheme
 (define chez
   (pipe (container)
         (from "alpine:3.22")

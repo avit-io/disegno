@@ -90,7 +90,7 @@
     (())))
 
 ; Il pattern assurdo non è una scorciatoia: va giustificato. Su (¬ (≡ 2 2)) il checker risponde
-; «() non è assurdo: refl è possibile in (≡ 2 2)».
+; «() is not absurd: refl is possible in (≡ 2 2)».
 
 ; --- la logica delle negazioni ---
 ; Con ¬ come funzione, le leggi della negazione sono programmi brevi. Se A vale, non può essere

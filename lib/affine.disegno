@@ -1,25 +1,25 @@
-; Spazi affini e regioni su una retta: la struttura comune a percorsi, tempo e indirizzi.
+; Affine spaces and regions on a line: the structure shared by paths, time and addresses.
 
-; Uno spazio affine: punti P, spostamenti V, una relazione ≤ che dice quando la differenza esiste.
+; An affine space: points P, displacements V, a relation ≤ saying when the difference exists.
 (record (Affine P V (≤ (→ P P Type)))
   (+ (→ P V P))
   (- (Π ((p P) (q P)) (→ (≤ p q) V)))
   (law (Π ((p P) (q P) (h (≤ p q))) (≡ (+ q (- p q h)) p))))
 
-; --- naturali: l'istanza da cui discendono tempo e indirizzi ---
+; --- naturals: the instance time and addresses derive from ---
 
-(claim ≥N (→ Nat Nat Type))                ; (≥N p q): la differenza p ∸ q è esatta
+(claim ≥N (→ Nat Nat Type))                ; (≥N p q): the difference p ∸ q is exact
 (define (≥N p q) (≤ q p))
 
 (claim Nat.⊖ (Π ((p Nat) (q Nat)) (→ (≥N p q) Nat)))
 (define (Nat.⊖ p q _) (∸ p q))
 
-(claim naturali (Affine Nat Nat ≥N))
-(define naturali (affine + Nat.⊖ +-∸))
+(claim nat-affine (Affine Nat Nat ≥N))
+(define nat-affine (affine + Nat.⊖ +-∸))
 
-; --- regioni su una retta: intervalli semiaperti [lo, hi) ---
-; Le finestre di tempo, i blocchi CIDR e gli intervalli di porte sono intervalli; le proposizioni
-; naturali sono il contenimento e la disgiunzione.
+; --- regions on a line: half-open intervals [lo, hi) ---
+; Time windows, CIDR blocks and port ranges are intervals; the natural propositions are
+; containment and disjointness.
 
 (record Interval
   (lo Nat)
@@ -31,7 +31,7 @@
 (data Apart : (→ Interval Interval Type)
   (apart : (Π ((a Interval) (b Interval)) (→ (So (apart? a b)) (Apart a b)))))
 
-(claim within? (→ Interval Interval Bool))  ; a sta dentro b
+(claim within? (→ Interval Interval Bool))  ; a lies inside b
 (define (within? a b) (and (≤? (Interval.lo b) (Interval.lo a)) (≤? (Interval.hi a) (Interval.hi b))))
 
 (claim Within (→ Interval Interval Type))

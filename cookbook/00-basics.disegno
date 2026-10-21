@@ -21,13 +21,13 @@
 ; --- famiglie induttive: la lunghezza nel tipo ---
 
 (data Vec : (→ Type Nat Type)
-  (nil  : (Vec A 0))
-  (cons : (→ A (Vec A n) (Vec A (add1 n)))))
+  (vnil  : (Vec A 0))
+  (vcons : (→ A (Vec A n) (Vec A (add1 n)))))
 
-(claim head (→ (Vec A (add1 n)) A))            ; il caso nil è impossibile: il checker lo sa
+(claim head (→ (Vec A (add1 n)) A))            ; il caso vnil è impossibile: il checker lo sa
 (define (head m)
   (match m
-    ((cons x _) x)))
+    ((vcons x _) x)))
 
 ; --- invarianti di dominio nel tipo, verificati calcolando al momento del check ---
 
@@ -48,14 +48,14 @@
   (ok (≥ replicas (min-replicas env))))
 
 (claim api App)
-(define api (app "api" prod 3 auto))                 ; con 2 repliche: «auto: la proposizione si riduce a ⊥»
+(define api (app "api" prod 3 auto))                 ; con 2 repliche: «auto: the proposition reduces to ⊥»
 
 ; --- prove per calcolo: auto ---
 
 (claim uno-più-uno (≡ (+ 1 1) 2))
 (define uno-più-uno auto)
 
-(claim testa (≡ (head (cons 1 nil)) 1))
+(claim testa (≡ (head (vcons 1 vnil)) 1))
 (define testa auto)
 
 (claim api-in-regola (≥ (App.replicas api) (min-replicas (App.env api))))

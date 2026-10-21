@@ -56,9 +56,9 @@
 
 ; --- errori di tipo: togli il ; davanti a una riga per vederli ---
 ; (claim e1 Image)
-; (define e1 "Golang:1.25")              ; «Golang:1.25» non è un Image valido
+; (define e1 "Golang:1.25")              ; «Golang:1.25» is not a valid Image
 ; (claim e2 Abs)
-; (define e2 (⊕ out /bin))                 ; punto + punto: atteso Rel, trovato Abs
+; (define e2 (⊕ out /bin))                 ; punto + punto: expected Rel, found Abs
 ; (claim e3 Rel)
 ; (define e3 (⊖ out bin auto))             ; /out non sta dentro /out/bin/hello: nessuna prova
 ; (claim e4 Instant)
@@ -66,4 +66,4 @@
 ; (claim e5 Cidr)
 ; (define e5 "10.0.0.1/24")               ; blocco non allineato: non è un Cidr valido
 ; (claim e6 Port)
-; (define e6 70000)                       ; «70000» non è un Port valido
+; (define e6 70000)                       ; «70000» is not a valid Port

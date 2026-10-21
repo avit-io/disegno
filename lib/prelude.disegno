@@ -1,7 +1,7 @@
-; Il prelude: la logica, cioè la teoria dei tipi di Martin-Löf e i suoi dati, con i builtin che
-; il nucleo usa per i letterali e per auto. Si carica sempre; il resto si importa: (import dagger).
+; The prelude: the logic, that is Martin-Löf type theory and its data, with the builtins the core
+; uses for literals and for auto. It is always loaded; the rest is imported: (import dagger).
 
-; --- uguaglianza ---
+; --- equality ---
 
 (data ≡ : (→ A A Type)
   (refl : (≡ x x)))
@@ -23,18 +23,18 @@
   (match* (n m)
     ((refl refl) refl)))
 
-; transport (il replace di Pie): l'eliminazione dell'uguaglianza. Ciò che vale di x vale di y, se x ≡ y.
+; transport (Pie's replace): the elimination of equality. What holds of x holds of y, if x ≡ y.
 (claim transport (∀ ((A Type) (x A) (y A)) (→ (≡ x y) (Π ((P (→ A Type))) (→ (P x) (P y))))))
 (define (transport n P px)
   (match n
     (refl px)))
 
-; Either: la disgiunzione. Due introduzioni; eliminarla vuol dire trattare entrambi i casi.
+; Either: disjunction. Two introductions; eliminating it means handling both cases.
 (data Either : (→ Type Type Type)
   (left  : (→ A (Either A B)))
   (right : (→ B (Either A B))))
 
-; --- proposizioni decidibili: (So b) è ⊤ se b è vero, ⊥ altrimenti; auto prova ⊤ calcolando ---
+; --- decidable propositions: (So b) is ⊤ if b is true, ⊥ otherwise; auto proves ⊤ by computing ---
 
 (data ⊥ : Type)
 (builtin empty ⊥)
@@ -51,7 +51,7 @@
 (builtin true true)
 (builtin false false)
 
-(claim ¬ (→ Type Type))              ; negazione: (¬ A) è A → ⊥
+(claim ¬ (→ Type Type))              ; negation: (¬ A) is A → ⊥
 (define (¬ A) (→ A ⊥))
 
 (claim So (→ Bool Type))
@@ -66,7 +66,7 @@
     (true a)
     (false b)))
 
-; --- naturali: 0, 1, 2… sono zucchero per zero, add1 ---
+; --- naturals: 0, 1, 2… are sugar for zero, add1 ---
 
 (data Nat
   (zero)
@@ -91,10 +91,10 @@
 (claim ≥ (→ Nat Nat Type))
 (define (≥ m n) (So (≤? n m)))
 
-; Le definizioni sono unarie e sono la verità logica; il valutatore calcola nativamente sui numeri
-; quelle legate qui sotto come builtin (types.ss, fast), e test.ss verifica che coincidano.
+; The definitions are unary and are the logical truth; the evaluator computes natively on numbers
+; those bound as builtins below (types.ss, fast), and test.ss checks that they agree.
 
-(claim ∸ (→ Nat Nat Nat))                 ; sottrazione troncata
+(claim ∸ (→ Nat Nat Nat))                 ; truncated subtraction
 (define (∸ n m)
   (match* (n m)
     ((p zero)     p)
@@ -150,73 +150,73 @@
     (true true)
     (false b)))
 
-; L'ordine come relazione induttiva: la differenza si calcola sulla prova, come per i percorsi.
+; Order as an inductive relation: the difference is computed on the proof, as for paths.
 (data ≤ : (→ Nat Nat Type)
   (≤-zero : (≤ zero n))
   (≤-succ : (→ (≤ m n) (≤ (add1 m) (add1 n)))))
 
-; Riflessione: dal test booleano alla relazione induttiva.
+; Reflection: from the boolean test to the inductive relation.
 (claim ≤-from (Π ((m Nat) (n Nat)) (→ (So (≤? m n)) (≤ m n))))
 (define (≤-from m n h)
   (match* (m n)
     ((zero n) ≤-zero)
     (((add1 m) (add1 n)) (≤-succ (≤-from m n h)))))
 
-; La legge dei naturali: q + (p ∸ q) = p se q ≤ p. Serve al tempo e agli indirizzi.
+; The law of naturals: q + (p ∸ q) = p if q ≤ p. Used by time and addresses.
 (claim +-∸ (Π ((p Nat) (q Nat) (h (≤ q p))) (≡ (+ q (∸ p q)) p)))
 (define (+-∸ p q h)
   (match* (p q h)
     ((p zero ≤-zero)     refl)
     (((add1 p) (add1 q) (≤-succ h)) (cong add1 (+-∸ p q h)))))
 
-; --- liste: (list "a" "b") è zucchero per (:: "a" (:: "b" vuota)) ---
+; --- lists: (list "a" "b") is sugar for (:: "a" (:: "b" nil)) ---
 
 (data List : (→ Type Type)
-  (vuota : (List A))
-  (::    : (→ A (List A) (List A))))
+  (nil : (List A))
+  (::  : (→ A (List A) (List A))))
 (builtin list List)
-(builtin nil vuota)
+(builtin nil nil)
 (builtin cons ::)
 
 (claim ++ (→ (List A) (List A) (List A)))
 (define (++ n ys)
   (match n
-    (vuota ys)
+    (nil ys)
     ((:: x xs) (:: x (++ xs ys)))))
 
 (claim concat-map (→ (→ A (List B)) (List A) (List B)))
 (define (concat-map f n)
   (match n
-    (vuota     (list))
+    (nil       (list))
     ((:: x xs) (++ (f x) (concat-map f xs)))))
 
 (claim any? (→ (→ A Bool) (List A) Bool))
 (define (any? p n)
   (match n
-    (vuota     false)
+    (nil       false)
     ((:: x xs) (if (p x) true (any? p xs)))))
 
 (claim all (→ (→ A Bool) (List A) Bool))
 (define (all p n)
   (match n
-    (vuota     true)
+    (nil       true)
     ((:: x xs) (if (p x) (all p xs) false))))
 
 (claim map (→ (→ A B) (List A) (List B)))
 (define (map f n)
   (match n
-    (vuota     (list))
+    (nil       (list))
     ((:: x xs) (:: (f x) (map f xs)))))
 
-; (Holds p x): p vale su x. È un dato e non (So (p x)), così se auto fallisce dice su quale x.
+; (Holds p x): p holds on x. It is data and not (So (p x)), so if auto fails it says on which x.
 (data Holds : (→ (→ A Bool) A Type)
   (holds : (Π ((p (→ A Bool)) (x A)) (→ (So (p x)) (Holds p x)))))
 
 
-; Proposizioni su liste: Every p xs (ogni elemento soddisfa p), Pairwise r xs (ogni coppia è in r).
+; Propositions on lists: Every p xs (every element satisfies p), Pairwise r xs (every pair is in r).
 
-; Σ: la coppia dipendente. Il secondo elemento ha un tipo che dipende dal primo; è "esiste a
-; tale che B a". × è il caso in cui B non dipende da a.
+; Σ: the dependent pair. The second element has a type depending on the first; it is "there is an a
+; such that B a". × is the case where B does not depend on a.
 (data Σ : (Π ((A Type)) (→ (→ A Type) Type))
   (pair : (∀ ((A Type) (B (→ A Type))) (Π ((a A)) (→ (B a) (Σ A B))))))
 (builtin sigma Σ)
@@ -237,13 +237,13 @@
 (claim Every (→ (→ A Type) (List A) Type))
 (define (Every p n)
   (match n
-    (vuota     ⊤)
+    (nil       ⊤)
     ((:: x xs) (× (p x) (Every p xs)))))
 
 (claim Pairwise (→ (→ A A Type) (List A) Type))
 (define (Pairwise r n)
   (match n
-    (vuota     ⊤)
+    (nil       ⊤)
     ((:: x xs) (× (Every (r x) xs) (Pairwise r xs)))))
 
 (claim All (→ (→ A Bool) (List A) Type))

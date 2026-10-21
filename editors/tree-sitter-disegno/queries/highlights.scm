@@ -1,11 +1,11 @@
-; Evidenziazione di Disegno. Le forme si riconoscono dal primo simbolo della lista.
+; Disegno highlighting. Forms are recognized by the first symbol of the list.
 
 (comment) @comment
 (string) @string
 (number) @number
 (path) @string.special.path
 
-; Le dichiarazioni e il nome che introducono.
+; Declarations and the name they introduce.
 (list . (symbol) @keyword
   (#any-of? @keyword "claim" "define" "data" "record" "extern" "import" "builtin"))
 (list . (symbol) @_kw . (symbol) @function
@@ -15,23 +15,23 @@
 (list . (symbol) @_kw . (symbol) @type.definition
   (#any-of? @_kw "data" "record"))
 
-; Le forme speciali.
+; Special forms.
 (list . (symbol) @keyword.control
   (#any-of? @keyword.control "let" "let*" "λ" "lambda" "match" "match*" "cond" "when" "unless" "begin" "pipe" "branch" "if" "the" "list"))
 ((symbol) @keyword.control
   (#eq? @keyword.control "else"))
 
-; I tipi: un nome con l'iniziale maiuscola (Nat, Container, Obj.…), l'universo e i quantificatori.
+; Types: a capitalized name (Nat, Container, Obj.…), the universe and the quantifiers.
 ((symbol) @type
   (#match? @type "^[A-Z]"))
 ((symbol) @keyword.type
   (#any-of? @keyword.type "Π" "∀"))
 
-; Prove ed elementi speciali.
+; Proofs and special elements.
 ((symbol) @constant.builtin
-  (#any-of? @constant.builtin "auto" "refl" "tt" "true" "false" "root" "here" "vuota" "_" "TODO"))
+  (#any-of? @constant.builtin "auto" "refl" "tt" "true" "false" "root" "here" "nil" "_" "TODO"))
 
-; Gli operatori: frecce, uguaglianza, relazioni e spazi affini.
+; Operators: arrows, equality, relations and affine spaces.
 ((symbol) @operator
   (#any-of? @operator "→" ":" "≡" "⊑" "⋔" "¬" "⊕" "⊖" "/" "++" "+" "∸" "*" "≤" "≥" "×" "::"))
 
