@@ -1,12 +1,10 @@
-;; Il server LSP: disegno lsp. JSON-RPC su stdin/stdout, con le intestazioni Content-Length.
-;; Diagnostica all'apertura, a ogni modifica e al salvataggio: il testo del documento si controlla
-;; in un processo a sé (disegno check), così ogni controllo parte pulito; ogni riga d'errore
-;; file:riga:colonna: messaggio diventa una diagnostica. Si legge e si scrive in byte:
-;; Content-Length conta byte, non caratteri.
-;; Hover: il tipo del nome globale sotto il cursore (disegno type). Definizione: dove è definito
-;; (disegno where), anche nella libreria standard. Simboli: le dichiarazioni del file.
-;; Completion: the global names (disegno names) and the forms; resolve gives the type.
-;; ponytail: hover e definizione solo per i nomi globali; le variabili locali verranno se servono.
+;; The LSP server: disegno lsp. JSON-RPC on stdin/stdout, with Content-Length headers, read and
+;; written in bytes (Content-Length counts bytes, not characters).
+;; Every request checks the document in a process of its own (disegno check, type, where,
+;; names), so each starts clean. Diagnostics on open, change and save: each file:line:col line
+;; of the checker is one. Hover, definition and completion pass the cursor position, so a local
+;; there wins over a global; definition reaches into the standard library. Symbols: the file's
+;; declarations, read without checking them.
 
 (define lsp-in (standard-input-port))
 (define lsp-out (standard-output-port))
@@ -92,39 +90,21 @@
 (define (todo? msg) (and (>= (string-length msg) 4) (string=? (substring msg 0 4) "TODO")))
 
 (define (publish-diagnostics uri)
-  (let* ([text (hashtable-ref documents uri "")] [r (run-on text "check")]
-         [ds (diagnostics text (car r) (caddr r))])
+  (let* ([text (hashtable-ref documents uri "")] [r (run-on text "check")])
     (send `(("jsonrpc" . "2.0") ("method" . "textDocument/publishDiagnostics")
             ("params" . (("uri" . ,uri)
                          ("diagnostics" . ,(list->vector
-                                             (let loop ([ds ds] [seen '()] [out '()])   ; seen: positions of earlier TODOs
-                                               (if (null? ds)
-                                                   (reverse out)
-                                                   (let* ([d (car ds)] [line (- (car d) 1)] [col (- (cadr d) 1)] [msg (caddr d)]
-                                                          [nth (length (filter (lambda (p) (equal? p (cons line col))) seen))])
-                                                     (loop (cdr ds) (if (todo? msg) (cons (cons line col) seen) seen)
-                                                           (cons `(("range" . ,(diagnostic-range text line col msg nth))
-                                                                   ("severity" . ,(if (todo? msg) 3 1)) ("source" . "disegno") ("message" . ,msg))
-                                                                 out)))))))))))))
+                                             (map (lambda (d) `(("range" . ,(diagnostic-range text (- (car d) 1) (- (cadr d) 1)))
+                                                                ("severity" . ,(if (todo? (caddr d)) 3 1)) ("source" . "disegno") ("message" . ,(caddr d))))
+                                                  (diagnostics text (car r) (caddr r)))))))))))
 
-;; The checker knows the position of the nearest form, not of an atom: an unknown name is
-;; searched from there (or, if not after it, before it), the n-th TODO of a form is its n-th TODO token; otherwise the word at
-;; the position, or the form up to the end of its line.
-(define (diagnostic-range text line col msg nth)
-  (let* ([from (offset-of text line col)]
-         [token (cond [(todo? msg) "TODO"]
-                      [(prefix? "nome sconosciuto: " msg)
-                       (let ([rest (substring msg 18 (string-length msg))])
-                         (car (split-on (car (split-on rest #\newline)) #\,)))]
-                      [else #f])]
-         [at (and token (or (find-token text token from nth) (find-token-before text token from)))])
-    (if at
-        (offsets->range text at (+ at (string-length token)))
-        (let* ([n (string-length text)]
-               [end (if (and (< from n) (char=? (string-ref text from) #\())
-                        (form-end text from)
-                        (let loop ([j from]) (if (and (< j n) (not (delim? (string-ref text j)))) (loop (+ j 1)) j)))])
-          (offsets->range text from (max end (min n (+ from 1))))))))
+;; The word at the position, or a form up to the end of its line.
+(define (diagnostic-range text line col)
+  (let* ([from (offset-of text line col)] [n (string-length text)]
+         [end (if (and (< from n) (char=? (string-ref text from) #\())
+                  (form-end text from)
+                  (let loop ([j from]) (if (and (< j n) (not (delim? (string-ref text j)))) (loop (+ j 1)) j)))])
+    (offsets->range text from (max end (min n (+ from 1))))))
 
 (define (prefix? p s) (and (>= (string-length s) (string-length p)) (string=? (substring s 0 (string-length p)) p)))
 
@@ -145,16 +125,6 @@
   (let ([s (line-col text a)] [e (line-col text b)])
     `(("start" . ,(position (car s) (cdr s))) ("end" . ,(position (car e) (cdr e))))))
 
-(define (find-token text tok from nth)                   ; offset of the nth whole occurrence of tok after from, or #f
-  (let ([n (string-length text)] [k (string-length tok)])
-    (let loop ([i from] [nth nth])
-      (cond [(> (+ i k) n) #f]
-            [(and (string=? (substring text i (+ i k)) tok)
-                  (or (= i 0) (delim? (string-ref text (- i 1))))
-                  (or (= (+ i k) n) (delim? (string-ref text (+ i k)))))
-             (if (zero? nth) i (loop (+ i k) (- nth 1)))]
-            [else (loop (+ i 1) nth)]))))
-
 (define (form-end text from)                             ; the closing paren of the form at from, at most the end of its line
   (let ([n (string-length text)])
     (let loop ([j from] [depth 0])
@@ -163,9 +133,6 @@
             [(char=? (string-ref text j) #\)) (if (= depth 1) (+ j 1) (loop (+ j 1) (- depth 1)))]
             [else (loop (+ j 1) depth)]))))
 
-(define (find-token-before text tok to)                  ; offset of the last whole occurrence of tok before to, or #f
-  (let loop ([i (find-token text tok 0 0)] [last #f])
-    (if (and i (< i to)) (loop (find-token text tok (+ i 1) 0) i) last)))
 
 ;; --- il nome sotto il cursore ---
 
@@ -183,18 +150,22 @@
          [w (word-at (hashtable-ref documents (get (get params "textDocument") "uri") "") (get pos "line") (get pos "character"))])
     (and w (not (memv #\' (string->list w))) w)))
 
-;; Hover: il tipo, con le varianti dei nomi corti.
+(define (at-cursor params . args)                        ; disegno <args…> on the document, with the cursor position
+  (let ([pos (get params "position")])
+    (apply run-on (hashtable-ref documents (get (get params "textDocument") "uri") "")
+           (append args (list (get pos "line") (get pos "character"))))))
+
+;; Hover: the type, with the variants of a short name.
 (define (hover msg params)
-  (let* ([uri (get (get params "textDocument") "uri")] [word (word-of params)]
-         [r (and word (run-on (hashtable-ref documents uri "") "type" word))])
+  (let* ([word (word-of params)] [r (and word (at-cursor params "type" word))])
     (respond msg (if (and r (cadddr r))
                      `(("contents" . (("kind" . "markdown") ("value" . ,(string-append "```disegno\n" (cadr r) "```")))))
                      'null))))
 
-;; Definizione: dove sta, nel documento stesso o in un file della libreria.
+;; Definition: in the document itself or in a file of the library.
 (define (definition msg params)
   (let* ([uri (get (get params "textDocument") "uri")] [word (word-of params)]
-         [r (and word (run-on (hashtable-ref documents uri "") "where" word))]
+         [r (and word (at-cursor params "where" word))]
          [abs (lambda (f) (if (and (> (string-length f) 0) (char=? (string-ref f 0) #\/)) f (string-append (current-directory) "/" f)))])
     (respond msg (if (and r (cadddr r))
                      (list->vector
@@ -227,15 +198,10 @@
                                  `(("name" . ,(symbol->string n)) ("kind" . ,(cdr k)) ("range" . ,r) ("selectionRange" . ,r)))))))
                  decls)))))))
 
-;; --- completion: the global names the program sees, and the forms of the language ---
+;; --- completion: the names in scope at the cursor, locals first, and the forms of the language ---
 
-;; ponytail: names are computed at the first completion and again after a save, not at every
-;; keystroke; local variables are not offered (the reader keeps no positions of atoms).
-(define names-cache (make-hashtable string-hash string=?))  ; uri → names
-(define (refresh-names! uri)
-  (let ([r (run-on (hashtable-ref documents uri "") "names")])
-    (hashtable-set! names-cache uri (if (cadddr r) (lines (cadr r)) '()))))
-
+;; ponytail: a define whose parentheses are still open is not checked, so its locals are not
+;; offered until it is balanced.
 (define keywords '("claim" "define" "data" "record" "import" "Π" "∀" "λ" "let" "list" "match" "match*" "cond" "when"
                    "unless" "begin" "the" "pipe" "auto" "TODO" "Type" "→"))
 
@@ -248,19 +214,19 @@
 (define (completion msg params)
   (let* ([uri (get (get params "textDocument") "uri")] [pos (get params "position")]
          [prefix (prefix-at (hashtable-ref documents uri "") (get pos "line") (get pos "character"))]
-         [item (lambda (kind) (lambda (s) `(("label" . ,s) ("kind" . ,kind) ("data" . ,uri))))])
-    (unless (hashtable-contains? names-cache uri) (refresh-names! uri))
+         [r (at-cursor params "names")]
+         [item (lambda (kind) (lambda (s) `(("label" . ,s) ("kind" . ,kind) ("data" . (("uri" . ,uri) ("position" . ,pos))))))])
     (respond msg
       `(("isIncomplete" . #f)
         ("items" . ,(list->vector
-                      (append (map (item 14) (filter (lambda (s) (prefix? prefix s)) keywords))
-                              (map (item 3) (filter (lambda (s) (prefix? prefix s)) (hashtable-ref names-cache uri '()))))))))))
+                      (append (map (item 3) (filter (lambda (s) (prefix? prefix s)) (if (cadddr r) (lines (cadr r)) '())))
+                              (map (item 14) (filter (lambda (s) (prefix? prefix s)) keywords)))))))))
 
-;; The type of the item picked, with the variants of a short name, as the hover shows it.
+;; The type of the item picked, at the position where completion was asked, as the hover shows it.
 (define (completion-resolve msg item)
-  (let* ([uri (get item "data")] [label (get item "label")]
-         [r (and uri (string? label) (not (member label keywords)) (not (memv #\' (string->list label)))
-                 (run-on (hashtable-ref documents uri "") "type" label))])
+  (let* ([data (get item "data")] [label (get item "label")]
+         [r (and data (string? label) (not (member label keywords)) (not (memv #\' (string->list label)))
+                 (at-cursor `(("textDocument" . (("uri" . ,(get data "uri")))) ("position" . ,(get data "position"))) "type" label))])
     (respond msg (if (and r (cadddr r)) (append item `(("detail" . ,(string-trim (cadr r))))) item))))
 
 ;; --- il ciclo ---
@@ -286,11 +252,9 @@
                  (hashtable-set! documents uri (get (car (last-pair changes)) "text")))
                (unless (input-port-ready? lsp-in) (publish-diagnostics uri)))]
             [(equal? method "textDocument/didSave")
-             (publish-diagnostics (get (get params "textDocument") "uri"))
-             (hashtable-delete! names-cache (get (get params "textDocument") "uri"))]
+             (publish-diagnostics (get (get params "textDocument") "uri"))]
             [(equal? method "textDocument/didClose")
-             (hashtable-delete! documents (get (get params "textDocument") "uri"))
-             (hashtable-delete! names-cache (get (get params "textDocument") "uri"))]
+             (hashtable-delete! documents (get (get params "textDocument") "uri"))]
             [(equal? method "textDocument/hover") (hover msg params)]
             [(equal? method "textDocument/definition") (definition msg params)]
             [(equal? method "textDocument/documentSymbol") (document-symbols msg params)]

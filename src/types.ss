@@ -490,7 +490,7 @@
 (define (unbracket e) (if (and (pair? e) (eq? (car e) '%br)) (cdr e) e))
 
 (define (infer c e)                                     ; → (values termine tipo)
-  (with-pos e (lambda () (let-values ([(t ty) (infer* c e)]) (values (at-step e t) ty)))))
+  (with-pos e (lambda () (log-scope! c) (let-values ([(t ty) (infer* c e)]) (values (at-step e t) ty)))))
 (define (infer* c e)
   (cond
     [(eq? e 'Type) (values '(type 0) '(vtype 1))]
@@ -671,7 +671,7 @@
                         (reverse holes))
                t)))))
 
-(define (check c e ty) (with-pos e (lambda () (at-step e (check* c e ty)))))
+(define (check c e ty) (with-pos e (lambda () (log-scope! c) (at-step e (check* c e ty)))))
 
 ;; Un with-exec ricorda dove sta nel sorgente, e la voce nel cui corpo è stato costruito: se il
 ;; passo fallisce, il runner dice dove; il resoconto di un run parla con i nomi del programma.
@@ -983,11 +983,11 @@
 ;; An unknown name that a module not yet imported declares says which import it needs.
 ;; ponytail: modules are scanned by reading their declarations, not by checking them; names
 ;; the generator produces (Container, with-exec…) are not found.
-(define (unknown-name e)
+(define (unknown-name e)                                 ; at the atom, also from a walk of a signature
   (let ([m (module-of e)])
-    (if m
-        (oops "nome sconosciuto: ~a, sta in ~a: (import ~a)" e m m)
-        (oops "nome sconosciuto: ~a" e))))
+    (with-pos e (lambda () (if m
+                               (oops "nome sconosciuto: ~a, sta in ~a: (import ~a)" e m m)
+                               (oops "nome sconosciuto: ~a" e))))))
 
 (define (module-of name)
   (find (lambda (m) (and (not (hashtable-ref imported m #f)) (memq name (declared-names m))))
@@ -1073,13 +1073,153 @@
 (define file-texts (make-hashtable string-hash string=?))
 
 (define (with-pos e thunk)
-  (let ([p (and (pair? e) (hashtable-ref pos-of e #f))]) (if p (parameterize ([here p]) (thunk)) (thunk))))
+  (cond [(and (pair? e) (hashtable-ref pos-of e #f)) => (lambda (p) (at-pos p thunk))]
+        [(and (symbol? e) (here-counts) (pair? (here)))   ; an atom of the form at (here): its k-th child with that name
+         (let ([k (hashtable-ref (here-counts) e 0)])
+           (hashtable-set! (here-counts) e (+ k 1))
+           (parameterize ([here (make-apos (car (here)) (cdr (here)) (symbol->string e) k)] [here-counts #f]) (thunk)))]
+        [else (thunk)]))
+(define (at-pos p thunk) (parameterize ([here p] [here-counts (make-eq-hashtable)]) (thunk)))
+
+;; Atoms have no identity, so the reader cannot say where one is. An atom elaborated inside a
+;; form is the k-th direct child of that form with its name, k counted while the form is
+;; elaborated; failing that, its first occurrence in the form. Resolved only when asked for.
+(define-record-type apos (fields file form name k))     ; form: offset of the enclosing form
+(define here-counts (make-parameter #f))                ; name → atoms of the form at (here) seen so far
+
+(define (pos-normal p)                                   ; → (file . offset)
+  (if (apos? p)
+      (let* ([atoms (cdr (scan-form (apos-file p) (apos-form p)))]
+             [same (filter (lambda (t) (string=? (car t) (apos-name p))) atoms)]
+             [direct (filter (lambda (t) (= (caddr t) 1)) same)])
+        (cons (apos-file p) (cond [(> (length direct) (apos-k p)) (cadr (list-ref direct (apos-k p)))]
+                                  [(pair? same) (cadr (car same))]
+                                  [else (apos-form p)])))
+      p))
+
+;; The form starting at an offset, read as text: (end . atoms), each atom (name offset depth
+;; forms), depth 1 for a direct child, forms the starts of the lists around it, innermost first.
+;; Strings and comments are skipped.
+(define form-scans (make-hashtable equal-hash equal?))
+(define (scan-form file at)
+  (let ([key (cons file at)])
+    (or (hashtable-ref form-scans key #f)
+        (let* ([text (hashtable-ref file-texts file "")] [n (string-length text)]
+               [delim? (lambda (c) (or (char-whitespace? c) (memv c '(#\( #\) #\[ #\] #\" #\;))))]
+               [r (if (and (< at n) (memv (string-ref text at) '(#\( #\[)))
+                      (let loop ([i (+ at 1)] [forms (list at)] [acc '()])
+                        (if (>= i n)
+                            (cons n (reverse acc))
+                            (let ([c (string-ref text i)])
+                              (cond [(memv c '(#\( #\[)) (loop (+ i 1) (cons i forms) acc)]
+                                    [(memv c '(#\) #\])) (if (null? (cdr forms)) (cons (+ i 1) (reverse acc)) (loop (+ i 1) (cdr forms) acc))]
+                                    [(char=? c #\;) (loop (let skip ([j i]) (if (or (>= j n) (char=? (string-ref text j) #\newline)) j (skip (+ j 1)))) forms acc)]
+                                    [(char=? c #\") (loop (let skip ([j (+ i 1)]) (cond [(>= j n) j] [(char=? (string-ref text j) #\\) (skip (+ j 2))]
+                                                                                        [(char=? (string-ref text j) #\") (+ j 1)] [else (skip (+ j 1))]))
+                                                          forms acc)]
+                                    [(or (char-whitespace? c) (char=? c #\')) (loop (+ i 1) forms acc)]
+                                    [else (let ([j (let word ([j i]) (if (and (< j n) (not (delim? (string-ref text j)))) (word (+ j 1)) j))])
+                                            (loop j forms (cons (list (substring text i j) i (length forms) forms) acc)))]))))
+                      (cons at '()))])
+          (hashtable-set! form-scans key r)
+          r))))
+
+(define (form-head file at)                              ; the first atom of the form at an offset, if it opens with one
+  (let ([a (find (lambda (t) (= (caddr t) 1)) (cdr (scan-form file at)))]
+        [text (hashtable-ref file-texts file "")])
+    (and a (let skip ([j (+ at 1)]) (cond [(= j (cadr a)) (car a)]
+                                          [(char-whitespace? (string-ref text j)) (skip (+ j 1))]
+                                          [else #f])))))
+
+;; Where a binder binds: λ, define and match clauses bind in the form around its list (a clause
+;; for a pattern), let, Π and ∀ one level further out. → (start . end), or #f.
+(define (binder-scope file forms)
+  (let* ([up (lambda (k) (and (> (length forms) k) (list-ref forms k)))]
+         [head (lambda (k) (and (up k) (form-head file (up k))))]
+         [s (cond [(member (head 2) '("let" "let*" "Π" "∀")) (up 2)]
+                  [(member (head 1) '("λ" "lambda" "define")) (up 1)]
+                  [else (let loop ([k 0]) (cond [(not (up (+ k 1))) #f]
+                                                [(member (head (+ k 1)) '("match" "match*")) (up k)]
+                                                [else (loop (+ k 1))]))])])
+    (and s (cons s (car (scan-form file s))))))
+
+;; --- what the LSP asks: the context of each elaborated term, and the binders of locals ---
+;; scope-log, when set, collects (position ctx) for every term check and infer see.
+(define scope-log (make-parameter #f))
+(define (log-scope! c) (when (and (scope-log) (here)) (set-box! (scope-log) (cons (cons (here) c) (unbox (scope-log))))))
+
+(define (scopes file)                                    ; → ((start end ctx name-or-#f) …), atoms and forms
+  (filter values
+    (map (lambda (s)
+           (let ([p (pos-normal (car s))])
+             (and (string=? (car p) file)
+                  (if (apos? (car s))
+                      (list (cdr p) (+ (cdr p) (string-length (apos-name (car s)))) (cdr s) (apos-name (car s)))
+                      (list (cdr p) (car (scan-form file (cdr p))) (cdr s) #f)))))
+         (unbox (scope-log)))))
+
+(define (scope-at ss off)                                ; the smallest scope around off (an atom: off may be at its end)
+  (fold-left (lambda (best s)
+               (if (and (<= (car s) off) (or (< off (cadr s)) (and (cadddr s) (= off (cadr s))))
+                        (or (not best) (< (- (cadr s) (car s)) (- (cadr best) (car best)))))
+                   s best))
+             #f ss))
+
+(define (ctx-locals c)                                   ; → ((name . type-string) …), let first, then binders, innermost first
+  (let* ([l (ctx-l c)] [names (ctx-names c)]
+         [lets (map (lambda (d) (cons (symbol->string (car d)) (render-term names (reify l (caddr d))))) (ctx-defs c))])
+    (let loop ([i 0] [seen (map (lambda (d) (car d)) (ctx-defs c))] [acc (reverse lets)])
+      (if (= i l)
+          (reverse acc)
+          (let ([x (list-ref names i)])
+            (if (and (symbol? x) (not (memq x seen)) (not (char=? (string-ref (symbol->string x) 0) #\%)) (not (eq? x '_)))
+                (loop (+ i 1) (cons x seen)
+                      (cons (cons (symbol->string x) (render-term (list-tail names (+ i 1)) (reify (- l i 1) (list-ref (ctx-tys c) i)))) acc))
+                (loop (+ i 1) seen acc)))))))
+
+(define (offset-at file line col)                        ; line and col from 0, as the LSP counts
+  (let ([text (hashtable-ref file-texts file "")])
+    (let loop ([i 0] [l 0])
+      (cond [(= l line) (min (+ i col) (string-length text))]
+            [(>= i (string-length text)) i]
+            [else (loop (+ i 1) (if (char=? (string-ref text i) #\newline) (+ l 1) l))]))))
+
+(define (locals-at file off)                             ; the locals in scope at off
+  (let ([s (scope-at (scopes file) off)]) (if s (ctx-locals (caddr s)) '())))
+
+;; The binder of a local: the last occurrence of its name before the use, in the same top-level
+;; declaration, that was not elaborated as a term and whose binding form contains the use.
+(define decl-starts (make-hashtable string-hash string=?))   ; file → offsets of its declarations
+(define (binder-of file use name)
+  (let* ([ss (scopes file)]
+         [uses (map car (filter (lambda (s) (equal? (cadddr s) name)) ss))]
+         [start (fold-left (lambda (b d) (if (and (<= d use) (> d b)) d b)) 0 (hashtable-ref decl-starts file '()))]
+         [cands (filter (lambda (t) (and (string=? (car t) name) (< (cadr t) use) (not (memv (cadr t) uses))
+                                         (let ([s (binder-scope file (cadddr t))]) (and s (< (car s) use (cdr s))))))
+                        (cdr (scan-form file start)))])
+    (and (pair? cands) (cadr (list-ref cands (- (length cands) 1))))))
+
+;; A local at off, used or bound there: (type-string . binder-offset), or #f.
+(define (local-at file off name)
+  (let* ([ss (scopes file)] [s (scope-at ss off)])
+    (if (and s (equal? (cadddr s) name))
+        (let ([t (assoc name (ctx-locals (caddr s)))])
+          (and t (cons (cdr t) (binder-of file (car s) name))))
+        (exists (lambda (u) (and (equal? (cadddr u) name) (> (car u) off) (eqv? (binder-of file (car u) name) (car (word-start file off)))
+                                 (let ([t (assoc name (ctx-locals (caddr u)))]) (and t (cons (cdr t) (car (word-start file off)))))))
+                (reverse ss)))))
+
+(define (word-start file off)                            ; (start . end) of the atom around off
+  (let* ([text (hashtable-ref file-texts file "")] [n (string-length text)]
+         [delim? (lambda (c) (or (char-whitespace? c) (memv c '(#\( #\) #\[ #\] #\" #\; #\'))))])
+    (cons (let loop ([j (min off n)]) (if (and (> j 0) (not (delim? (string-ref text (- j 1))))) (loop (- j 1)) j))
+          (let loop ([j (min off n)]) (if (and (< j n) (not (delim? (string-ref text j)))) (loop (+ j 1)) j)))))
 
 (define (pos->string p)                                  ; → "file:riga:colonna"
   (let ([v (pos->vector p)]) (format "~a:~a:~a" (vector-ref v 0) (vector-ref v 1) (vector-ref v 2))))
 
 (define (pos->vector p)                                  ; → #(file riga colonna)
-  (let ([text (hashtable-ref file-texts (car p) "")])
+  (let* ([p (pos-normal p)] [text (hashtable-ref file-texts (car p) "")])
     (let loop ([i 0] [line 1] [col 1])
       (if (or (>= i (cdr p)) (>= i (string-length text)))
           (vector (car p) line col)
@@ -1202,6 +1342,7 @@
      (unless (and (= (length d) 3) (symbol? (cadr d))) (oops "claim: (claim nome tipo)"))
      (when (hashtable-ref (claims) (cadr d) #f) (oops "~a: claim già fatto, manca la define" (cadr d)))
      (hashtable-set! (claims) (cadr d) (sx (caddr d)))
+     (hashtable-set! claim-pos (cadr d) (hashtable-ref pos-of d #f))
      '()]
     [(define) (need 3)
      (unless (or (= (length d) 3) (and (= (length d) 4) (string? (caddr d)))) (oops "define: (define (nome x …) corpo)"))
@@ -1256,6 +1397,7 @@
               (unless (null? errs)
                 (error 'disegno (fold-left (lambda (acc m) (string-append m "\n" acc)) (car errs) (cdr errs)))))
             (let* ([d (strip name a)]
+                   [_ (let ([p (hashtable-ref pos-of d #f)]) (when p (hashtable-update! decl-starts name (lambda (l) (cons (cdr p) l)) (quote ()))))]
                    [m (guard (e [(and (who-condition? e) (eq? (condition-who e) 'disegno) (message-condition? e)) (condition-message e)])
                         (with-pos d (lambda () (for-each (lambda (i) (with-pos (keep i d) (lambda () (check-decl i)))) (desugar-decl d))))
                         #f)]
@@ -1354,7 +1496,10 @@
   (unless (and (>= (length d) 4) (eq? (caddr d) ':)) (oops "def malformata: ~s" d))
   (let ([name (cadr d)])
     (fresh-name! name)
-    (check-def-core name (elab-sig (cadddr d)) (parse-clauses name (list-tail d 4)))))
+    (check-def-core name (let ([p (hashtable-ref claim-pos name #f)])   ; the signature, where the claim is
+                           (if p (at-pos p (lambda () (elab-sig (cadddr d)))) (elab-sig (cadddr d))))
+                    (parse-clauses name (list-tail d 4)))))
+(define claim-pos (make-eq-hashtable))                  ; name → position of its claim
 
 (define (absurd? p) (or (null? p) (and (pair? p) (exists absurd? (cdr p)))))
 (define (absurd-clause? x) (and (pair? x) (eq? (car x) '%br) (exists absurd? (cdr x))))

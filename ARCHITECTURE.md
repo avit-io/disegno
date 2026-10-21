@@ -240,7 +240,7 @@ Tutte queste forme sono zucchero: un passo prima dell'elaborazione le traduce ne
 **Perché.** Il formato dei compilatori lo leggono senza adattatori `:make`, la quickfix di Neovim e le annotazioni di GitHub. Il processo separato è la cosa più semplice e corretta, perché il checker tiene stato globale (globali, metavariabili, moduli importati) e ogni controllo deve partire pulito. Un controllo costa circa 0,3 s.
 
 **Costo.**
-- Il reader conserva le posizioni delle liste, non dei singoli nomi: l'hover e la definizione funzionano solo sui nomi globali, e un errore su un nome indica la sua lista.
+- Il reader conserva le posizioni delle liste, non dei nomi, perché un simbolo non ha identità. La posizione di un nome la ricava il checker dal testo della sua lista: è il k-esimo figlio con quel nome, contato mentre la lista si elabora. Il binder di una variabile locale è l'ultima occorrenza del nome, prima dell'uso, che non è stata elaborata come termine e la cui forma (`λ`, `define`, `let`, `Π`, una clausola di `match`) contiene l'uso. È un'euristica sul testo, non un legame registrato dall'elaboratore: una forma che la superficie riordina (`pipe`) può spostare un nome sulla prima occorrenza della lista.
 - Il processo separato rifà il controllo della libreria a ogni richiesta.
 
 ## 14. L'ospite e la piattaforma
@@ -267,6 +267,5 @@ Tutto il resto, cioè l'elaboratore, la libreria non `extern` e i programmi, lo 
 ## Che cosa si cambierebbe per primo
 
 In ordine di valore per costo:
-1. **Posizioni dei nomi nel reader**: hover, definizione e completamento delle variabili locali.
-2. **Definizioni mutue**: oggi non servono alla libreria.
-3. **Cumulatività degli universi**, con `≡` in `Type 1` (§4): quando un programma vero vorrà un tipo come valore.
+1. **Definizioni mutue**: oggi non servono alla libreria.
+2. **Cumulatività degli universi**, con `≡` in `Type 1` (§4): quando un programma vero vorrà un tipo come valore.

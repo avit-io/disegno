@@ -17,30 +17,39 @@
   (serve)
   (exit 0))
 
-;; disegno type prog.disegno nome: il tipo di un nome globale (usato dall'hover dell'LSP);
-;; disegno where prog.disegno nome: dove è definito, file:riga:colonna (la definizione).
-;; Il file si controlla fin dove si può: un errore non impedisce di conoscere i nomi definiti.
-;; Un nome corto risolto dal tipo (from, with-exec…) mostra tutte le sue varianti.
-(let ([args (command-line-arguments)])
-  (when (and (= (length args) 3) (member (car args) '("type" "where")))
+;; Commands for the LSP. The file is checked as far as it goes: an error does not hide the names
+;; defined. With a position (line and column from 0) a local there wins over a global.
+;;   disegno type prog.disegno name [line col]    the type; a short name (from, with-exec…) shows all its variants
+;;   disegno where prog.disegno name [line col]   where it is defined, file:line:col
+;;   disegno names prog.disegno [line col]        the names in scope, locals first, one per line
+(let* ([args (command-line-arguments)] [n (length args)])
+  (define (load-program file)
     (import! 'prelude)
-    (guard (e [#t #f]) (check-file (cadr args)))
-    (let* ([name (string->symbol (caddr args))]
-           [names (if (gget name) (list name) (qualified name))]
-           [lines (if (equal? (car args) "where")
-                      (filter values (map (lambda (n) (let ([p (hashtable-ref def-pos n #f)]) (and p (pos->string p)))) names))
-                      (if (and (not (gget name)) (path-literal? name))
-                          (list (format "~a : ~a" name (bi 'abs)))
-                          (filter values (map type-of-global names))))])
-      (if (null? lines)
-          (exit 1)
-          (begin (for-each (lambda (l) (display l) (newline)) lines) (exit 0)))))
-  ;; disegno names prog.disegno: the global names the program sees, one per line, for completion.
+    (parameterize ([scope-log (box '())])
+      (guard (e [#t #f]) (check-file file))
+      (scope-log)))
+  (define (offset file rest)                             ; → offset of (line col), or #f
+    (and (= (length rest) 2) (string->number (car rest)) (string->number (cadr rest))
+         (offset-at file (string->number (car rest)) (string->number (cadr rest)))))
+  (define (answer lines) (if (null? lines) (exit 1) (begin (for-each (lambda (l) (display l) (newline)) lines) (exit 0))))
+  (when (and (memv n '(3 5)) (member (car args) '("type" "where")))
+    (let* ([file (cadr args)] [log (load-program file)] [off (offset file (cdddr args))]
+           [local (and off (parameterize ([scope-log log]) (local-at file off (caddr args))))]
+           [name (string->symbol (caddr args))]
+           [names (if (gget name) (list name) (qualified name))])
+      (answer
+        (cond [(and local (equal? (car args) "type")) (list (format "~a : ~a" name (car local)))]
+              [(and local (cdr local)) (list (pos->string (cons file (cdr local))))]
+              [(equal? (car args) "where")
+               (filter values (map (lambda (n) (let ([p (hashtable-ref def-pos n #f)]) (and p (pos->string p)))) names))]
+              [(and (not (gget name)) (path-literal? name)) (list (format "~a : ~a" name (bi 'abs)))]
+              [else (filter values (map type-of-global names))]))))
   ;; A Type.name also gives its short form, resolved by the type of the first argument.
-  (when (and (= (length args) 2) (equal? (car args) "names"))
-    (import! 'prelude)
-    (guard (e [#t #f]) (check-file (cadr args)))
-    (let ([seen (make-hashtable string-hash string=?)])
+  (when (and (memv n '(2 4)) (equal? (car args) "names"))
+    (let* ([file (cadr args)] [log (load-program file)] [off (offset file (cddr args))]
+           [locals (if off (map car (parameterize ([scope-log log]) (locals-at file off))) '())]
+           [seen (make-hashtable string-hash string=?)])
+      (for-each (lambda (s) (hashtable-set! seen s #t)) locals)
       (vector-for-each
         (lambda (n)
           (let* ([s (symbol->string n)] [dot (let loop ([i (- (string-length s) 1)]) (cond [(< i 1) #f] [(char=? (string-ref s i) #\.) i] [else (loop (- i 1))]))])
@@ -48,8 +57,7 @@
               (hashtable-set! seen s #t)
               (when dot (hashtable-set! seen (substring s (+ dot 1) (string-length s)) #t)))))
         (hashtable-keys globals))
-      (for-each (lambda (s) (display s) (newline)) (list-sort string<? (vector->list (hashtable-keys seen))))
-      (exit 0))))
+      (answer (append locals (filter (lambda (s) (not (member s locals))) (list-sort string<? (vector->list (hashtable-keys seen)))))))))
 
 (define-values (mode file)
   (let ([args (command-line-arguments)])
